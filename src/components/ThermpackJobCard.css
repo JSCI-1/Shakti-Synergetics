@@ -2,7 +2,6 @@
    THERMOPACK JOB CARD — Responsive
    ════════════════════════════════════ */
 
-/* ── Wrapper ── */
 .tjc-wrapper {
   background: #fff;
   border: 1px solid #d8d0c8;
@@ -25,9 +24,9 @@
   font-weight: 700;
   flex-wrap: wrap;
 }
-.tjc-title-en    { color: #f0c890; }
-.tjc-title-divider { color: #555; }
-.tjc-title-hi    { color: #f0c890; font-weight: 400; font-size: 15px; }
+.tjc-title-en     { color: #f0c890; }
+.tjc-title-divider{ color: #555; }
+.tjc-title-hi     { color: #f0c890; font-weight: 400; font-size: 15px; }
 
 /* ── Form ── */
 .tjc-form { display: flex; flex-direction: column; }
@@ -42,15 +41,13 @@
 }
 
 /* ── Bilingual labels ── */
-.bi-label   { display: flex; flex-direction: column; gap: 2px; }
-.bi-en      { font-size: 12px; font-weight: 600; color: #333; }
-.bi-hi      { font-size: 11px; color: #888; }
-.req        { color: #c0392b; }
+.bi-label { display: flex; flex-direction: column; gap: 2px; }
+.bi-en    { font-size: 12px; font-weight: 600; color: #333; }
+.bi-hi    { font-size: 11px; color: #888; }
+.req      { color: #c0392b; }
+.hi       { font-size: 10px; color: #999; font-weight: 400; }
 
-/* ── Hindi sub-text ── */
-.hi { font-size: 10px; color: #999; font-weight: 400; }
-
-/* ── Inputs ── */
+/* ── Generic inputs ── */
 .tjc-input {
   width: 100%;
   border: 1px solid #ccc;
@@ -79,16 +76,13 @@
 
 /* ── Cell helpers ── */
 .cell-stack { display: flex; flex-direction: column; }
-.cell-mini-label {
-  font-size: 11px;
-  font-weight: 600;
-  color: #555;
-  margin-bottom: 3px;
-}
+.cell-mini-label { font-size: 11px; font-weight: 600; color: #555; margin-bottom: 3px; }
 .mt6 { margin-top: 6px; }
 .mt8 { margin-top: 8px; }
 
-/* ── Shared table (Operator + Stock) ── */
+/* ════════════════════
+   OPERATOR TABLE
+   ════════════════════ */
 .tjc-table {
   width: 100%;
   border-collapse: collapse;
@@ -117,20 +111,62 @@
   width: 140px;
 }
 
-/* Stock table empty cells */
-.stock-table { table-layout: auto; }
-.stock-table td.td-empty {
-  min-width: 70px;
-  background: #fafaf8;
+/* ════════════════════
+   STOCK RECEIVED — flex grid (works on all screens)
+   ════════════════════ */
+.stock-header {
+  background: #f5f0ea;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #444;
+  border-bottom: 1px solid #d8d0c8;
 }
 
-/* ── Hourly log ── */
+.stock-grid {
+  display: flex;
+  flex-direction: column;
+}
+
+.stock-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  border-bottom: 1px solid #e8e2da;
+}
+.stock-row:last-child { border-bottom: none; }
+
+.stock-label {
+  width: 140px;
+  flex-shrink: 0;
+  padding: 10px 12px;
+  font-weight: 600;
+  font-size: 12px;
+  background: #faf7f3;
+  border-right: 1px solid #d8d0c8;
+  align-self: stretch;
+  display: flex;
+  align-items: center;
+}
+
+.stock-field {
+  flex: 1;
+  padding: 8px 10px;
+  border-right: 1px solid #e8e2da;
+  min-width: 0;
+}
+.stock-field:last-child { border-right: none; }
+.stock-field-empty { background: #fafaf8; }
+
+/* ════════════════════
+   HOURLY LOG TABLE
+   ════════════════════ */
 .tjc-log-section { overflow: hidden; }
 .tjc-log-scroll  { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 .tjc-log-table {
   border-collapse: collapse;
-  min-width: 780px;
+  min-width: 860px;
   width: 100%;
 }
 .tjc-log-table th,
@@ -187,6 +223,35 @@
   background: #fdf3ee !important;
   border-color: #e8c5a8 !important;
 }
+
+/* ── Timestamp column ── */
+.ts-cell { white-space: nowrap; min-width: 72px; text-align: center; }
+.ts-badge {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #a5d6a7;
+}
+.ts-empty { color: #ccc; font-size: 12px; }
+
+.ts-save-cell { text-align: center; padding: 2px 4px; }
+.row-save-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.row-save-btn:hover    { background: #fdf3ee; border-color: #b85c2c; }
+.row-saved             { background: #f6fff6 !important; }
+.row-saved .row-save-btn { border-color: #4caf50; color: #2e7d32; font-weight: 700; }
 
 /* ── Actions ── */
 .tjc-actions {
@@ -261,17 +326,11 @@
   text-align: left;
 }
 .sc-accordion-header:hover { background: #fdf0e6; }
-
 .sc-accordion-title    { font-size: 14px; font-weight: 700; color: #333; }
 .sc-accordion-title-hi { font-size: 12px; font-weight: 400; color: #888; }
 .sc-accordion-icon     { font-size: 13px; color: #b85c2c; flex-shrink: 0; }
 
-.sc-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  border-top: 1px solid #e0dbd4;
-}
+.sc-form { display: flex; flex-direction: column; gap: 0; border-top: 1px solid #e0dbd4; }
 
 .sc-meta-row {
   display: flex;
@@ -307,7 +366,6 @@
   color: #444;
   line-height: 1.4;
 }
-
 .sc-sr         { font-weight: 700; width: 26px; background: #faf7f3; }
 .sc-motor-name { text-align: left; font-weight: 600; min-width: 120px; background: #faf7f3; padding: 4px 8px; font-size: 11px; }
 .sc-hp         { font-weight: 700; width: 32px; background: #faf7f3; }
@@ -345,12 +403,7 @@
 }
 .sc-stop-select:focus { outline: none; border-color: #b85c2c; }
 
-.sc-bottom {
-  padding: 14px 16px 0;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+.sc-bottom { padding: 14px 16px 0; display: flex; flex-direction: column; gap: 12px; }
 .sc-remark-field { display: flex; flex-direction: column; gap: 5px; }
 .sc-actions { padding: 0; border-top: none; }
 
@@ -361,22 +414,19 @@
 @media (max-width: 640px) {
 
   /* Title */
-  .tjc-title-bar   { font-size: 14px; padding: 10px 12px; gap: 8px; }
-  .tjc-title-hi    { font-size: 13px; }
+  .tjc-title-bar { font-size: 14px; padding: 10px 12px; gap: 8px; }
+  .tjc-title-hi  { font-size: 13px; }
 
-  /* Operator / Stock tables — stack columns on mobile */
+  /* ── Operator table only — stack on mobile ── */
   .tjc-table,
   .tjc-table thead,
   .tjc-table tbody,
   .tjc-table tfoot,
   .tjc-table tr,
   .tjc-table th,
-  .tjc-table td {
-    display: block;
-    width: 100% !important;
-  }
+  .tjc-table td { display: block; width: 100% !important; }
 
-  .tjc-table thead { display: none; }   /* hide header row — labels are inline */
+  .tjc-table thead { display: none; }
 
   .tjc-table tr {
     border: 1px solid #d8d0c8;
@@ -386,14 +436,12 @@
     background: #fff;
     width: calc(100% - 16px) !important;
   }
-
   .tjc-table td {
     border: none;
     border-bottom: 1px solid #f0ede8;
     padding: 6px 4px;
   }
   .tjc-table td:last-child { border-bottom: none; }
-
   .tjc-table td.row-label {
     width: 100% !important;
     background: #f5f0ea;
@@ -401,42 +449,51 @@
     padding: 6px 8px;
     font-size: 12px;
   }
-
   .td-date-cell { width: 100% !important; }
 
-  /* Remarks */
-  .tjc-remarks-section { padding: 10px 10px; }
+  /* ── Stock grid — stack on mobile ── */
+  .stock-row {
+    flex-direction: column;
+    align-items: stretch;
+    border: 1px solid #d8d0c8;
+    border-radius: 6px;
+    margin: 8px;
+    overflow: hidden;
+  }
+  .stock-row:last-child { border-bottom: 1px solid #d8d0c8; }
 
-  /* Actions — full width buttons on mobile */
-  .tjc-actions { padding: 12px 10px; gap: 8px; }
-
-  .tjc-save-btn {
-    flex: 1;
-    text-align: center;
-    padding: 12px 10px;
+  .stock-label {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid #d8d0c8;
     font-size: 13px;
-  }
-  .tjc-reset-btn {
-    flex: 1;
-    text-align: center;
-    padding: 12px 10px;
+    padding: 8px 12px;
   }
 
-  /* Warning */
+  .stock-field {
+    border-right: none;
+    border-bottom: 1px solid #e8e2da;
+    padding: 8px 12px;
+  }
+  .stock-field:last-child { border-bottom: none; }
+  .stock-field-empty { display: none; } /* hide empty spacer cells on mobile */
+
+  /* Remarks */
+  .tjc-remarks-section { padding: 10px; }
+
+  /* Actions */
+  .tjc-actions { padding: 12px 10px; gap: 8px; }
+  .tjc-save-btn  { flex: 1; text-align: center; padding: 12px 10px; }
+  .tjc-reset-btn { flex: 1; text-align: center; padding: 12px 10px; }
+
   .tjc-config-warning { margin: 8px 10px 0; font-size: 11px; }
 
-  /* Accordion header */
+  /* SC Accordion */
   .sc-accordion-header { padding: 12px 14px; }
   .sc-accordion-title  { font-size: 13px; }
-
-  /* Motor meta row — single column */
-  .sc-meta-row         { flex-direction: column; padding: 12px 10px; gap: 10px; }
-  .sc-meta-field       { min-width: 100%; }
-
-  /* Motor table stays scrollable horizontally */
-  .sc-table-scroll     { overflow-x: auto; }
-
-  .sc-bottom { padding: 10px 10px 0; }
+  .sc-meta-row  { flex-direction: column; padding: 12px 10px; gap: 10px; }
+  .sc-meta-field{ min-width: 100%; }
+  .sc-bottom    { padding: 10px 10px 0; }
   .sc-actions .tjc-save-btn,
   .sc-actions .tjc-reset-btn { flex: 1; }
 }
@@ -446,58 +503,9 @@
    TABLET  (641px – 1024px)
    ════════════════════════════════════ */
 @media (min-width: 641px) and (max-width: 1024px) {
-
   .tjc-title-bar { font-size: 15px; padding: 11px 16px; }
-
-  .tjc-table th,
-  .tjc-table td { padding: 7px 8px; }
-
+  .tjc-table th, .tjc-table td { padding: 7px 8px; }
   .tjc-log-input { width: 48px; }
-
-  .sc-meta-row { gap: 12px; }
+  .sc-meta-row   { gap: 12px; }
   .sc-meta-field { min-width: 100px; }
-}
-
-/* ── Timestamp column ── */
-.ts-cell {
-  white-space: nowrap;
-  min-width: 72px;
-  text-align: center;
-}
-.ts-badge {
-  display: inline-block;
-  background: #e8f5e9;
-  color: #2e7d32;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #a5d6a7;
-  letter-spacing: 0.3px;
-}
-.ts-empty {
-  color: #ccc;
-  font-size: 12px;
-}
-
-/* ── Per-row save button ── */
-.ts-save-cell { text-align: center; padding: 2px 4px; }
-.row-save-btn {
-  background: transparent;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 3px 7px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  line-height: 1;
-}
-.row-save-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
-
-/* saved row gets a subtle green tint */
-.row-saved { background: #f6fff6 !important; }
-.row-saved .row-save-btn {
-  border-color: #4caf50;
-  color: #2e7d32;
-  font-weight: 700;
 }

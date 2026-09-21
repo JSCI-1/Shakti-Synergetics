@@ -56,7 +56,7 @@ function emptyForm() {
     day: '', date: '',
     operator1: '', helper1: '', time_in1: '', time_out1: '',
     operator2: '', helper2: '', time_in2: '', time_out2: '',
-    coal_date: '', coal_qty: '', bugass_qty: '',
+    coal_date: '', coal_qty: '', bugass_date: '', bugass_qty: '',
     rows: TIME_SLOTS.map(() => emptyRow()),
     total_coal: '', total_bugass: '',
     remarks: '',
@@ -125,6 +125,7 @@ export default function ThermpackJobCard() {
       operator2: form.operator2, helper2: form.helper2,
       time_in2: form.time_in2, time_out2: form.time_out2,
       coal_date: form.coal_date || null,
+      bugass_date: form.bugass_date || null,
       coal_qty:    form.coal_qty    ? parseFloat(form.coal_qty)    : null,
       bugass_qty:  form.bugass_qty  ? parseFloat(form.bugass_qty)  : null,
       total_coal:  form.total_coal  ? parseFloat(form.total_coal)  : null,
@@ -244,39 +245,41 @@ export default function ThermpackJobCard() {
 
         {/* ══ SECTION 2: Stock Received ══ */}
         <div className="tjc-section">
-          <table className="tjc-table stock-table">
-            <thead>
-              <tr>
-                <th>Stock Received<br /><span className="hi">प्राप्त स्टॉक</span></th>
-                <th>Date<br /><span className="hi">तारीख</span></th>
-                <th>Qty. MT (Coal)<br /><span className="hi">मात्रा - कोयला</span></th>
-                <th>Qty. MT (Bugass)<br /><span className="hi">मात्रा - बगास</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td className="row-label">Coal / <span className="hi">कोयला</span></td>
-                <td>
-                  <input type="date" className="tjc-input"
-                    value={form.coal_date} onChange={e => set('coal_date', e.target.value)} />
-                </td>
-                <td>
-                  <input type="number" className="tjc-input" placeholder="0"
-                    value={form.coal_qty} onChange={e => set('coal_qty', e.target.value)} />
-                </td>
-                <td className="td-empty"></td>
-              </tr>
-              <tr>
-                <td className="row-label">Bugass / <span className="hi">बगास</span></td>
-                <td className="td-empty"></td>
-                <td className="td-empty"></td>
-                <td>
-                  <input type="number" className="tjc-input" placeholder="0"
-                    value={form.bugass_qty} onChange={e => set('bugass_qty', e.target.value)} />
-                </td>
-              </tr>
-            </tbody>
-          </table>
+          <div className="stock-header">
+            <span>Stock Received / <span className="hi">प्राप्त स्टॉक</span></span>
+          </div>
+          <div className="stock-grid">
+            {/* Coal row */}
+            <div className="stock-row">
+              <div className="stock-label">Coal / <span className="hi">कोयला</span></div>
+              <div className="stock-field">
+                <div className="cell-mini-label">Date / <span className="hi">तारीख</span></div>
+                <input type="date" className="tjc-input"
+                  value={form.coal_date} onChange={e => set('coal_date', e.target.value)} />
+              </div>
+              <div className="stock-field">
+                <div className="cell-mini-label">Qty. MT / <span className="hi">मात्रा (मे.टन)</span></div>
+                <input type="number" className="tjc-input" placeholder="0"
+                  value={form.coal_qty} onChange={e => set('coal_qty', e.target.value)} />
+              </div>
+              <div className="stock-field stock-field-empty"></div>
+            </div>
+            {/* Bugass row */}
+            <div className="stock-row">
+              <div className="stock-label">Bugass / <span className="hi">बगास</span></div>
+              <div className="stock-field">
+                <div className="cell-mini-label">Date / <span className="hi">तारीख</span></div>
+                <input type="date" className="tjc-input"
+                  value={form.bugass_date} onChange={e => set('bugass_date', e.target.value)} />
+              </div>
+              <div className="stock-field stock-field-empty"></div>
+              <div className="stock-field">
+                <div className="cell-mini-label">Qty. MT / <span className="hi">मात्रा (मे.टन)</span></div>
+                <input type="number" className="tjc-input" placeholder="0"
+                  value={form.bugass_qty} onChange={e => set('bugass_qty', e.target.value)} />
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* ══ SECTION 3: Hourly Log ══ */}
