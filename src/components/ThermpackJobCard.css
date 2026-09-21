@@ -509,3 +509,71 @@
   .sc-meta-row   { gap: 12px; }
   .sc-meta-field { min-width: 100px; }
 }
+
+/* ── Auto-total cells in tfoot ── */
+.total-value-cell {
+  background: #fdf3ee;
+  padding: 6px 8px !important;
+  text-align: center;
+  vertical-align: middle;
+}
+.total-value-label {
+  font-size: 9px;
+  color: #999;
+  margin-bottom: 2px;
+}
+.total-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #b85c2c;
+  letter-spacing: 0.3px;
+}
+
+/* ── Simplified motor table (single date) ── */
+.sc-single-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 420px;
+  font-size: 13px;
+}
+.sc-single-table th,
+.sc-single-table td {
+  border: 1px solid #d8d0c8;
+  padding: 8px 12px;
+  text-align: center;
+  vertical-align: middle;
+}
+.sc-single-table thead th {
+  background: #f5f0ea;
+  font-size: 12px;
+  font-weight: 700;
+  color: #444;
+  line-height: 1.5;
+}
+.sc-single-table tbody tr:nth-child(even) { background: #fafaf8; }
+.sc-single-table tbody tr:hover           { background: #fdf3ee; }
+
+.sc-input-wide {
+  width: 90px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px 6px;
+  font-size: 13px;
+  text-align: center;
+  background: transparent;
+  -moz-appearance: textfield;
+}
+.sc-input-wide::-webkit-outer-spin-button,
+.sc-input-wide::-webkit-inner-spin-button { -webkit-appearance: none; }
+.sc-input-wide:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.sc-stop-select-wide {
+  width: 90px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 5px 6px;
+  font-size: 13px;
+  background: transparent;
+  cursor: pointer;
+}
+.sc-stop-select-wide:focus { outline: none; border-color: #b85c2c; }

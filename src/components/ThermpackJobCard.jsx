@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './ThermpackJobCard.css'
 
@@ -25,7 +25,6 @@ const LOG_FIELDS = [
   'temp_exhaust','diesel_stock',
 ]
 
-// Motors for the Running Motor Amp Status table
 const MOTORS = [
   { id: 1, name: 'ID Blower',              hp: 15  },
   { id: 2, name: 'FD Blower',              hp: 10  },
@@ -35,20 +34,12 @@ const MOTORS = [
   { id: 6, name: 'Circulation Pump (New)', hp: 7.5 },
 ]
 
-const DAYS_IN_MONTH = Array.from({ length: 31 }, (_, i) => i + 1)
-
-const MONTHS = [
-  'January','February','March','April','May','June',
-  'July','August','September','October','November','December',
-]
-
 function emptyRow() {
   return { ...Object.fromEntries(LOG_FIELDS.map(f => [f, ''])), timestamp: '', saved: false }
 }
 
-function emptyMotorRow() {
-  // each motor has 31 day cells, each with two readings (amp + stop/ok)
-  return DAYS_IN_MONTH.map(() => ({ val: '', stop: false }))
+function emptyMotorEntry() {
+  return { val: '', stop: '' }
 }
 
 function emptyForm() {
@@ -58,30 +49,28 @@ function emptyForm() {
     operator2: '', helper2: '', time_in2: '', time_out2: '',
     coal_date: '', coal_qty: '', bugass_date: '', bugass_qty: '',
     rows: TIME_SLOTS.map(() => emptyRow()),
-    total_coal: '', total_bugass: '',
     remarks: '',
   }
 }
 
 function emptyMotorForm() {
-  const now = new Date()
   return {
-    month: MONTHS[now.getMonth()],
-    year: String(now.getFullYear()),
+    running_date: new Date().toISOString().slice(0, 10), // today's date
     checked_by: '',
     remark: '',
-    motors: MOTORS.map(() => emptyMotorRow()),
+    // each motor has one entry for the selected date
+    motors: MOTORS.map(() => emptyMotorEntry()),
   }
 }
 
 export default function ThermpackJobCard() {
-  const [form, setForm]           = useState(emptyForm())
-  const [motorForm, setMotorForm] = useState(emptyMotorForm())
-  const [motorOpen, setMotorOpen] = useState(false)
-  const [saving, setSaving]       = useState(false)
-  const [savedMain, setSavedMain] = useState(false)
+  const [form, setForm]             = useState(emptyForm())
+  const [motorForm, setMotorForm]   = useState(emptyMotorForm())
+  const [motorOpen, setMotorOpen]   = useState(false)
+  const [saving, setSaving]         = useState(false)
+  const [savedMain, setSavedMain]   = useState(false)
   const [savedMotor, setSavedMotor] = useState(false)
-  const [error, setError]         = useState('')
+  const [error, setError]           = useState('')
 
   const set = (name, value) => setForm(prev => ({ ...prev, [name]: value }))
 
@@ -91,10 +80,22 @@ export default function ThermpackJobCard() {
       rows: prev.rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r),
     }))
 
-  // stamp current time on a row and mark it saved
+  // ── Auto-calculated totals ──
+  const totalCoal = useMemo(() =>
+    form.rows.reduce((sum, r) => sum + (parseFloat(r.fuel_coal) || 0), 0),
+    [form.rows]
+  )
+  const totalBugass = useMemo(() =>
+    form.rows.reduce((sum, r) => sum + (parseFloat(r.fuel_bugass) || 0), 0),
+    [form.rows]
+  )
+
+  // stamp current time on a row
   function saveRow(i) {
     const now = new Date()
-    const ts = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    const ts = now.toLocaleTimeString('en-IN', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    })
     setForm(prev => ({
       ...prev,
       rows: prev.rows.map((r, idx) =>
@@ -103,14 +104,10 @@ export default function ThermpackJobCard() {
     }))
   }
 
-  const setMotorCell = (motorIdx, dayIdx, key, value) =>
+  const setMotorCell = (mi, key, value) =>
     setMotorForm(prev => ({
       ...prev,
-      motors: prev.motors.map((m, mi) =>
-        mi === motorIdx
-          ? m.map((cell, di) => di === dayIdx ? { ...cell, [key]: value } : cell)
-          : m
-      ),
+      motors: prev.motors.map((m, idx) => idx === mi ? { ...m, [key]: value } : m),
     }))
 
   // ── Save main job card ──
@@ -126,10 +123,10 @@ export default function ThermpackJobCard() {
       time_in2: form.time_in2, time_out2: form.time_out2,
       coal_date: form.coal_date || null,
       bugass_date: form.bugass_date || null,
-      coal_qty:    form.coal_qty    ? parseFloat(form.coal_qty)    : null,
-      bugass_qty:  form.bugass_qty  ? parseFloat(form.bugass_qty)  : null,
-      total_coal:  form.total_coal  ? parseFloat(form.total_coal)  : null,
-      total_bugass:form.total_bugass? parseFloat(form.total_bugass): null,
+      coal_qty:   form.coal_qty   ? parseFloat(form.coal_qty)   : null,
+      bugass_qty: form.bugass_qty ? parseFloat(form.bugass_qty) : null,
+      total_coal:   totalCoal,
+      total_bugass: totalBugass,
       remarks: form.remarks,
       log_rows: form.rows,
     }
@@ -145,11 +142,10 @@ export default function ThermpackJobCard() {
     if (!supabaseReady) { setError('Supabase not configured.'); return }
     setSaving(true); setError(''); setSavedMotor(false)
     const { error: e2 } = await supabase.from('motor_amp_status').insert([{
-      month:      motorForm.month,
-      year:       parseInt(motorForm.year),
-      checked_by: motorForm.checked_by,
-      remark:     motorForm.remark,
-      motor_data: motorForm.motors,
+      running_date: motorForm.running_date || null,
+      checked_by:  motorForm.checked_by,
+      remark:      motorForm.remark,
+      motor_data:  motorForm.motors,
     }])
     setSaving(false)
     if (e2) setError(e2.message)
@@ -249,7 +245,6 @@ export default function ThermpackJobCard() {
             <span>Stock Received / <span className="hi">प्राप्त स्टॉक</span></span>
           </div>
           <div className="stock-grid">
-            {/* Coal row */}
             <div className="stock-row">
               <div className="stock-label">Coal / <span className="hi">कोयला</span></div>
               <div className="stock-field">
@@ -264,7 +259,6 @@ export default function ThermpackJobCard() {
               </div>
               <div className="stock-field stock-field-empty"></div>
             </div>
-            {/* Bugass row */}
             <div className="stock-row">
               <div className="stock-label">Bugass / <span className="hi">बगास</span></div>
               <div className="stock-field">
@@ -324,12 +318,8 @@ export default function ThermpackJobCard() {
                         : <span className="ts-empty">—</span>}
                     </td>
                     <td className="ts-save-cell">
-                      <button
-                        type="button"
-                        className="row-save-btn"
-                        onClick={() => saveRow(i)}
-                        title="Stamp time and save row"
-                      >
+                      <button type="button" className="row-save-btn"
+                        onClick={() => saveRow(i)} title="Stamp time">
                         {form.rows[i].saved ? '✓' : '💾'}
                       </button>
                     </td>
@@ -341,15 +331,14 @@ export default function ThermpackJobCard() {
                   <td colSpan={6} className="total-label">
                     Total Fuel Consumption / <span className="hi">कुल इंधन खपत</span>
                   </td>
-                  <td>
-                    <input type="number" className="tjc-log-input total-input"
-                      placeholder="Coal" value={form.total_coal}
-                      onChange={e => set('total_coal', e.target.value)} />
+                  {/* ── Auto-calculated totals ── */}
+                  <td className="total-value-cell">
+                    <div className="total-value-label">Coal / <span className="hi">कोयला</span></div>
+                    <div className="total-value">{totalCoal % 1 === 0 ? totalCoal : totalCoal.toFixed(2)}</div>
                   </td>
-                  <td>
-                    <input type="number" className="tjc-log-input total-input"
-                      placeholder="Bugass" value={form.total_bugass}
-                      onChange={e => set('total_bugass', e.target.value)} />
+                  <td className="total-value-cell">
+                    <div className="total-value-label">Bugass / <span className="hi">बगास</span></div>
+                    <div className="total-value">{totalBugass % 1 === 0 ? totalBugass : totalBugass.toFixed(2)}</div>
                   </td>
                   <td colSpan={4}></td>
                 </tr>
@@ -382,12 +371,8 @@ export default function ThermpackJobCard() {
 
       {/* ══ COLLAPSIBLE: Running Motor Amp Status ══ */}
       <div className="sc-accordion">
-        <button
-          type="button"
-          className="sc-accordion-header"
-          onClick={() => setMotorOpen(o => !o)}
-          aria-expanded={motorOpen}
-        >
+        <button type="button" className="sc-accordion-header"
+          onClick={() => setMotorOpen(o => !o)} aria-expanded={motorOpen}>
           <span className="sc-accordion-title">
             Running Motor Amp Status
             <span className="sc-accordion-title-hi"> / रनिंग मोटर एम्प स्थिति</span>
@@ -397,20 +382,14 @@ export default function ThermpackJobCard() {
 
         {motorOpen && (
           <form className="sc-form" onSubmit={handleMotorSubmit}>
-            {/* Meta row */}
+
+            {/* ── Single running date + meta ── */}
             <div className="sc-meta-row">
               <div className="sc-meta-field">
-                <Label en="Month" hi="महीना" />
-                <select className="tjc-input" value={motorForm.month}
-                  onChange={e => setMotorForm(p => ({ ...p, month: e.target.value }))}>
-                  {MONTHS.map(m => <option key={m}>{m}</option>)}
-                </select>
-              </div>
-              <div className="sc-meta-field">
-                <Label en="Year" hi="वर्ष" />
-                <input type="number" className="tjc-input" placeholder="2026"
-                  value={motorForm.year}
-                  onChange={e => setMotorForm(p => ({ ...p, year: e.target.value }))} />
+                <Label en="Running Date" hi="चलने की तारीख" />
+                <input type="date" className="tjc-input"
+                  value={motorForm.running_date}
+                  onChange={e => setMotorForm(p => ({ ...p, running_date: e.target.value }))} />
               </div>
               <div className="sc-meta-field sc-meta-wide">
                 <Label en="Checked By" hi="जाँच की गई" />
@@ -420,57 +399,39 @@ export default function ThermpackJobCard() {
               </div>
             </div>
 
-            {/* Motor amp table */}
+            {/* ── Motor amp table — one column per motor ── */}
             <div className="sc-table-scroll">
-              <table className="sc-table">
+              <table className="sc-single-table">
                 <thead>
                   <tr>
-                    <th rowSpan={2}>Sr.<br />No.</th>
-                    <th rowSpan={2}>Daily Motor Amp<br /><span className="hi">दैनिक मोटर एम्प</span></th>
-                    <th rowSpan={2}>HP</th>
-                    <th colSpan={31}>Date / <span className="hi">तारीख</span></th>
-                  </tr>
-                  <tr>
-                    {DAYS_IN_MONTH.map(d => <th key={d}>{d}</th>)}
+                    <th>Sr. No.</th>
+                    <th>Motor Name / <span className="hi">मोटर नाम</span></th>
+                    <th>HP</th>
+                    <th>Amp Reading / <span className="hi">एम्प रीडिंग</span></th>
+                    <th>Status / <span className="hi">स्थिति</span></th>
                   </tr>
                 </thead>
                 <tbody>
                   {MOTORS.map((motor, mi) => (
-                    <React.Fragment key={motor.id}>
-                      {/* Amp reading row */}
-                      <tr>
-                        <td rowSpan={2} className="sc-sr">{motor.id}</td>
-                        <td rowSpan={2} className="sc-motor-name">{motor.name}</td>
-                        <td rowSpan={2} className="sc-hp">{motor.hp}</td>
-                        {DAYS_IN_MONTH.map((_, di) => (
-                          <td key={di} className="sc-cell">
-                            <input
-                              type="number"
-                              className="sc-input"
-                              placeholder="—"
-                              value={motorForm.motors[mi][di].val}
-                              onChange={e => setMotorCell(mi, di, 'val', e.target.value)}
-                            />
-                          </td>
-                        ))}
-                      </tr>
-                      {/* Stop/OK row */}
-                      <tr>
-                        {DAYS_IN_MONTH.map((_, di) => (
-                          <td key={di} className="sc-cell sc-stop-cell">
-                            <select
-                              className="sc-stop-select"
-                              value={motorForm.motors[mi][di].stop}
-                              onChange={e => setMotorCell(mi, di, 'stop', e.target.value)}
-                            >
-                              <option value="">—</option>
-                              <option value="STOP">STOP</option>
-                              <option value="OK">OK</option>
-                            </select>
-                          </td>
-                        ))}
-                      </tr>
-                    </React.Fragment>
+                    <tr key={motor.id}>
+                      <td className="sc-sr">{motor.id}</td>
+                      <td className="sc-motor-name">{motor.name}</td>
+                      <td className="sc-hp">{motor.hp}</td>
+                      <td className="sc-cell">
+                        <input type="number" className="sc-input-wide" placeholder="—"
+                          value={motorForm.motors[mi].val}
+                          onChange={e => setMotorCell(mi, 'val', e.target.value)} />
+                      </td>
+                      <td className="sc-cell sc-stop-cell">
+                        <select className="sc-stop-select-wide"
+                          value={motorForm.motors[mi].stop}
+                          onChange={e => setMotorCell(mi, 'stop', e.target.value)}>
+                          <option value="">—</option>
+                          <option value="STOP">STOP</option>
+                          <option value="OK">OK</option>
+                        </select>
+                      </td>
+                    </tr>
                   ))}
                 </tbody>
               </table>
