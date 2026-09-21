@@ -43,7 +43,7 @@ const MONTHS = [
 ]
 
 function emptyRow() {
-  return Object.fromEntries(LOG_FIELDS.map(f => [f, '']))
+  return { ...Object.fromEntries(LOG_FIELDS.map(f => [f, ''])), timestamp: '', saved: false }
 }
 
 function emptyMotorRow() {
@@ -90,6 +90,18 @@ export default function ThermpackJobCard() {
       ...prev,
       rows: prev.rows.map((r, idx) => idx === i ? { ...r, [field]: value } : r),
     }))
+
+  // stamp current time on a row and mark it saved
+  function saveRow(i) {
+    const now = new Date()
+    const ts = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    setForm(prev => ({
+      ...prev,
+      rows: prev.rows.map((r, idx) =>
+        idx === i ? { ...r, timestamp: ts, saved: true } : r
+      ),
+    }))
+  }
 
   const setMotorCell = (motorIdx, dayIdx, key, value) =>
     setMotorForm(prev => ({
@@ -279,6 +291,8 @@ export default function ThermpackJobCard() {
                   <th colSpan={2}>Fuel Charged<br /><span className="hi">इंधन भरा</span></th>
                   <th rowSpan={2}>Temp Exhaust<br /><span className="hi">एग्जॉस्ट</span></th>
                   <th rowSpan={2}>Diesel Stock<br /><span className="hi">डीजल स्टॉक</span></th>
+                  <th rowSpan={2}>Timestamp<br /><span className="hi">समय टिकट</span></th>
+                  <th rowSpan={2}>Save<br /><span className="hi">सहेजें</span></th>
                 </tr>
                 <tr>
                   <th>In<br /><span className="hi">अंदर</span></th>
@@ -292,7 +306,7 @@ export default function ThermpackJobCard() {
               </thead>
               <tbody>
                 {TIME_SLOTS.map((slot, i) => (
-                  <tr key={slot}>
+                  <tr key={slot} className={form.rows[i].saved ? 'row-saved' : ''}>
                     <td className="time-cell">{slot}</td>
                     {LOG_FIELDS.map(field => (
                       <td key={field}>
@@ -301,6 +315,21 @@ export default function ThermpackJobCard() {
                           onChange={e => setRow(i, field, e.target.value)} />
                       </td>
                     ))}
+                    <td className="ts-cell">
+                      {form.rows[i].timestamp
+                        ? <span className="ts-badge">{form.rows[i].timestamp}</span>
+                        : <span className="ts-empty">—</span>}
+                    </td>
+                    <td className="ts-save-cell">
+                      <button
+                        type="button"
+                        className="row-save-btn"
+                        onClick={() => saveRow(i)}
+                        title="Stamp time and save row"
+                      >
+                        {form.rows[i].saved ? '✓' : '💾'}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -319,7 +348,7 @@ export default function ThermpackJobCard() {
                       placeholder="Bugass" value={form.total_bugass}
                       onChange={e => set('total_bugass', e.target.value)} />
                   </td>
-                  <td colSpan={2}></td>
+                  <td colSpan={4}></td>
                 </tr>
               </tfoot>
             </table>

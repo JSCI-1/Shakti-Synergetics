@@ -4,11 +4,13 @@
   min-height: 100vh;
 }
 
-/* ── Desktop ── */
+/* ── Desktop — centered with max width ── */
 .main-content {
   flex: 1;
   padding: 24px 20px;
   width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
 }
 
 .app-footer {

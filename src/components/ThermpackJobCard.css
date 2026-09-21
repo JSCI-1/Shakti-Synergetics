@@ -457,3 +457,47 @@
   .sc-meta-row { gap: 12px; }
   .sc-meta-field { min-width: 100px; }
 }
+
+/* ── Timestamp column ── */
+.ts-cell {
+  white-space: nowrap;
+  min-width: 72px;
+  text-align: center;
+}
+.ts-badge {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #a5d6a7;
+  letter-spacing: 0.3px;
+}
+.ts-empty {
+  color: #ccc;
+  font-size: 12px;
+}
+
+/* ── Per-row save button ── */
+.ts-save-cell { text-align: center; padding: 2px 4px; }
+.row-save-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.row-save-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
+
+/* saved row gets a subtle green tint */
+.row-saved { background: #f6fff6 !important; }
+.row-saved .row-save-btn {
+  border-color: #4caf50;
+  color: #2e7d32;
+  font-weight: 700;
+}
