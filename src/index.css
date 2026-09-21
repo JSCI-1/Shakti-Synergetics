@@ -9,6 +9,8 @@ body {
   background: #f0ede8;
   color: #2d2d2d;
   min-height: 100vh;
+  /* prevent horizontal scroll on mobile */
+  overflow-x: hidden;
 }
 
 input, select, textarea, button {

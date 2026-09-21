@@ -1,3 +1,7 @@
+/* ════════════════════════════════════
+   THERMOPACK JOB CARD — Responsive
+   ════════════════════════════════════ */
+
 /* ── Wrapper ── */
 .tjc-wrapper {
   background: #fff;
@@ -16,13 +20,14 @@
   padding: 12px 20px;
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   font-size: 16px;
   font-weight: 700;
+  flex-wrap: wrap;
 }
-.tjc-title-en  { color: #f0c890; }
+.tjc-title-en    { color: #f0c890; }
 .tjc-title-divider { color: #555; }
-.tjc-title-hi  { color: #f0c890; font-weight: 400; font-size: 15px; }
+.tjc-title-hi    { color: #f0c890; font-weight: 400; font-size: 15px; }
 
 /* ── Form ── */
 .tjc-form { display: flex; flex-direction: column; }
@@ -42,10 +47,10 @@
 .bi-hi      { font-size: 11px; color: #888; }
 .req        { color: #c0392b; }
 
-/* ── Hindi sub-text in tables ── */
+/* ── Hindi sub-text ── */
 .hi { font-size: 10px; color: #999; font-weight: 400; }
 
-/* ── Generic inputs ── */
+/* ── Inputs ── */
 .tjc-input {
   width: 100%;
   border: 1px solid #ccc;
@@ -74,11 +79,16 @@
 
 /* ── Cell helpers ── */
 .cell-stack { display: flex; flex-direction: column; }
-.cell-mini-label { font-size: 11px; font-weight: 600; color: #555; margin-bottom: 3px; }
+.cell-mini-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 3px;
+}
 .mt6 { margin-top: 6px; }
 .mt8 { margin-top: 8px; }
 
-/* ── Shared table ── */
+/* ── Shared table (Operator + Stock) ── */
 .tjc-table {
   width: 100%;
   border-collapse: collapse;
@@ -98,38 +108,35 @@
   text-align: center;
   line-height: 1.5;
 }
-/* fixed date-cell so it doesn't collapse */
 .td-date-cell { width: 180px; }
-
-/* row labels */
 .tjc-table td.row-label {
   font-weight: 600;
   background: #faf7f3;
   white-space: nowrap;
   vertical-align: middle;
-  width: 160px;
+  width: 140px;
 }
 
-/* ── CRITICAL: empty cells in stock table must still show borders ── */
+/* Stock table empty cells */
 .stock-table { table-layout: auto; }
 .stock-table td.td-empty {
-  min-width: 80px;
+  min-width: 70px;
   background: #fafaf8;
 }
 
 /* ── Hourly log ── */
 .tjc-log-section { overflow: hidden; }
-.tjc-log-scroll  { overflow-x: auto; }
+.tjc-log-scroll  { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 .tjc-log-table {
   border-collapse: collapse;
-  min-width: 860px;
+  min-width: 780px;
   width: 100%;
 }
 .tjc-log-table th,
 .tjc-log-table td {
   border: 1px solid #d8d0c8;
-  padding: 4px 6px;
+  padding: 4px 5px;
   text-align: center;
   vertical-align: middle;
 }
@@ -153,10 +160,10 @@
 }
 
 .tjc-log-input {
-  width: 60px;
+  width: 52px;
   border: 1px solid #ddd;
   border-radius: 3px;
-  padding: 4px 2px;
+  padding: 3px 2px;
   font-size: 12px;
   text-align: center;
   background: transparent;
@@ -171,11 +178,11 @@
   font-size: 12px;
   font-weight: 700;
   text-align: right;
-  padding-right: 12px;
+  padding-right: 10px;
   background: #f5f0ea;
 }
 .total-input {
-  width: 75px;
+  width: 70px;
   font-weight: 700;
   background: #fdf3ee !important;
   border-color: #e8c5a8 !important;
@@ -183,7 +190,7 @@
 
 /* ── Actions ── */
 .tjc-actions {
-  padding: 16px;
+  padding: 14px 16px;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -194,7 +201,7 @@
   background: #b85c2c;
   color: #fff;
   border: none;
-  padding: 10px 28px;
+  padding: 10px 24px;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 700;
@@ -208,15 +215,15 @@
   background: transparent;
   color: #888;
   border: 1px solid #ccc;
-  padding: 10px 20px;
+  padding: 10px 18px;
   border-radius: 6px;
   font-size: 13px;
   cursor: pointer;
 }
 .tjc-reset-btn:hover { border-color: #b85c2c; color: #b85c2c; }
 
-.tjc-error   { color: #c0392b; font-size: 13px; font-weight: 600; flex: 1; }
-.tjc-success { color: #27ae60; font-size: 13px; font-weight: 600; flex: 1; }
+.tjc-error   { color: #c0392b; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+.tjc-success { color: #27ae60; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
 
 /* ── Supabase warning ── */
 .tjc-config-warning {
@@ -229,14 +236,17 @@
   line-height: 1.6;
   margin: 12px 16px 0;
 }
-.tjc-config-warning code { background: #fde68a; padding: 1px 5px; border-radius: 3px; font-family: monospace; }
+.tjc-config-warning code {
+  background: #fde68a;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-family: monospace;
+}
 
 /* ════════════════════════════════════
-   COLLAPSIBLE — Running Motor Amp Status
+   COLLAPSIBLE — Running Motor Amp
    ════════════════════════════════════ */
-.sc-accordion {
-  border-top: 2px solid #b85c2c;
-}
+.sc-accordion { border-top: 2px solid #b85c2c; }
 
 .sc-accordion-header {
   width: 100%;
@@ -252,32 +262,17 @@
 }
 .sc-accordion-header:hover { background: #fdf0e6; }
 
-.sc-accordion-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #333;
-}
-.sc-accordion-title-hi {
-  font-size: 12px;
-  font-weight: 400;
-  color: #888;
-}
-.sc-accordion-icon {
-  font-size: 13px;
-  color: #b85c2c;
-  flex-shrink: 0;
-}
+.sc-accordion-title    { font-size: 14px; font-weight: 700; color: #333; }
+.sc-accordion-title-hi { font-size: 12px; font-weight: 400; color: #888; }
+.sc-accordion-icon     { font-size: 13px; color: #b85c2c; flex-shrink: 0; }
 
-/* ── Motor form ── */
 .sc-form {
-  padding: 0 0 16px;
   display: flex;
   flex-direction: column;
   gap: 0;
   border-top: 1px solid #e0dbd4;
 }
 
-/* Meta row */
 .sc-meta-row {
   display: flex;
   gap: 16px;
@@ -287,14 +282,13 @@
   background: #fafaf8;
 }
 .sc-meta-field { display: flex; flex-direction: column; gap: 5px; min-width: 120px; }
-.sc-meta-wide  { flex: 1; min-width: 200px; }
+.sc-meta-wide  { flex: 1; min-width: 180px; }
 
-/* Motor amp table */
-.sc-table-scroll { overflow-x: auto; padding: 0; }
+.sc-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 .sc-table {
   border-collapse: collapse;
-  min-width: 1100px;
+  min-width: 1000px;
   width: 100%;
   font-size: 11px;
 }
@@ -314,20 +308,20 @@
   line-height: 1.4;
 }
 
-.sc-sr         { font-weight: 700; width: 28px; background: #faf7f3; }
-.sc-motor-name { text-align: left; font-weight: 600; min-width: 130px; background: #faf7f3; padding: 4px 8px; font-size: 11px; }
-.sc-hp         { font-weight: 700; width: 36px; background: #faf7f3; }
+.sc-sr         { font-weight: 700; width: 26px; background: #faf7f3; }
+.sc-motor-name { text-align: left; font-weight: 600; min-width: 120px; background: #faf7f3; padding: 4px 8px; font-size: 11px; }
+.sc-hp         { font-weight: 700; width: 32px; background: #faf7f3; }
 
 .sc-table tbody tr:nth-child(4n+1),
 .sc-table tbody tr:nth-child(4n+2) { background: #fff; }
 .sc-table tbody tr:nth-child(4n+3),
 .sc-table tbody tr:nth-child(4n+4) { background: #fafaf8; }
 
-.sc-cell { padding: 2px; }
+.sc-cell      { padding: 2px; }
 .sc-stop-cell { background: #f9f5f2; }
 
 .sc-input {
-  width: 40px;
+  width: 38px;
   border: 1px solid #ddd;
   border-radius: 2px;
   padding: 2px;
@@ -341,7 +335,7 @@
 .sc-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
 
 .sc-stop-select {
-  width: 52px;
+  width: 50px;
   border: 1px solid #ddd;
   border-radius: 2px;
   padding: 1px 2px;
@@ -351,7 +345,6 @@
 }
 .sc-stop-select:focus { outline: none; border-color: #b85c2c; }
 
-/* Bottom remark + save */
 .sc-bottom {
   padding: 14px 16px 0;
   display: flex;
@@ -360,3 +353,107 @@
 }
 .sc-remark-field { display: flex; flex-direction: column; gap: 5px; }
 .sc-actions { padding: 0; border-top: none; }
+
+
+/* ════════════════════════════════════
+   MOBILE  (≤ 640px)
+   ════════════════════════════════════ */
+@media (max-width: 640px) {
+
+  /* Title */
+  .tjc-title-bar   { font-size: 14px; padding: 10px 12px; gap: 8px; }
+  .tjc-title-hi    { font-size: 13px; }
+
+  /* Operator / Stock tables — stack columns on mobile */
+  .tjc-table,
+  .tjc-table thead,
+  .tjc-table tbody,
+  .tjc-table tfoot,
+  .tjc-table tr,
+  .tjc-table th,
+  .tjc-table td {
+    display: block;
+    width: 100% !important;
+  }
+
+  .tjc-table thead { display: none; }   /* hide header row — labels are inline */
+
+  .tjc-table tr {
+    border: 1px solid #d8d0c8;
+    border-radius: 6px;
+    margin: 8px;
+    padding: 8px;
+    background: #fff;
+    width: calc(100% - 16px) !important;
+  }
+
+  .tjc-table td {
+    border: none;
+    border-bottom: 1px solid #f0ede8;
+    padding: 6px 4px;
+  }
+  .tjc-table td:last-child { border-bottom: none; }
+
+  .tjc-table td.row-label {
+    width: 100% !important;
+    background: #f5f0ea;
+    border-radius: 4px 4px 0 0;
+    padding: 6px 8px;
+    font-size: 12px;
+  }
+
+  .td-date-cell { width: 100% !important; }
+
+  /* Remarks */
+  .tjc-remarks-section { padding: 10px 10px; }
+
+  /* Actions — full width buttons on mobile */
+  .tjc-actions { padding: 12px 10px; gap: 8px; }
+
+  .tjc-save-btn {
+    flex: 1;
+    text-align: center;
+    padding: 12px 10px;
+    font-size: 13px;
+  }
+  .tjc-reset-btn {
+    flex: 1;
+    text-align: center;
+    padding: 12px 10px;
+  }
+
+  /* Warning */
+  .tjc-config-warning { margin: 8px 10px 0; font-size: 11px; }
+
+  /* Accordion header */
+  .sc-accordion-header { padding: 12px 14px; }
+  .sc-accordion-title  { font-size: 13px; }
+
+  /* Motor meta row — single column */
+  .sc-meta-row         { flex-direction: column; padding: 12px 10px; gap: 10px; }
+  .sc-meta-field       { min-width: 100%; }
+
+  /* Motor table stays scrollable horizontally */
+  .sc-table-scroll     { overflow-x: auto; }
+
+  .sc-bottom { padding: 10px 10px 0; }
+  .sc-actions .tjc-save-btn,
+  .sc-actions .tjc-reset-btn { flex: 1; }
+}
+
+
+/* ════════════════════════════════════
+   TABLET  (641px – 1024px)
+   ════════════════════════════════════ */
+@media (min-width: 641px) and (max-width: 1024px) {
+
+  .tjc-title-bar { font-size: 15px; padding: 11px 16px; }
+
+  .tjc-table th,
+  .tjc-table td { padding: 7px 8px; }
+
+  .tjc-log-input { width: 48px; }
+
+  .sc-meta-row { gap: 12px; }
+  .sc-meta-field { min-width: 100px; }
+}

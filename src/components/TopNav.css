@@ -3,20 +3,28 @@
   border-bottom: 1px solid #e0dbd4;
   display: flex;
   align-items: center;
-  padding: 0 20px;
-  gap: 4px;
+  padding: 0 12px;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;          /* Firefox */
+  -webkit-overflow-scrolling: touch;
+}
+
+.top-nav::-webkit-scrollbar {
+  display: none;                  /* Chrome/Safari */
 }
 
 .top-nav-tab {
   background: transparent;
   border: none;
-  padding: 14px 18px;
+  padding: 13px 16px;
   font-size: 14px;
   color: #555;
   cursor: pointer;
   position: relative;
   transition: color 0.2s;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .top-nav-tab:hover {
@@ -37,4 +45,16 @@
   height: 3px;
   background: #b85c2c;
   border-radius: 2px 2px 0 0;
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .top-nav {
+    padding: 0 4px;
+  }
+
+  .top-nav-tab {
+    padding: 11px 12px;
+    font-size: 12px;
+  }
 }
