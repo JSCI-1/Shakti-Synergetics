@@ -1,0 +1,174 @@
+.job-cards-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.section-heading {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 8px;
+}
+
+.job-card-item {
+  background: #fff;
+  border: 1px solid #e0dbd4;
+  border-radius: 6px;
+  padding: 14px 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  cursor: pointer;
+  transition: box-shadow 0.15s;
+}
+
+.job-card-item:hover {
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.job-card-item-left {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-number {
+  font-weight: 600;
+  font-size: 15px;
+  color: #2d2d2d;
+}
+
+.job-status {
+  font-size: 12px;
+  color: #b85c2c;
+}
+
+.job-card-item-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+  font-size: 13px;
+  color: #666;
+}
+
+/* Job Detail */
+.job-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.back-link {
+  background: transparent;
+  border: none;
+  color: #b85c2c;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  width: fit-content;
+}
+
+.back-link:hover {
+  text-decoration: underline;
+}
+
+.job-header-card {
+  background: #fdf3ee;
+  border: 1px solid #f0d5c5;
+  border-radius: 8px;
+  padding: 16px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.job-header-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.job-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #2d2d2d;
+}
+
+.job-status-badge {
+  font-size: 12px;
+  color: #b85c2c;
+}
+
+.oil-issue-btn {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.oil-issue-btn:hover {
+  background: #9e4c22;
+}
+
+.detail-section {
+  background: #fff;
+  border: 1px solid #e0dbd4;
+  border-radius: 8px;
+  padding: 18px 20px;
+}
+
+.detail-section-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b85c2c;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+
+.detail-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-row {
+  display: flex;
+  gap: 24px;
+}
+
+.detail-item {
+  flex: 1;
+  font-size: 13px;
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.detail-label {
+  color: #555;
+  font-weight: 500;
+}
+
+.detail-value {
+  color: #2d2d2d;
+}
+
+.detail-value.highlight {
+  color: #b85c2c;
+  font-weight: 700;
+}
+
+.detail-placeholder {
+  font-size: 13px;
+  color: #999;
+  font-style: italic;
+}
