@@ -244,31 +244,33 @@ export default function ThermpackJobCard() {
           <div className="stock-header">
             <span>Stock Received / <span className="hi">प्राप्त स्टॉक</span></span>
           </div>
+          {/* Column headers */}
           <div className="stock-grid">
+            <div className="stock-row stock-row-header">
+              <div className="stock-label"></div>
+              <div className="stock-field stock-col-head">Date / <span className="hi">तारीख</span></div>
+              <div className="stock-field stock-col-head">Qty. MT / <span className="hi">मात्रा (मे.टन)</span></div>
+            </div>
+            {/* Coal */}
             <div className="stock-row">
               <div className="stock-label">Coal / <span className="hi">कोयला</span></div>
               <div className="stock-field">
-                <div className="cell-mini-label">Date / <span className="hi">तारीख</span></div>
                 <input type="date" className="tjc-input"
                   value={form.coal_date} onChange={e => set('coal_date', e.target.value)} />
               </div>
               <div className="stock-field">
-                <div className="cell-mini-label">Qty. MT / <span className="hi">मात्रा (मे.टन)</span></div>
                 <input type="number" className="tjc-input" placeholder="0"
                   value={form.coal_qty} onChange={e => set('coal_qty', e.target.value)} />
               </div>
-              <div className="stock-field stock-field-empty"></div>
             </div>
+            {/* Bugass */}
             <div className="stock-row">
               <div className="stock-label">Bugass / <span className="hi">बगास</span></div>
               <div className="stock-field">
-                <div className="cell-mini-label">Date / <span className="hi">तारीख</span></div>
                 <input type="date" className="tjc-input"
                   value={form.bugass_date} onChange={e => set('bugass_date', e.target.value)} />
               </div>
-              <div className="stock-field stock-field-empty"></div>
               <div className="stock-field">
-                <div className="cell-mini-label">Qty. MT / <span className="hi">मात्रा (मे.टन)</span></div>
                 <input type="number" className="tjc-input" placeholder="0"
                   value={form.bugass_qty} onChange={e => set('bugass_qty', e.target.value)} />
               </div>

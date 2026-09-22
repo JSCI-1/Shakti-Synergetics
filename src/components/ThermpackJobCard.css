@@ -130,21 +130,31 @@
 
 .stock-row {
   display: flex;
-  align-items: flex-end;
-  gap: 0;
+  align-items: stretch;
   border-bottom: 1px solid #e8e2da;
 }
 .stock-row:last-child { border-bottom: none; }
 
+/* header row with column titles */
+.stock-row-header { background: #f5f0ea; }
+.stock-col-head {
+  font-size: 11px;
+  font-weight: 700;
+  color: #666;
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+}
+
 .stock-label {
   width: 140px;
+  min-width: 140px;
   flex-shrink: 0;
   padding: 10px 12px;
   font-weight: 600;
   font-size: 12px;
   background: #faf7f3;
   border-right: 1px solid #d8d0c8;
-  align-self: stretch;
   display: flex;
   align-items: center;
 }
@@ -153,10 +163,12 @@
   flex: 1;
   padding: 8px 10px;
   border-right: 1px solid #e8e2da;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
   min-width: 0;
 }
 .stock-field:last-child { border-right: none; }
-.stock-field-empty { background: #fafaf8; }
 
 /* ════════════════════
    HOURLY LOG TABLE
@@ -476,7 +488,6 @@
     padding: 8px 12px;
   }
   .stock-field:last-child { border-bottom: none; }
-  .stock-field-empty { display: none; } /* hide empty spacer cells on mobile */
 
   /* Remarks */
   .tjc-remarks-section { padding: 10px; }
