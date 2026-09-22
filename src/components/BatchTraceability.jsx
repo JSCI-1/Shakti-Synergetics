@@ -38,7 +38,7 @@ function emptyRow() {
 function emptyForm() {
   return {
     date: '',
-    rows: Array.from({ length: 10 }, () => emptyRow()),
+    rows: Array.from({ length: 2 }, () => emptyRow()),
     total_hs1: '', total_hs2: '', total_hs3: '', total_nm: '',
     checked_by: '', approved_by: '',
   }
@@ -101,8 +101,6 @@ export default function BatchTraceability() {
     <div className="bt-wrapper">
       <div className="bt-title-bar">
         <div className="bt-title-main">Batch Traceability Records</div>
-        <div className="bt-title-sub">73 MIDC Ambad, Nashik — Slurry Section (SSPL-PDN-002, REV-01)</div>
-        <div className="bt-title-sub2">Batch Charging in High Speed Mixing &nbsp;|&nbsp; Transfer HS to LS</div>
       </div>
 
       <form className="bt-form" onSubmit={handleSubmit}>

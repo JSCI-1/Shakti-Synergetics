@@ -142,8 +142,7 @@ export default function SlurrySection() {
     <div className="sl-wrapper">
 
       <div className="sl-title-bar">
-        <div className="sl-title-main">Slurry Section</div>
-        <div className="sl-title-sub">Process Job Card</div>
+        <div className="sl-title-main">Process Job Card</div>
       </div>
 
       <form className="sl-form" onSubmit={handleSubmit}>

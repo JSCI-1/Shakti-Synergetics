@@ -5,7 +5,7 @@ import ThermpackJobCard from './components/ThermpackJobCard.jsx'
 import SlurryWrapper from './components/SlurryWrapper.jsx'
 import './App.css'
 
-const TOP_NAV_TABS = ['Production', 'Quality Check', 'Thermopack Operator', 'Grinder', 'Spray Drayer', 'Store', 'Slurry']
+const TOP_NAV_TABS = ['Production', 'Quality Check', 'Thermopack Operator', 'Grinder', 'Spray Drayer', 'Store', 'Slurry Section']
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('Production')
@@ -18,7 +18,7 @@ export default function App() {
     if (activeNav === 'Thermopack Operator') {
       return <ThermpackJobCard />
     }
-    if (activeNav === 'Slurry') {
+    if (activeNav === 'Slurry Section') {
       return <SlurryWrapper />
     }
     return null
