@@ -8,26 +8,25 @@
   width: 100%;
 }
 
-/* ── Tab bar ── */
+/* ── Tab bar — no scroll, spread evenly ── */
 .sw-tab-bar {
   display: flex;
   background: #1a1a1a;
   border-bottom: 2px solid #b85c2c;
-  padding: 0 4px;
-  gap: 2px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
+  padding: 0;
 }
 
 .sw-tab-btn {
+  flex: 1;                    /* equal width, fills the bar */
   background: transparent;
   border: none;
   color: #aaa;
-  padding: 11px 20px;
+  padding: 12px 16px;
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
   white-space: nowrap;
+  text-align: center;
   border-bottom: 3px solid transparent;
   margin-bottom: -2px;
   transition: color 0.15s, border-color 0.15s;
@@ -39,14 +38,12 @@
 }
 
 /* ── Content ── */
-.sw-content {
-  width: 100%;
-}
+.sw-content { width: 100%; }
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
   .sw-tab-btn {
-    padding: 10px 14px;
-    font-size: 12px;
+    padding: 10px 8px;
+    font-size: 11px;
   }
 }
