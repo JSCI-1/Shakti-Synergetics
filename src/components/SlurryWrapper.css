@@ -1,0 +1,52 @@
+/* ════════════════════════════════════
+   SLURRY WRAPPER — Sub-tab navigation
+   ════════════════════════════════════ */
+
+.sw-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* ── Tab bar ── */
+.sw-tab-bar {
+  display: flex;
+  background: #1a1a1a;
+  border-bottom: 2px solid #b85c2c;
+  padding: 0 4px;
+  gap: 2px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sw-tab-btn {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  padding: 11px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+}
+.sw-tab-btn:hover { color: #f0c890; }
+.sw-tab-active {
+  color: #f0c890 !important;
+  border-bottom-color: #b85c2c !important;
+}
+
+/* ── Content ── */
+.sw-content {
+  width: 100%;
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .sw-tab-btn {
+    padding: 10px 14px;
+    font-size: 12px;
+  }
+}

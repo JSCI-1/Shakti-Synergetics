@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import Header from './components/Header.jsx'
 import TopNav from './components/TopNav.jsx'
 import ThermpackJobCard from './components/ThermpackJobCard.jsx'
-import SlurrySection from './components/SlurrySection.jsx'
+import SlurryWrapper from './components/SlurryWrapper.jsx'
 import './App.css'
 
 const TOP_NAV_TABS = ['Production', 'Quality Check', 'Thermopack Operator', 'Grinder', 'Spray Drayer', 'Store', 'Slurry']
@@ -19,7 +19,7 @@ export default function App() {
       return <ThermpackJobCard />
     }
     if (activeNav === 'Slurry') {
-      return <SlurrySection />
+      return <SlurryWrapper />
     }
     return null
   }
