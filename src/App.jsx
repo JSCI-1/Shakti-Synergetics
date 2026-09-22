@@ -4,7 +4,7 @@ import TopNav from './components/TopNav.jsx'
 import ThermpackJobCard from './components/ThermpackJobCard.jsx'
 import './App.css'
 
-const TOP_NAV_TABS = ['Production', 'Quality Check', 'Operator', 'Grinder', 'Spray Drayer', 'Store']
+const TOP_NAV_TABS = ['Production', 'Quality Check', 'Thermopack Operator', 'Grinder', 'Spray Drayer', 'Store', 'Slurry']
 
 export default function App() {
   const [activeNav, setActiveNav] = useState('Production')
@@ -14,7 +14,7 @@ export default function App() {
   }
 
   function renderContent() {
-    if (activeNav === 'Operator') {
+    if (activeNav === 'Thermopack Operator') {
       return <ThermpackJobCard />
     }
     return null

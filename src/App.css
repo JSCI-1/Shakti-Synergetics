@@ -2,17 +2,20 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  background: #f0ede8;
 }
 
-/* ── Desktop — centered with max width ── */
+/* ── Desktop — centered card area matching screenshot ── */
 .main-content {
   flex: 1;
-  padding: 24px 20px;
+  padding: 20px 24px;
   width: 100%;
-  max-width: 1200px;
+  max-width: 900px;   /* matches the screenshot content width */
   margin: 0 auto;
+  box-sizing: border-box;
 }
 
+/* ── Footer ── */
 .app-footer {
   background: #1a1a1a;
   color: #aaa;
@@ -34,10 +37,11 @@
   vertical-align: middle;
 }
 
-/* ── Mobile (≤ 640px) ── */
+/* ── Mobile (≤ 640px) — full width ── */
 @media (max-width: 640px) {
   .main-content {
     padding: 12px 8px;
+    max-width: 100%;
   }
 
   .app-footer {
