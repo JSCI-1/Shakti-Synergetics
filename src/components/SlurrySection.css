@@ -120,6 +120,7 @@
   left: 0;
   z-index: 2;
   background: #faf7f3;
+  box-shadow: 2px 0 4px rgba(0,0,0,0.06);
 }
 .sl-table thead .sl-th-sticky { z-index: 5; background: #f5f0ea; }
 
@@ -132,6 +133,7 @@
   background: #fff;
   min-width: 140px;
   width: 140px;
+  box-shadow: 2px 0 4px rgba(0,0,0,0.04);
 }
 .sl-table thead .sl-th-origin { z-index: 5; background: #f5f0ea; }
 
@@ -404,15 +406,16 @@
   .sl-meta-bar   { flex-direction: column; gap: 10px; padding: 12px 10px; }
   .sl-meta-field { min-width: 100%; }
 
-  /* On mobile, only pin the Inputs column, not Origin — avoids clash */
+  /* On mobile — release Origin column from sticky, only Inputs stays pinned */
   .sl-th-origin,
   .sl-td-sticky2 {
-    position: static;
-    left: auto;
+    position: static !important;
+    left: auto !important;
     min-width: 110px;
     width: 110px;
   }
 
+  /* Inputs column stays sticky but narrower */
   .sl-th-input,
   .sl-td-input { min-width: 100px; width: 100px; }
 
