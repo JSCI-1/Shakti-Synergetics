@@ -109,7 +109,9 @@
   position: sticky;
   top: 0;
   z-index: 3;
-  padding: 6px 8px;
+  padding: 4px 6px;
+  height: 52px;          /* fixed height so all header cells are equal */
+  vertical-align: middle;
 }
 
 /* ── Sticky column 1 — Inputs (left: 0) ── */
@@ -138,24 +140,27 @@
 .sl-th-batch  { min-width: 140px; }
 .sl-th-action { width: 32px; }
 
-.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; padding: 4px 6px; }
-.sl-td-origin { background: #fff; padding: 4px 6px; }
-.sl-td-batch  { text-align: center; padding: 4px 6px; }
-.sl-td-action { text-align: center; padding: 2px; }
+.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; padding: 4px 6px; height: 36px; }
+.sl-td-origin { background: #fff; padding: 4px 6px; height: 36px; }
+.sl-td-batch  { text-align: center; padding: 4px 6px; height: 36px; }
+.sl-td-action { text-align: center; padding: 2px; height: 36px; }
 
 /* alternating rows */
 .sl-tr-alt td { background: #fafaf8; }
 .sl-tr-alt .sl-td-sticky  { background: #f5f2ee; }
 .sl-tr-alt .sl-td-sticky2 { background: #f8f8f6; }
 
-/* ── Batch header cell ── */
-.sl-th-batch-head { padding: 4px 6px; vertical-align: top; }
+/* ── Batch header cell — fits within fixed header height ── */
+.sl-th-batch-head {
+  padding: 4px 6px !important;
+  vertical-align: middle;
+}
 
 .sl-batch-head-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  margin-bottom: 3px;
 }
 .sl-batch-num {
   font-weight: 700;
@@ -167,9 +172,9 @@
   border: 1px solid #e0a0a0;
   color: #c0392b;
   border-radius: 3px;
-  width: 18px;
-  height: 18px;
-  font-size: 10px;
+  width: 16px;
+  height: 16px;
+  font-size: 9px;
   cursor: pointer;
   line-height: 1;
   display: flex;
@@ -183,11 +188,12 @@
   width: 100%;
   border: 1px solid #ccc;
   border-radius: 3px;
-  padding: 3px 4px;
-  font-size: 11px;
+  padding: 2px 3px;
+  font-size: 10px;
   background: #fafaf8;
   color: #2d2d2d;
   cursor: pointer;
+  height: 22px;
 }
 .sl-batch-select:focus { outline: none; border-color: #b85c2c; }
 
