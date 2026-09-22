@@ -1,32 +1,27 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './SlurrySection.css'
 
-// ── Default input rows from the physical form ──
 const DEFAULT_INPUTS = [
-  { name: 'SULPHUR',    name_hi: 'सल्फर'       },
-  { name: 'LIGNO-A',   name_hi: 'लिग्नो-A'    },
-  { name: 'LIGNO-B',   name_hi: 'लिग्नो-B'    },
-  { name: 'FBPP',      name_hi: 'FBPP'         },
-  { name: 'DN Powder', name_hi: 'DN पाउडर'    },
-  { name: 'FZ 1',      name_hi: 'FZ 1'         },
-  { name: 'DEFOMER',   name_hi: 'डिफोमर'      },
-  { name: 'CHINA CLAY',name_hi: 'चाइना क्ले'  },
-  { name: 'WATER',     name_hi: 'पानी'         },
+  'SULPHUR',
+  'LIGNO-A',
+  'LIGNO-B',
+  'FBPP',
+  'DN Powder',
+  'FZ 1',
+  'DEFOMER',
+  'CHINA CLAY',
+  'WATER',
 ]
-
-const BATCHES = ['Batch-1','Batch-2','Batch-3','Batch-4','Batch-5',
-                 'Batch-6','Batch-7','Batch-8','Batch-9','Batch-10']
 
 const MILLS = ['V1','V2','V3','V4','V5','V6','V7','H1']
 
-function emptyInputRow(name = '', name_hi = '') {
+function emptyInputRow(name = '') {
   return {
     id: Date.now() + Math.random(),
     input_name: name,
-    input_name_hi: name_hi,
     origin_rm_batch: '',
-    batches: Array(10).fill(''),
+    batches: [],   // grows as batches are added
   }
 }
 
@@ -36,13 +31,13 @@ function emptyMillRow(mill) {
 
 function emptyForm() {
   return {
-    batch_no: '',
+    tank_no: '',
     date: '',
     shift1_operator: '',
     shift2_operator: '',
-    input_rows: DEFAULT_INPUTS.map(r => emptyInputRow(r.name, r.name_hi)),
+    input_rows: DEFAULT_INPUTS.map(n => emptyInputRow(n)),
+    activeBatches: 1,   // how many batch columns are visible
     mills: MILLS.map(m => emptyMillRow(m)),
-    total_wt: '',
     suspension1: '',
     suspension2: '',
     remark: '',
@@ -53,12 +48,11 @@ function emptyForm() {
 }
 
 export default function SlurrySection() {
-  const [form, setForm]   = useState(emptyForm())
+  const [form, setForm]     = useState(emptyForm())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
 
-  // ── Field setters ──
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
   const setInputRow = (idx, field, val) =>
@@ -70,11 +64,12 @@ export default function SlurrySection() {
   const setInputBatch = (rowIdx, batchIdx, val) =>
     setForm(p => ({
       ...p,
-      input_rows: p.input_rows.map((r, i) =>
-        i === rowIdx
-          ? { ...r, batches: r.batches.map((b, bi) => bi === batchIdx ? val : b) }
-          : r
-      ),
+      input_rows: p.input_rows.map((r, i) => {
+        if (i !== rowIdx) return r
+        const batches = [...r.batches]
+        batches[batchIdx] = val
+        return { ...r, batches }
+      }),
     }))
 
   const setMill = (idx, field, val) =>
@@ -83,7 +78,6 @@ export default function SlurrySection() {
       mills: p.mills.map((m, i) => i === idx ? { ...m, [field]: val } : m),
     }))
 
-  // ── Add / Remove dynamic rows ──
   function addInputRow() {
     setForm(p => ({
       ...p,
@@ -98,19 +92,30 @@ export default function SlurrySection() {
     }))
   }
 
-  // ── Save to Supabase ──
+  function addBatch() {
+    setForm(p => ({ ...p, activeBatches: p.activeBatches + 1 }))
+  }
+
+  // column totals for each active batch
+  const colTotals = useMemo(() =>
+    Array.from({ length: form.activeBatches }, (_, bi) =>
+      form.input_rows.reduce((sum, r) => sum + (parseFloat(r.batches[bi]) || 0), 0)
+    ),
+    [form.input_rows, form.activeBatches]
+  )
+
   async function handleSubmit(e) {
     e.preventDefault()
     if (!supabaseReady) { setError('Supabase not configured.'); return }
     setSaving(true); setError(''); setSaved(false)
     const { error: err } = await supabase.from('slurry_job_cards').insert([{
-      batch_no:        form.batch_no,
+      tank_no:         form.tank_no,
       date:            form.date || null,
       shift1_operator: form.shift1_operator,
       shift2_operator: form.shift2_operator,
       input_rows:      form.input_rows,
+      active_batches:  form.activeBatches,
       mills:           form.mills,
-      total_wt:        form.total_wt ? parseFloat(form.total_wt) : null,
       suspension1:     form.suspension1,
       suspension2:     form.suspension2,
       remark:          form.remark,
@@ -129,62 +134,45 @@ export default function SlurrySection() {
       {/* ── Title ── */}
       <div className="sl-title-bar">
         <div className="sl-title-main">Slurry Section</div>
-        <div className="sl-title-sub">
-          Sulphur 80% W.D.G. — Process Job Card &nbsp;|&nbsp;
-          <span className="sl-title-hi">स्लरी सेक्शन — सल्फर 80% प्रोसेस जॉब कार्ड</span>
-        </div>
+        <div className="sl-title-sub">Process Job Card</div>
       </div>
 
       <form className="sl-form" onSubmit={handleSubmit}>
 
-        {/* ══ ROW 1: Batch No + Date + Shift ══ */}
+        {/* ══ META: Tank No + Date + Shifts ══ */}
         <div className="sl-meta-bar">
           <div className="sl-meta-field">
-            <label className="sl-label">
-              Batch No. / <span className="hi">बैच नं.</span>
-            </label>
-            <input className="sl-input" placeholder="e.g. 3512-3521"
-              value={form.batch_no} onChange={e => set('batch_no', e.target.value)} />
+            <label className="sl-label">Tank No.</label>
+            <input className="sl-input" placeholder="e.g. T-01"
+              value={form.tank_no} onChange={e => set('tank_no', e.target.value)} />
           </div>
           <div className="sl-meta-field">
-            <label className="sl-label">
-              Date / <span className="hi">तारीख</span>
-            </label>
+            <label className="sl-label">Date</label>
             <input type="date" className="sl-input"
               value={form.date} onChange={e => set('date', e.target.value)} />
           </div>
           <div className="sl-meta-field">
-            <label className="sl-label">
-              Shift 1st Operator / <span className="hi">पहली पाली ऑपरेटर</span>
-            </label>
+            <label className="sl-label">Shift 1st Operator</label>
             <input className="sl-input" placeholder="Operator name"
               value={form.shift1_operator} onChange={e => set('shift1_operator', e.target.value)} />
           </div>
           <div className="sl-meta-field">
-            <label className="sl-label">
-              Shift 2nd Operator / <span className="hi">दूसरी पाली ऑपरेटर</span>
-            </label>
+            <label className="sl-label">Shift 2nd Operator</label>
             <input className="sl-input" placeholder="Operator name"
               value={form.shift2_operator} onChange={e => set('shift2_operator', e.target.value)} />
           </div>
         </div>
 
         {/* ══ INPUTS TABLE ══ */}
-        <div className="sl-section-title">
-          Inputs (kg) / <span className="hi">इनपुट (किग्रा)</span>
-        </div>
+        <div className="sl-section-title">Inputs (kg)</div>
         <div className="sl-table-scroll">
           <table className="sl-table">
             <thead>
               <tr>
-                <th className="sl-th-input">
-                  Inputs<br /><span className="hi">इनपुट</span>
-                </th>
-                <th className="sl-th-origin">
-                  Origin / RM Batch No.<br /><span className="hi">उद्गम / RM बैच नं.</span>
-                </th>
-                {BATCHES.map(b => (
-                  <th key={b} className="sl-th-batch">{b}</th>
+                <th className="sl-th-sticky sl-th-input">Inputs</th>
+                <th className="sl-th-sticky sl-th-origin">Origin / RM Batch No.</th>
+                {Array.from({ length: form.activeBatches }, (_, bi) => (
+                  <th key={bi} className="sl-th-batch">Batch-{bi + 1}</th>
                 ))}
                 <th className="sl-th-action"></th>
               </tr>
@@ -192,34 +180,27 @@ export default function SlurrySection() {
             <tbody>
               {form.input_rows.map((row, ri) => (
                 <tr key={row.id} className={ri % 2 === 0 ? '' : 'sl-tr-alt'}>
-                  <td className="sl-td-input">
+                  <td className="sl-td-sticky sl-td-input">
                     <input className="sl-input-cell" placeholder="Input name"
                       value={row.input_name}
                       onChange={e => setInputRow(ri, 'input_name', e.target.value)} />
-                    <input className="sl-input-cell sl-input-hindi" placeholder="हिंदी नाम"
-                      value={row.input_name_hi}
-                      onChange={e => setInputRow(ri, 'input_name_hi', e.target.value)} />
                   </td>
-                  <td className="sl-td-origin">
-                    <input className="sl-input-cell"
-                      placeholder="RM / Origin"
+                  <td className="sl-td-sticky2 sl-td-origin">
+                    <input className="sl-input-cell" placeholder="RM / Origin"
                       value={row.origin_rm_batch}
                       onChange={e => setInputRow(ri, 'origin_rm_batch', e.target.value)} />
                   </td>
-                  {row.batches.map((val, bi) => (
+                  {Array.from({ length: form.activeBatches }, (_, bi) => (
                     <td key={bi} className="sl-td-batch">
-                      <input type="number" className="sl-input-num"
-                        placeholder="—"
-                        value={val}
+                      <input type="number" className="sl-input-num" placeholder="—"
+                        value={row.batches[bi] ?? ''}
                         onChange={e => setInputBatch(ri, bi, e.target.value)} />
                     </td>
                   ))}
                   <td className="sl-td-action">
                     {form.input_rows.length > 1 && (
                       <button type="button" className="sl-remove-btn"
-                        onClick={() => removeInputRow(ri)} title="Remove row">
-                        ✕
-                      </button>
+                        onClick={() => removeInputRow(ri)} title="Remove row">✕</button>
                     )}
                   </td>
                 </tr>
@@ -227,48 +208,41 @@ export default function SlurrySection() {
 
               {/* TOTAL WT row */}
               <tr className="sl-total-row">
-                <td colSpan={2} className="sl-total-label">
-                  TOTAL WT. / <span className="hi">कुल वजन</span>
-                </td>
-                {Array(10).fill(null).map((_, bi) => {
-                  const colTotal = form.input_rows.reduce(
-                    (sum, r) => sum + (parseFloat(r.batches[bi]) || 0), 0
-                  )
-                  return (
-                    <td key={bi} className="sl-td-batch sl-total-val">
-                      {colTotal > 0 ? colTotal : ''}
-                    </td>
-                  )
-                })}
+                <td className="sl-td-sticky sl-total-label" colSpan={2}>TOTAL WT.</td>
+                {colTotals.map((total, bi) => (
+                  <td key={bi} className="sl-td-batch sl-total-val">
+                    {total > 0 ? total : ''}
+                  </td>
+                ))}
                 <td></td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        {/* ── Add Row button ── */}
+        {/* ── Row + Batch controls ── */}
         <div className="sl-add-row-bar">
           <button type="button" className="sl-add-btn" onClick={addInputRow}>
-            + Add Input Row / <span className="hi">इनपुट पंक्ति जोड़ें</span>
+            + Add Input Row
+          </button>
+          <button type="button" className="sl-add-btn sl-add-batch-btn" onClick={addBatch}>
+            + Add Batch {form.activeBatches + 1}
           </button>
         </div>
 
         {/* ══ BOTTOM SPLIT: Sand Milling + Suspension/Remark ══ */}
         <div className="sl-bottom-split">
 
-          {/* Sand Milling Details */}
           <div className="sl-milling-block">
-            <div className="sl-section-title">
-              Sand Milling Details / <span className="hi">सैंड मिलिंग विवरण</span>
-            </div>
+            <div className="sl-section-title">Sand Milling Details</div>
             <table className="sl-mill-table">
               <thead>
                 <tr>
                   <th>Mill No.</th>
-                  <th>Flow Rate<br /><span className="hi">प्रवाह दर</span><br /><small>(L/Sec)</small></th>
-                  <th>Rated Time<br /><span className="hi">रेटेड समय</span></th>
-                  <th>Current Amp<br /><span className="hi">करंट एम्प</span></th>
-                  <th>Zirconia Beads (kg)<br /><span className="hi">जिरकोनिया बीड्स</span></th>
+                  <th>Flow Rate<br /><small>(L/Sec)</small></th>
+                  <th>Rated Time</th>
+                  <th>Current Amp</th>
+                  <th>Zirconia Beads (kg)</th>
                 </tr>
               </thead>
               <tbody>
@@ -289,38 +263,23 @@ export default function SlurrySection() {
             </table>
           </div>
 
-          {/* Suspension + Remark */}
           <div className="sl-susp-block">
-            <div className="sl-section-title">
-              Suspension &amp; Remarks / <span className="hi">सस्पेंशन और टिप्पणी</span>
-            </div>
+            <div className="sl-section-title">Suspension &amp; Remarks</div>
             <div className="sl-susp-fields">
               <div className="sl-field-group">
-                <label className="sl-label">
-                  I Suspension / <span className="hi">I सस्पेंशन</span>
-                </label>
-                <input className="sl-input"
-                  placeholder="Value / मूल्य"
-                  value={form.suspension1}
-                  onChange={e => set('suspension1', e.target.value)} />
+                <label className="sl-label">I Suspension</label>
+                <input className="sl-input" placeholder="Value"
+                  value={form.suspension1} onChange={e => set('suspension1', e.target.value)} />
               </div>
               <div className="sl-field-group">
-                <label className="sl-label">
-                  II Suspension / <span className="hi">II सस्पेंशन</span>
-                </label>
-                <input className="sl-input"
-                  placeholder="Value / मूल्य"
-                  value={form.suspension2}
-                  onChange={e => set('suspension2', e.target.value)} />
+                <label className="sl-label">II Suspension</label>
+                <input className="sl-input" placeholder="Value"
+                  value={form.suspension2} onChange={e => set('suspension2', e.target.value)} />
               </div>
               <div className="sl-field-group">
-                <label className="sl-label">
-                  Remark / <span className="hi">टिप्पणी</span>
-                </label>
-                <textarea className="sl-textarea" rows={3}
-                  placeholder="Remark / टिप्पणी..."
-                  value={form.remark}
-                  onChange={e => set('remark', e.target.value)} />
+                <label className="sl-label">Remark</label>
+                <textarea className="sl-textarea" rows={3} placeholder="Remark..."
+                  value={form.remark} onChange={e => set('remark', e.target.value)} />
               </div>
             </div>
           </div>
@@ -329,44 +288,32 @@ export default function SlurrySection() {
         {/* ══ APPROVAL ══ */}
         <div className="sl-approval-bar">
           <div className="sl-approval-field">
-            <label className="sl-label">
-              Operator / <span className="hi">ऑपरेटर</span>
-            </label>
-            <input className="sl-input"
-              placeholder="Name / नाम"
-              value={form.operator}
-              onChange={e => set('operator', e.target.value)} />
+            <label className="sl-label">Operator</label>
+            <input className="sl-input" placeholder="Name"
+              value={form.operator} onChange={e => set('operator', e.target.value)} />
           </div>
           <div className="sl-approval-field">
-            <label className="sl-label">
-              Supervisor / <span className="hi">सुपरवाइज़र</span>
-            </label>
-            <input className="sl-input"
-              placeholder="Name / नाम"
-              value={form.supervisor}
-              onChange={e => set('supervisor', e.target.value)} />
+            <label className="sl-label">Supervisor</label>
+            <input className="sl-input" placeholder="Name"
+              value={form.supervisor} onChange={e => set('supervisor', e.target.value)} />
           </div>
           <div className="sl-approval-field">
-            <label className="sl-label">
-              Manager / <span className="hi">मैनेजर</span>
-            </label>
-            <input className="sl-input"
-              placeholder="Name / नाम"
-              value={form.manager}
-              onChange={e => set('manager', e.target.value)} />
+            <label className="sl-label">Manager</label>
+            <input className="sl-input" placeholder="Name"
+              value={form.manager} onChange={e => set('manager', e.target.value)} />
           </div>
         </div>
 
         {/* ══ ACTIONS ══ */}
         <div className="sl-actions">
           {error && <div className="sl-error">Error: {error}</div>}
-          {saved  && <div className="sl-success">✓ Saved successfully / सफलतापूर्वक सहेजा गया</div>}
+          {saved  && <div className="sl-success">✓ Saved successfully</div>}
           <button type="submit" className="sl-save-btn" disabled={saving}>
-            {saving ? 'Saving… / सहेज रहे हैं…' : 'Save Job Card / जॉब कार्ड सहेजें'}
+            {saving ? 'Saving…' : 'Save Job Card'}
           </button>
           <button type="button" className="sl-reset-btn"
             onClick={() => { setForm(emptyForm()); setSaved(false); setError('') }}>
-            Reset / रीसेट
+            Reset
           </button>
         </div>
 
