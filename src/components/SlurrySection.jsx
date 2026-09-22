@@ -182,10 +182,9 @@ export default function SlurrySection() {
         <div className="sl-table-scroll">
           <table className="sl-table">
             <thead>
-              {/* Row 1 — batch header with tank dropdowns */}
               <tr>
-                <th className="sl-th-sticky sl-th-input" rowSpan={2}>Inputs</th>
-                <th className="sl-th-origin sl-th-sticky2" rowSpan={2}>Origin / RM Batch No.</th>
+                <th className="sl-th-sticky sl-th-input">Inputs</th>
+                <th className="sl-th-origin sl-th-sticky2">Origin / RM Batch No.</th>
                 {form.batches.map((batch, bi) => (
                   <th key={batch.id} className="sl-th-batch sl-th-batch-head">
                     <div className="sl-batch-head-row">
@@ -209,7 +208,7 @@ export default function SlurrySection() {
                     </select>
                   </th>
                 ))}
-                <th className="sl-th-action" rowSpan={2}></th>
+                <th className="sl-th-action"></th>
               </tr>
             </thead>
             <tbody>

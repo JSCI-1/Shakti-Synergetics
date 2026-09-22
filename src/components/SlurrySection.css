@@ -90,20 +90,13 @@
   border-collapse: collapse;
   width: 100%;
   font-size: 12px;
-  /* use separate borders so sticky cells don't bleed */
-  border-collapse: separate;
-  border-spacing: 0;
 }
 .sl-table th,
 .sl-table td {
-  border-right: 1px solid #d8d0c8;
-  border-bottom: 1px solid #d8d0c8;
-  padding: 4px 6px;
+  border: 1px solid #d8d0c8;
+  padding: 0;
   vertical-align: middle;
 }
-.sl-table tr th:first-child,
-.sl-table tr td:first-child { border-left: 1px solid #d8d0c8; }
-.sl-table thead tr:first-child th { border-top: 1px solid #d8d0c8; }
 
 /* ── Sticky header ── */
 .sl-table thead th {
@@ -116,6 +109,7 @@
   position: sticky;
   top: 0;
   z-index: 3;
+  padding: 6px 8px;
 }
 
 /* ── Sticky column 1 — Inputs (left: 0) ── */
@@ -141,15 +135,15 @@
 .sl-table thead .sl-th-origin { z-index: 5; background: #f5f0ea; }
 
 .sl-th-input  { min-width: 130px; width: 130px; }
-.sl-th-batch  { min-width: 120px; }
+.sl-th-batch  { min-width: 140px; }
 .sl-th-action { width: 32px; }
 
-.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; }
-.sl-td-origin { background: #fff; }
-.sl-td-batch  { text-align: center; padding: 3px; }
-.sl-td-action { text-align: center; }
+.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; padding: 4px 6px; }
+.sl-td-origin { background: #fff; padding: 4px 6px; }
+.sl-td-batch  { text-align: center; padding: 4px 6px; }
+.sl-td-action { text-align: center; padding: 2px; }
 
-/* alternating rows — keep sticky backgrounds distinct */
+/* alternating rows */
 .sl-tr-alt td { background: #fafaf8; }
 .sl-tr-alt .sl-td-sticky  { background: #f5f2ee; }
 .sl-tr-alt .sl-td-sticky2 { background: #f8f8f6; }
