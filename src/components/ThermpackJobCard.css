@@ -199,8 +199,8 @@
   vertical-align: middle;
 }
 
-/* Sticky header */
-.tjc-log-table thead th {
+/* Sticky header — row 1 */
+.tjc-log-table thead tr:first-child th {
   background: #f5f0ea;
   font-size: 11px;
   font-weight: 700;
@@ -209,6 +209,19 @@
   white-space: nowrap;
   position: sticky;
   top: 0;
+  z-index: 3;
+}
+
+/* Sticky header — row 2 sits below row 1 */
+.tjc-log-table thead tr:last-child th {
+  background: #f5f0ea;
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  line-height: 1.4;
+  white-space: nowrap;
+  position: sticky;
+  top: 38px;   /* height of first header row */
   z-index: 3;
 }
 
@@ -494,6 +507,9 @@
   .td-date-cell { width: 100% !important; }
 
   /* ── Stock grid — stack on mobile ── */
+  /* hide column header row on mobile — labels shown inline */
+  .stock-row-header { display: none; }
+
   .stock-row {
     flex-direction: column;
     align-items: stretch;
