@@ -227,8 +227,7 @@
 
 /* Sticky Time column (first cell in header + body rows) */
 .tjc-log-table thead th:first-child,
-.tjc-log-table tbody td:first-child,
-.tjc-log-table tfoot td:first-child {
+.tjc-log-table tbody td:first-child {
   position: sticky;
   left: 0;
   z-index: 2;
@@ -265,13 +264,41 @@
 .tjc-log-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .tjc-log-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
 
-/* Total row — sticky at bottom of scroll */
-.tjc-log-table tfoot tr td {
-  position: sticky;
-  bottom: 0;
-  background: #f5f0ea;
-  z-index: 2;
+/* Total Fuel bar — outside scroll, always visible */
+.tjc-total-bar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 10px 16px;
+  background: #fdf3ee;
+  border-bottom: 1px solid #e8c5a8;
+  flex-wrap: wrap;
 }
+.tjc-total-bar-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b85c2c;
+  flex: 1;
+  min-width: 200px;
+}
+.tjc-total-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid #e8c5a8;
+  border-radius: 6px;
+  padding: 6px 14px;
+}
+.tjc-total-item-label { font-size: 11px; color: #888; }
+.tjc-total-item-val {
+  font-size: 16px;
+  font-weight: 700;
+  color: #b85c2c;
+  min-width: 32px;
+  text-align: right;
+}
+
 .total-input {
   width: 70px;
   font-weight: 700;

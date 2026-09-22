@@ -334,23 +334,26 @@ export default function ThermpackJobCard() {
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={6} className="total-label">
-                    Total Fuel Consumption / <span className="hi">कुल इंधन खपत</span>
-                  </td>
-                  {/* ── Auto-calculated totals ── */}
-                  <td className="total-value-cell">
-                    <div className="total-value-label">Coal / <span className="hi">कोयला</span></div>
-                    <div className="total-value">{totalCoal % 1 === 0 ? totalCoal : totalCoal.toFixed(2)}</div>
-                  </td>
-                  <td className="total-value-cell">
-                    <div className="total-value-label">Bugass / <span className="hi">बगास</span></div>
-                    <div className="total-value">{totalBugass % 1 === 0 ? totalBugass : totalBugass.toFixed(2)}</div>
-                  </td>
-                  <td colSpan={4}></td>
+                  <td colSpan={12}></td>
                 </tr>
               </tfoot>
             </table>
           </div>
+        </div>
+
+        {/* ── Total Fuel Consumption — outside scroll, always visible ── */}
+        <div className="tjc-total-bar">
+          <span className="tjc-total-bar-label">
+            Total Fuel Consumption / <span className="hi">कुल इंधन खपत</span>
+          </span>
+          <span className="tjc-total-item">
+            <span className="tjc-total-item-label">Coal / <span className="hi">कोयला</span></span>
+            <span className="tjc-total-item-val">{totalCoal % 1 === 0 ? totalCoal : totalCoal.toFixed(2)}</span>
+          </span>
+          <span className="tjc-total-item">
+            <span className="tjc-total-item-label">Bugass / <span className="hi">बगास</span></span>
+            <span className="tjc-total-item-val">{totalBugass % 1 === 0 ? totalBugass : totalBugass.toFixed(2)}</span>
+          </span>
         </div>
 
         {/* ══ SECTION 4: Remarks ══ */}

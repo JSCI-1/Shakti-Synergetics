@@ -3,26 +3,40 @@ import { supabase, supabaseReady } from '../supabaseClient'
 import './SlurrySection.css'
 
 const DEFAULT_INPUTS = [
-  'SULPHUR',
-  'LIGNO-A',
-  'LIGNO-B',
-  'FBPP',
-  'DN Powder',
-  'FZ 1',
-  'DEFOMER',
-  'CHINA CLAY',
-  'WATER',
+  'SULPHUR', 'LIGNO-A', 'LIGNO-B', 'FBPP',
+  'DN Powder', 'FZ 1', 'DEFOMER', 'CHINA CLAY', 'WATER',
 ]
 
 const MILLS = ['V1','V2','V3','V4','V5','V6','V7','H1']
 
+// ── Batch (tank) dropdown options ──
+const BATCH_OPTIONS = [
+  { group: 'Attrition Mills', options: [
+    { label: '1st Attrition Mill — 1.6 MT', value: 'Attrition-1st-1.6MT' },
+    { label: '2nd Attrition Mill — 1.2 MT', value: 'Attrition-2nd-1.2MT' },
+  ]},
+  { group: 'HST (High Speed Tank)', options: [
+    { label: 'HST 1st — 8 MT', value: 'HST-1st-8MT' },
+    { label: 'HST 2nd — 6 MT', value: 'HST-2nd-6MT' },
+  ]},
+  { group: 'LST (Low Speed Tank)', options: [
+    { label: 'LST — 4 MT', value: 'LST-4MT' },
+  ]},
+  { group: 'Feed Storage Tank (FST) — New Dryer', options: [
+    { label: 'FST 1 (New Dryer) — 7 MT', value: 'FST1-NewDryer-7MT' },
+    { label: 'FST 2 (New Dryer) — 7 MT', value: 'FST2-NewDryer-7MT' },
+  ]},
+  { group: 'Feed Storage Tank (FST) — Old Dryer', options: [
+    { label: 'FST 1 (Old Dryer) — 6 MT', value: 'FST1-OldDryer-6MT' },
+  ]},
+]
+
+function emptyBatch(index) {
+  return { id: Date.now() + Math.random(), label: `Batch-${index + 1}`, tank_type: '' }
+}
+
 function emptyInputRow(name = '') {
-  return {
-    id: Date.now() + Math.random(),
-    input_name: name,
-    origin_rm_batch: '',
-    batches: [],   // grows as batches are added
-  }
+  return { id: Date.now() + Math.random(), input_name: name, origin_rm_batch: '', batches: [] }
 }
 
 function emptyMillRow(mill) {
@@ -31,19 +45,15 @@ function emptyMillRow(mill) {
 
 function emptyForm() {
   return {
-    tank_no: '',
     date: '',
     shift1_operator: '',
     shift2_operator: '',
+    batches: [emptyBatch(0)],           // array of batch column headers
     input_rows: DEFAULT_INPUTS.map(n => emptyInputRow(n)),
-    activeBatches: 1,   // how many batch columns are visible
     mills: MILLS.map(m => emptyMillRow(m)),
-    suspension1: '',
-    suspension2: '',
+    suspension1: '', suspension2: '',
     remark: '',
-    operator: '',
-    supervisor: '',
-    manager: '',
+    operator: '', supervisor: '', manager: '',
   }
 }
 
@@ -54,6 +64,13 @@ export default function SlurrySection() {
   const [error, setError]   = useState('')
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  // update batch header (tank type dropdown)
+  const setBatchTank = (bi, val) =>
+    setForm(p => ({
+      ...p,
+      batches: p.batches.map((b, i) => i === bi ? { ...b, tank_type: val } : b),
+    }))
 
   const setInputRow = (idx, field, val) =>
     setForm(p => ({
@@ -79,29 +96,33 @@ export default function SlurrySection() {
     }))
 
   function addInputRow() {
-    setForm(p => ({
-      ...p,
-      input_rows: [...p.input_rows, emptyInputRow()],
-    }))
+    setForm(p => ({ ...p, input_rows: [...p.input_rows, emptyInputRow()] }))
   }
 
   function removeInputRow(idx) {
-    setForm(p => ({
-      ...p,
-      input_rows: p.input_rows.filter((_, i) => i !== idx),
-    }))
+    setForm(p => ({ ...p, input_rows: p.input_rows.filter((_, i) => i !== idx) }))
   }
 
   function addBatch() {
-    setForm(p => ({ ...p, activeBatches: p.activeBatches + 1 }))
+    setForm(p => ({ ...p, batches: [...p.batches, emptyBatch(p.batches.length)] }))
   }
 
-  // column totals for each active batch
+  function removeBatch(bi) {
+    setForm(p => ({
+      ...p,
+      batches: p.batches.filter((_, i) => i !== bi),
+      input_rows: p.input_rows.map(r => ({
+        ...r,
+        batches: r.batches.filter((_, i) => i !== bi),
+      })),
+    }))
+  }
+
   const colTotals = useMemo(() =>
-    Array.from({ length: form.activeBatches }, (_, bi) =>
+    form.batches.map((_, bi) =>
       form.input_rows.reduce((sum, r) => sum + (parseFloat(r.batches[bi]) || 0), 0)
     ),
-    [form.input_rows, form.activeBatches]
+    [form.input_rows, form.batches]
   )
 
   async function handleSubmit(e) {
@@ -109,12 +130,11 @@ export default function SlurrySection() {
     if (!supabaseReady) { setError('Supabase not configured.'); return }
     setSaving(true); setError(''); setSaved(false)
     const { error: err } = await supabase.from('slurry_job_cards').insert([{
-      tank_no:         form.tank_no,
       date:            form.date || null,
       shift1_operator: form.shift1_operator,
       shift2_operator: form.shift2_operator,
+      batches:         form.batches,
       input_rows:      form.input_rows,
-      active_batches:  form.activeBatches,
       mills:           form.mills,
       suspension1:     form.suspension1,
       suspension2:     form.suspension2,
@@ -131,7 +151,6 @@ export default function SlurrySection() {
   return (
     <div className="sl-wrapper">
 
-      {/* ── Title ── */}
       <div className="sl-title-bar">
         <div className="sl-title-main">Slurry Section</div>
         <div className="sl-title-sub">Process Job Card</div>
@@ -139,13 +158,8 @@ export default function SlurrySection() {
 
       <form className="sl-form" onSubmit={handleSubmit}>
 
-        {/* ══ META: Tank No + Date + Shifts ══ */}
+        {/* ══ META: Date + Shifts only ══ */}
         <div className="sl-meta-bar">
-          <div className="sl-meta-field">
-            <label className="sl-label">Tank No.</label>
-            <input className="sl-input" placeholder="e.g. T-01"
-              value={form.tank_no} onChange={e => set('tank_no', e.target.value)} />
-          </div>
           <div className="sl-meta-field">
             <label className="sl-label">Date</label>
             <input type="date" className="sl-input"
@@ -168,13 +182,34 @@ export default function SlurrySection() {
         <div className="sl-table-scroll">
           <table className="sl-table">
             <thead>
+              {/* Row 1 — batch header with tank dropdowns */}
               <tr>
-                <th className="sl-th-sticky sl-th-input">Inputs</th>
-                <th className="sl-th-sticky sl-th-origin">Origin / RM Batch No.</th>
-                {Array.from({ length: form.activeBatches }, (_, bi) => (
-                  <th key={bi} className="sl-th-batch">Batch-{bi + 1}</th>
+                <th className="sl-th-sticky sl-th-input" rowSpan={2}>Inputs</th>
+                <th className="sl-th-origin sl-th-sticky2" rowSpan={2}>Origin / RM Batch No.</th>
+                {form.batches.map((batch, bi) => (
+                  <th key={batch.id} className="sl-th-batch sl-th-batch-head">
+                    <div className="sl-batch-head-row">
+                      <span className="sl-batch-num">Batch-{bi + 1}</span>
+                      {form.batches.length > 1 && (
+                        <button type="button" className="sl-del-batch-btn"
+                          onClick={() => removeBatch(bi)} title="Delete batch">✕</button>
+                      )}
+                    </div>
+                    <select className="sl-batch-select"
+                      value={batch.tank_type}
+                      onChange={e => setBatchTank(bi, e.target.value)}>
+                      <option value="">— Select Tank —</option>
+                      {BATCH_OPTIONS.map(grp => (
+                        <optgroup key={grp.group} label={grp.group}>
+                          {grp.options.map(opt => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </th>
                 ))}
-                <th className="sl-th-action"></th>
+                <th className="sl-th-action" rowSpan={2}></th>
               </tr>
             </thead>
             <tbody>
@@ -190,7 +225,7 @@ export default function SlurrySection() {
                       value={row.origin_rm_batch}
                       onChange={e => setInputRow(ri, 'origin_rm_batch', e.target.value)} />
                   </td>
-                  {Array.from({ length: form.activeBatches }, (_, bi) => (
+                  {form.batches.map((_, bi) => (
                     <td key={bi} className="sl-td-batch">
                       <input type="number" className="sl-input-num" placeholder="—"
                         value={row.batches[bi] ?? ''}
@@ -206,7 +241,7 @@ export default function SlurrySection() {
                 </tr>
               ))}
 
-              {/* TOTAL WT row */}
+              {/* TOTAL WT */}
               <tr className="sl-total-row">
                 <td className="sl-td-sticky sl-total-label" colSpan={2}>TOTAL WT.</td>
                 {colTotals.map((total, bi) => (
@@ -220,19 +255,18 @@ export default function SlurrySection() {
           </table>
         </div>
 
-        {/* ── Row + Batch controls ── */}
+        {/* ── Controls ── */}
         <div className="sl-add-row-bar">
           <button type="button" className="sl-add-btn" onClick={addInputRow}>
             + Add Input Row
           </button>
           <button type="button" className="sl-add-btn sl-add-batch-btn" onClick={addBatch}>
-            + Add Batch {form.activeBatches + 1}
+            + Add Batch {form.batches.length + 1}
           </button>
         </div>
 
-        {/* ══ BOTTOM SPLIT: Sand Milling + Suspension/Remark ══ */}
+        {/* ══ BOTTOM SPLIT ══ */}
         <div className="sl-bottom-split">
-
           <div className="sl-milling-block">
             <div className="sl-section-title">Sand Milling Details</div>
             <table className="sl-mill-table">

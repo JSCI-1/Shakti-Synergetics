@@ -12,28 +12,16 @@
   width: 100%;
 }
 
-/* ── Title bar ── */
 .sl-title-bar {
   background: #1a1a1a;
   padding: 12px 20px 10px;
   text-align: center;
 }
-.sl-title-main {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  color: #f0c890;
-}
-.sl-title-sub {
-  font-size: 12px;
-  color: #aaa;
-  margin-top: 3px;
-}
+.sl-title-main { font-size: 18px; font-weight: 700; color: #f0c890; }
+.sl-title-sub  { font-size: 12px; color: #aaa; margin-top: 3px; }
 
-/* ── Form ── */
 .sl-form { display: flex; flex-direction: column; }
 
-/* ── Labels ── */
 .sl-label {
   font-size: 11px;
   font-weight: 600;
@@ -42,7 +30,6 @@
   margin-bottom: 4px;
 }
 
-/* ── Inputs ── */
 .sl-input {
   width: 100%;
   border: 1px solid #ccc;
@@ -68,7 +55,6 @@
 }
 .sl-textarea:focus { outline: none; border-color: #b85c2c; background: #fff; }
 
-/* ── Section title strip ── */
 .sl-section-title {
   background: #f5f0ea;
   border-top: 1px solid #d8d0c8;
@@ -77,10 +63,9 @@
   font-size: 12px;
   font-weight: 700;
   color: #b85c2c;
-  letter-spacing: 0.3px;
 }
 
-/* ══ META BAR ══ */
+/* ══ META ══ */
 .sl-meta-bar {
   display: flex;
   gap: 16px;
@@ -89,35 +74,38 @@
   border-bottom: 1px solid #e0dbd4;
   background: #fafaf8;
 }
-.sl-meta-field {
-  flex: 1;
-  min-width: 150px;
-  display: flex;
-  flex-direction: column;
-}
+.sl-meta-field { flex: 1; min-width: 150px; display: flex; flex-direction: column; }
 
-/* ══ INPUTS TABLE ══ */
+/* ══ TABLE SCROLL CONTAINER ══ */
 .sl-table-scroll {
   overflow-x: auto;
   overflow-y: auto;
-  max-height: 420px;
+  max-height: 440px;
   -webkit-overflow-scrolling: touch;
   position: relative;
 }
 
+/* ══ INPUTS TABLE ══ */
 .sl-table {
   border-collapse: collapse;
   width: 100%;
   font-size: 12px;
+  /* use separate borders so sticky cells don't bleed */
+  border-collapse: separate;
+  border-spacing: 0;
 }
 .sl-table th,
 .sl-table td {
-  border: 1px solid #d8d0c8;
+  border-right: 1px solid #d8d0c8;
+  border-bottom: 1px solid #d8d0c8;
   padding: 4px 6px;
   vertical-align: middle;
 }
+.sl-table tr th:first-child,
+.sl-table tr td:first-child { border-left: 1px solid #d8d0c8; }
+.sl-table thead tr:first-child th { border-top: 1px solid #d8d0c8; }
 
-/* ── Sticky header row ── */
+/* ── Sticky header ── */
 .sl-table thead th {
   background: #f5f0ea;
   font-size: 11px;
@@ -125,13 +113,12 @@
   color: #444;
   text-align: center;
   line-height: 1.4;
-  white-space: nowrap;
   position: sticky;
   top: 0;
   z-index: 3;
 }
 
-/* ── Sticky first column (Inputs) ── */
+/* ── Sticky column 1 — Inputs (left: 0) ── */
 .sl-th-sticky,
 .sl-td-sticky {
   position: sticky;
@@ -139,40 +126,78 @@
   z-index: 2;
   background: #faf7f3;
 }
-.sl-table thead .sl-th-sticky {
-  z-index: 4;   /* above both sticky axes */
-  background: #f5f0ea;
-}
+.sl-table thead .sl-th-sticky { z-index: 5; background: #f5f0ea; }
 
-/* ── Sticky second column (Origin) — sits right of first ── */
-.sl-th-sticky2,
+/* ── Sticky column 2 — Origin (left: 130px = width of col 1) ── */
+.sl-th-origin,
 .sl-td-sticky2 {
   position: sticky;
-  left: 130px;   /* width of first sticky column */
+  left: 130px;
   z-index: 2;
   background: #fff;
+  min-width: 140px;
+  width: 140px;
 }
-.sl-table thead .sl-th-sticky2 {
-  z-index: 4;
-  background: #f5f0ea;
-}
+.sl-table thead .sl-th-origin { z-index: 5; background: #f5f0ea; }
 
 .sl-th-input  { min-width: 130px; width: 130px; }
-.sl-th-origin { min-width: 130px; width: 130px; }
-.sl-th-batch  { min-width: 62px; text-align: center; }
+.sl-th-batch  { min-width: 120px; }
 .sl-th-action { width: 32px; }
 
-.sl-td-input  { background: #faf7f3; }
+.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; }
 .sl-td-origin { background: #fff; }
 .sl-td-batch  { text-align: center; padding: 3px; }
 .sl-td-action { text-align: center; }
 
+/* alternating rows — keep sticky backgrounds distinct */
 .sl-tr-alt td { background: #fafaf8; }
-/* keep sticky cells from being overridden by tr-alt */
 .sl-tr-alt .sl-td-sticky  { background: #f5f2ee; }
-.sl-tr-alt .sl-td-sticky2 { background: #fafaf8; }
+.sl-tr-alt .sl-td-sticky2 { background: #f8f8f6; }
 
-/* Input cells inside table */
+/* ── Batch header cell ── */
+.sl-th-batch-head { padding: 4px 6px; vertical-align: top; }
+
+.sl-batch-head-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+.sl-batch-num {
+  font-weight: 700;
+  font-size: 11px;
+  color: #333;
+}
+.sl-del-batch-btn {
+  background: transparent;
+  border: 1px solid #e0a0a0;
+  color: #c0392b;
+  border-radius: 3px;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sl-del-batch-btn:hover { background: #fde8e8; }
+
+.sl-batch-select {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 3px 4px;
+  font-size: 11px;
+  background: #fafaf8;
+  color: #2d2d2d;
+  cursor: pointer;
+}
+.sl-batch-select:focus { outline: none; border-color: #b85c2c; }
+
+/* Cell inputs */
 .sl-input-cell {
   width: 100%;
   border: 1px solid #ddd;
@@ -198,7 +223,6 @@
 .sl-input-num::-webkit-inner-spin-button { -webkit-appearance: none; }
 .sl-input-num:focus { outline: none; border-color: #b85c2c; background: #fff; }
 
-/* Remove row button */
 .sl-remove-btn {
   background: transparent;
   border: 1px solid #e0a0a0;
@@ -231,7 +255,7 @@
   text-align: center;
 }
 
-/* ── Controls bar (Add Row + Add Batch) ── */
+/* ── Controls bar ── */
 .sl-add-row-bar {
   padding: 8px 16px;
   border-bottom: 1px solid #e0dbd4;
@@ -252,10 +276,7 @@
   transition: background 0.15s;
 }
 .sl-add-btn:hover { background: #fdf3ee; }
-.sl-add-batch-btn {
-  border-color: #2e7d32;
-  color: #2e7d32;
-}
+.sl-add-batch-btn { border-color: #2e7d32; color: #2e7d32; }
 .sl-add-batch-btn:hover { background: #e8f5e9; }
 
 /* ══ BOTTOM SPLIT ══ */
@@ -269,17 +290,12 @@
   border-right: 1px solid #d8d0c8;
   overflow-x: auto;
 }
-.sl-susp-block {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
+.sl-susp-block { flex: 1; display: flex; flex-direction: column; }
 
-/* Mill table */
 .sl-mill-table {
   border-collapse: collapse;
   width: 100%;
-  min-width: 420px;
+  min-width: 400px;
   font-size: 12px;
 }
 .sl-mill-table th,
@@ -307,7 +323,7 @@
   background: #fdf8f4;
 }
 .sl-input-num-wide {
-  width: 72px;
+  width: 70px;
   border: 1px solid #ddd;
   border-radius: 3px;
   padding: 4px;
@@ -320,14 +336,8 @@
 .sl-input-num-wide::-webkit-inner-spin-button { -webkit-appearance: none; }
 .sl-input-num-wide:focus { outline: none; border-color: #b85c2c; background: #fff; }
 
-/* Suspension */
-.sl-susp-fields {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding: 14px;
-}
-.sl-field-group { display: flex; flex-direction: column; gap: 4px; }
+.sl-susp-fields { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
+.sl-field-group  { display: flex; flex-direction: column; gap: 4px; }
 
 /* ══ APPROVAL ══ */
 .sl-approval-bar {
@@ -386,10 +396,21 @@
    ════════════════════ */
 @media (max-width: 640px) {
   .sl-title-main { font-size: 15px; }
-  .sl-title-sub  { font-size: 11px; }
 
   .sl-meta-bar   { flex-direction: column; gap: 10px; padding: 12px 10px; }
   .sl-meta-field { min-width: 100%; }
+
+  /* On mobile, only pin the Inputs column, not Origin — avoids clash */
+  .sl-th-origin,
+  .sl-td-sticky2 {
+    position: static;
+    left: auto;
+    min-width: 110px;
+    width: 110px;
+  }
+
+  .sl-th-input,
+  .sl-td-input { min-width: 100px; width: 100px; }
 
   .sl-bottom-split { flex-direction: column; }
   .sl-milling-block { border-right: none; border-bottom: 1px solid #d8d0c8; }
@@ -400,13 +421,6 @@
 
   .sl-actions { padding: 12px 10px; }
   .sl-save-btn, .sl-reset-btn { flex: 1; text-align: center; }
-
   .sl-add-row-bar { flex-direction: column; }
   .sl-add-btn { width: 100%; text-align: center; }
-
-  /* sticky second column offset adjusts for smaller screens */
-  .sl-th-sticky2,
-  .sl-td-sticky2 { left: 120px; }
-  .sl-th-input  { min-width: 120px; width: 120px; }
-  .sl-th-origin { min-width: 120px; width: 120px; }
 }
