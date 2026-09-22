@@ -19,16 +19,6 @@ const BATCH_OPTIONS = [
     { label: 'HST 1st — 8 MT', value: 'HST-1st-8MT' },
     { label: 'HST 2nd — 6 MT', value: 'HST-2nd-6MT' },
   ]},
-  { group: 'LST (Low Speed Tank)', options: [
-    { label: 'LST — 4 MT', value: 'LST-4MT' },
-  ]},
-  { group: 'Feed Storage Tank (FST) — New Dryer', options: [
-    { label: 'FST 1 (New Dryer) — 7 MT', value: 'FST1-NewDryer-7MT' },
-    { label: 'FST 2 (New Dryer) — 7 MT', value: 'FST2-NewDryer-7MT' },
-  ]},
-  { group: 'Feed Storage Tank (FST) — Old Dryer', options: [
-    { label: 'FST 1 (Old Dryer) — 6 MT', value: 'FST1-OldDryer-6MT' },
-  ]},
 ]
 
 function emptyBatch(index) {
@@ -239,19 +229,21 @@ export default function SlurrySection() {
                   </td>
                 </tr>
               ))}
-
-              {/* TOTAL WT */}
-              <tr className="sl-total-row">
-                <td className="sl-td-sticky sl-total-label" colSpan={2}>TOTAL WT.</td>
-                {colTotals.map((total, bi) => (
-                  <td key={bi} className="sl-td-batch sl-total-val">
-                    {total > 0 ? total : ''}
-                  </td>
-                ))}
-                <td></td>
-              </tr>
             </tbody>
           </table>
+        </div>
+
+        {/* ── Total WT — outside scroll, always visible ── */}
+        <div className="sl-total-bar">
+          <span className="sl-total-bar-label">TOTAL WT.</span>
+          <div className="sl-total-bar-cols">
+            {colTotals.map((total, bi) => (
+              <span key={bi} className="sl-total-bar-item">
+                <span className="sl-total-bar-batch">Batch-{bi + 1}</span>
+                <span className="sl-total-bar-val">{total > 0 ? total : '—'}</span>
+              </span>
+            ))}
+          </div>
         </div>
 
         {/* ── Controls ── */}
