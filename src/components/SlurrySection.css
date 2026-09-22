@@ -110,8 +110,7 @@
   top: 0;
   z-index: 3;
   padding: 4px 6px;
-  height: 52px;          /* fixed height so all header cells are equal */
-  vertical-align: middle;
+  vertical-align: bottom;  /* align all headers to bottom edge */
 }
 
 /* ── Sticky column 1 — Inputs (left: 0) ── */
@@ -140,20 +139,20 @@
 .sl-th-batch  { min-width: 140px; }
 .sl-th-action { width: 32px; }
 
-.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; padding: 4px 6px; height: 36px; }
-.sl-td-origin { background: #fff; padding: 4px 6px; height: 36px; }
-.sl-td-batch  { text-align: center; padding: 4px 6px; height: 36px; }
-.sl-td-action { text-align: center; padding: 2px; height: 36px; }
+.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; padding: 0; }
+.sl-td-origin { background: #fff; padding: 0; }
+.sl-td-batch  { text-align: center; padding: 4px 6px; }
+.sl-td-action { text-align: center; padding: 2px; }
 
 /* alternating rows */
 .sl-tr-alt td { background: #fafaf8; }
 .sl-tr-alt .sl-td-sticky  { background: #f5f2ee; }
 .sl-tr-alt .sl-td-sticky2 { background: #f8f8f6; }
 
-/* ── Batch header cell — fits within fixed header height ── */
+/* ── Batch header cell — aligns to bottom like other headers ── */
 .sl-th-batch-head {
   padding: 4px 6px !important;
-  vertical-align: middle;
+  vertical-align: bottom;
 }
 
 .sl-batch-head-row {
@@ -197,17 +196,22 @@
 }
 .sl-batch-select:focus { outline: none; border-color: #b85c2c; }
 
-/* Cell inputs */
+/* Cell inputs — borderless flush style for Inputs and Origin columns */
 .sl-input-cell {
   width: 100%;
-  border: 1px solid #ddd;
-  border-radius: 3px;
-  padding: 4px 6px;
+  border: none;
+  border-radius: 0;
+  padding: 8px 8px;
   font-size: 12px;
+  font-weight: 600;
   background: transparent;
   box-sizing: border-box;
+  display: block;
 }
-.sl-input-cell:focus { outline: none; border-color: #b85c2c; background: #fff; }
+.sl-input-cell:focus {
+  outline: none;
+  background: rgba(184,92,44,0.06);
+}
 
 .sl-input-num {
   width: 54px;
