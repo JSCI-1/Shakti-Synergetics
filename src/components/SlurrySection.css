@@ -1,0 +1,383 @@
+/* ════════════════════════════════════
+   SLURRY SECTION — Process Job Card
+   ════════════════════════════════════ */
+
+.sl-wrapper {
+  background: #fff;
+  border: 1px solid #d8d0c8;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 13px;
+  color: #2d2d2d;
+  width: 100%;
+}
+
+/* ── Title bar ── */
+.sl-title-bar {
+  background: #1a1a1a;
+  color: #fff;
+  padding: 12px 20px 10px;
+  text-align: center;
+}
+.sl-title-main {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  color: #f0c890;
+}
+.sl-title-sub {
+  font-size: 12px;
+  color: #bbb;
+  margin-top: 4px;
+}
+.sl-title-hi { color: #ccc; font-weight: 400; }
+
+/* ── Form ── */
+.sl-form {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Shared label ── */
+.sl-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  display: block;
+  margin-bottom: 4px;
+}
+.hi { font-size: 10px; color: #999; font-weight: 400; }
+
+/* ── Shared inputs ── */
+.sl-input {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #2d2d2d;
+  background: #fafaf8;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.sl-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.sl-textarea {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px;
+  font-size: 13px;
+  resize: vertical;
+  background: #fafaf8;
+  box-sizing: border-box;
+}
+.sl-textarea:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+/* ── Section title ── */
+.sl-section-title {
+  background: #f5f0ea;
+  border-top: 1px solid #d8d0c8;
+  border-bottom: 1px solid #d8d0c8;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #b85c2c;
+  letter-spacing: 0.3px;
+}
+
+/* ══ META BAR ══ */
+.sl-meta-bar {
+  display: flex;
+  gap: 16px;
+  padding: 14px 16px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #e0dbd4;
+  background: #fafaf8;
+}
+.sl-meta-field {
+  flex: 1;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ══ INPUTS TABLE ══ */
+.sl-table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.sl-table {
+  border-collapse: collapse;
+  min-width: 900px;
+  width: 100%;
+  font-size: 12px;
+}
+.sl-table th,
+.sl-table td {
+  border: 1px solid #d8d0c8;
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+.sl-table thead th {
+  background: #f5f0ea;
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  text-align: center;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.sl-th-input  { min-width: 130px; }
+.sl-th-origin { min-width: 120px; }
+.sl-th-batch  { min-width: 60px; text-align: center; }
+.sl-th-action { width: 32px; }
+
+.sl-td-input {
+  background: #faf7f3;
+  vertical-align: middle;
+}
+.sl-td-origin { vertical-align: middle; }
+.sl-td-batch  { text-align: center; padding: 3px; }
+.sl-td-action { text-align: center; }
+
+.sl-tr-alt { background: #fafaf8; }
+
+/* Inputs inside cells */
+.sl-input-cell {
+  width: 100%;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: transparent;
+  box-sizing: border-box;
+}
+.sl-input-cell:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.sl-input-hindi {
+  margin-top: 3px;
+  font-size: 11px;
+  color: #888;
+}
+
+.sl-input-num {
+  width: 54px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 4px 2px;
+  font-size: 12px;
+  text-align: center;
+  background: transparent;
+  -moz-appearance: textfield;
+}
+.sl-input-num::-webkit-outer-spin-button,
+.sl-input-num::-webkit-inner-spin-button { -webkit-appearance: none; }
+.sl-input-num:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+/* Remove row button */
+.sl-remove-btn {
+  background: transparent;
+  border: 1px solid #e0a0a0;
+  color: #c0392b;
+  border-radius: 3px;
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.sl-remove-btn:hover { background: #fde8e8; }
+
+/* Total row */
+.sl-total-row { background: #fdf3ee !important; }
+.sl-total-label {
+  font-weight: 700;
+  font-size: 12px;
+  color: #b85c2c;
+  text-align: right;
+  padding-right: 10px;
+  background: #fdf0e6;
+}
+.sl-total-val {
+  font-weight: 700;
+  color: #b85c2c;
+  font-size: 12px;
+}
+
+/* ── Add row button ── */
+.sl-add-row-bar {
+  padding: 8px 16px;
+  border-bottom: 1px solid #e0dbd4;
+  background: #fafaf8;
+}
+.sl-add-btn {
+  background: transparent;
+  border: 1px dashed #b85c2c;
+  color: #b85c2c;
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sl-add-btn:hover { background: #fdf3ee; }
+
+/* ══ BOTTOM SPLIT ══ */
+.sl-bottom-split {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e0dbd4;
+}
+
+.sl-milling-block {
+  flex: 1.6;
+  border-right: 1px solid #d8d0c8;
+  overflow-x: auto;
+}
+
+.sl-susp-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Mill table */
+.sl-mill-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 420px;
+  font-size: 12px;
+}
+.sl-mill-table th,
+.sl-mill-table td {
+  border: 1px solid #d8d0c8;
+  padding: 5px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+.sl-mill-table thead th {
+  background: #f5f0ea;
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  line-height: 1.4;
+}
+.sl-mill-table tbody tr:nth-child(even) { background: #fafaf8; }
+.sl-mill-table tbody tr:hover { background: #fdf3ee; }
+
+.sl-mill-name {
+  font-weight: 700;
+  font-size: 11px;
+  color: #b85c2c;
+  white-space: nowrap;
+  text-align: left;
+  background: #fdf8f4;
+}
+
+.sl-input-num-wide {
+  width: 72px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 4px 4px;
+  font-size: 12px;
+  text-align: center;
+  background: transparent;
+  -moz-appearance: textfield;
+}
+.sl-input-num-wide::-webkit-outer-spin-button,
+.sl-input-num-wide::-webkit-inner-spin-button { -webkit-appearance: none; }
+.sl-input-num-wide:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+/* Suspension fields */
+.sl-susp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 14px;
+}
+.sl-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* ══ APPROVAL BAR ══ */
+.sl-approval-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e0dbd4;
+}
+.sl-approval-field {
+  flex: 1;
+  padding: 12px 14px;
+  border-right: 1px solid #d8d0c8;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.sl-approval-field:last-child { border-right: none; }
+
+/* ══ ACTIONS ══ */
+.sl-actions {
+  padding: 14px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: #fafaf8;
+}
+.sl-save-btn {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 10px 28px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sl-save-btn:hover:not(:disabled) { background: #9e4c22; }
+.sl-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.sl-reset-btn {
+  background: transparent;
+  color: #888;
+  border: 1px solid #ccc;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sl-reset-btn:hover { border-color: #b85c2c; color: #b85c2c; }
+
+.sl-error   { color: #c0392b; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+.sl-success { color: #27ae60; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+
+/* ════════════════════
+   MOBILE (≤ 640px)
+   ════════════════════ */
+@media (max-width: 640px) {
+  .sl-title-main { font-size: 15px; }
+  .sl-title-sub  { font-size: 11px; }
+
+  .sl-meta-bar { flex-direction: column; gap: 10px; padding: 12px 10px; }
+  .sl-meta-field { min-width: 100%; }
+
+  .sl-bottom-split { flex-direction: column; }
+  .sl-milling-block { border-right: none; border-bottom: 1px solid #d8d0c8; }
+
+  .sl-approval-bar { flex-direction: column; }
+  .sl-approval-field { border-right: none; border-bottom: 1px solid #e0dbd4; }
+  .sl-approval-field:last-child { border-bottom: none; }
+
+  .sl-actions { padding: 12px 10px; }
+  .sl-save-btn, .sl-reset-btn { flex: 1; text-align: center; }
+}
