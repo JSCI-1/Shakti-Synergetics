@@ -1898,3 +1898,23 @@
 .tjc-log-table tbody tr:hover {
   background: #fdf3ee;
 }
+
+/* ── Auto-calculated clinker weight display ── */
+.clinker-auto-val {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: #fdf3ee;
+}
+.clinker-auto-num {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b85c2c;
+}
+.clinker-auto-hint {
+  font-size: 10px;
+  color: #b85c2c;
+  opacity: 0.7;
+}

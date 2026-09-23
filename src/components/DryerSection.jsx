@@ -1,0 +1,283 @@
+import React, { useState } from 'react'
+import { supabase, supabaseReady } from '../supabaseClient'
+import './DryerSection.css'
+
+const TIME_SLOTS = [
+  '08:00','09:00','10:00','11:00','12:00','13:00','14:00','15:00',
+  '16:00','17:00','18:00','19:00','20:00','21:00','22:00','23:00',
+  '00:00','01:00','02:00','03:00','04:00','05:00','06:00','07:00',
+]
+
+function emptyRow() {
+  return {
+    temp_inlet: '', temp_outlet: '', temp_actual: '',
+    temp_fbd1: '', temp_fbd2: '', temp_chamber: '',
+    atomizer_freq: '',
+    feed_fc: '', pressure: '', pt_temp: '',
+    batch_no: '',
+    bags_per_hr: '',
+    bag_size_wt: '',
+    kg_per_hr: '',
+    colour_normal: '',
+    remarks: '',
+  }
+}
+
+function emptyForm(dryerType) {
+  return {
+    dryer_type: dryerType,   // 'new' or 'old'
+    date: '',
+    shift: '',
+    // Left-side blower fields
+    id_blower_dp: '', id_blower_mr: '',
+    fd_blower_dp: '', fd_blower_mr: '',
+    chamber_dp:   '', chamber_mr:   '',
+    fbd_pct_dp:   '', fbd_pct_mr:   '',
+    // Footer
+    batch_no: '',
+    calibration_due: '',
+    total_production: '',
+    incharge: '',
+    operator: '',
+    rows: TIME_SLOTS.map(() => emptyRow()),
+  }
+}
+
+function DryerForm({ dryerType, label }) {
+  const [form, setForm]     = useState(emptyForm(dryerType))
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved]   = useState(false)
+  const [error, setError]   = useState('')
+
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
+  const setRow = (i, field, val) =>
+    setForm(p => ({
+      ...p,
+      rows: p.rows.map((r, idx) => idx === i ? { ...r, [field]: val } : r),
+    }))
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!supabaseReady) { setError('Supabase not configured.'); return }
+    setSaving(true); setError(''); setSaved(false)
+    const { error: err } = await supabase.from('dryer_logs').insert([{
+      dryer_type:       form.dryer_type,
+      date:             form.date || null,
+      shift:            form.shift,
+      id_blower_dp:     form.id_blower_dp,
+      id_blower_mr:     form.id_blower_mr,
+      fd_blower_dp:     form.fd_blower_dp,
+      fd_blower_mr:     form.fd_blower_mr,
+      chamber_dp:       form.chamber_dp,
+      chamber_mr:       form.chamber_mr,
+      fbd_pct_dp:       form.fbd_pct_dp,
+      fbd_pct_mr:       form.fbd_pct_mr,
+      batch_no:         form.batch_no,
+      calibration_due:  form.calibration_due || null,
+      total_production: form.total_production ? parseFloat(form.total_production) : null,
+      incharge:         form.incharge,
+      operator:         form.operator,
+      log_rows:         form.rows,
+    }])
+    setSaving(false)
+    if (err) setError(err.message)
+    else { setSaved(true); setForm(emptyForm(dryerType)) }
+  }
+
+  const NI = ({ field, ri, type = 'number' }) => (
+    <td>
+      <input type={type} className="dr-cell-input"
+        placeholder="—"
+        value={form.rows[ri][field]}
+        onChange={e => setRow(ri, field, e.target.value)} />
+    </td>
+  )
+
+  return (
+    <div className="dr-form-wrapper">
+
+      {/* ── Title ── */}
+      <div className="dr-title-bar">
+        <div className="dr-title-company">Shakti Synergetics Pvt. Limited</div>
+        <div className="dr-title-address">Plot No. D-73, Ambad MIDC, Nashik – 422 010</div>
+        <div className="dr-title-main">{label} — LOG SHEET</div>
+      </div>
+
+      <form onSubmit={handleSubmit}>
+
+        {/* ── Meta bar: Date + Shift ── */}
+        <div className="dr-meta-bar">
+          <div className="dr-meta-field">
+            <label className="dr-label">Date</label>
+            <input type="date" className="dr-input"
+              value={form.date} onChange={e => set('date', e.target.value)} />
+          </div>
+          <div className="dr-meta-field">
+            <label className="dr-label">Shift</label>
+            <select className="dr-input" value={form.shift} onChange={e => set('shift', e.target.value)}>
+              <option value="">— Select —</option>
+              <option value="A">Shift A</option>
+              <option value="B">Shift B</option>
+            </select>
+          </div>
+        </div>
+
+        {/* ── Left-side blower fields ── */}
+        <div className="dr-blower-bar">
+          {[
+            { label: 'ID Blower', dp: 'id_blower_dp', mr: 'id_blower_mr' },
+            { label: 'FD Blower', dp: 'fd_blower_dp', mr: 'fd_blower_mr' },
+            { label: 'Chamber',   dp: 'chamber_dp',   mr: 'chamber_mr'   },
+            { label: 'FBD %',     dp: 'fbd_pct_dp',   mr: 'fbd_pct_mr'   },
+          ].map(b => (
+            <div key={b.label} className="dr-blower-card">
+              <div className="dr-blower-title">{b.label}</div>
+              <div className="dr-blower-row">
+                <span className="dr-blower-sub">DP</span>
+                <input className="dr-input dr-input-sm" placeholder="—"
+                  value={form[b.dp]} onChange={e => set(b.dp, e.target.value)} />
+              </div>
+              <div className="dr-blower-row">
+                <span className="dr-blower-sub">MR</span>
+                <input className="dr-input dr-input-sm" placeholder="—"
+                  value={form[b.mr]} onChange={e => set(b.mr, e.target.value)} />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Main Log Table ── */}
+        <div className="dr-table-section">
+          <div className="dr-table-scroll">
+            <table className="dr-table">
+              <thead>
+                <tr className="dr-thead-r1">
+                  <th className="dr-th-time" rowSpan={2}>Time</th>
+                  <th colSpan={3}>Temperature (°C)</th>
+                  <th colSpan={3}>Temp. (°C)</th>
+                  <th rowSpan={2}>Atomizer<br />Freq.</th>
+                  <th rowSpan={2}>Feed<br />F.C.</th>
+                  <th rowSpan={2}>Pressure</th>
+                  <th rowSpan={2}>Pt.<br />Temp</th>
+                  <th rowSpan={2}>Batch<br />No.</th>
+                  <th rowSpan={2}>No. of Bags<br />Per Hour</th>
+                  <th rowSpan={2}>Bag Size<br />By Wt.</th>
+                  <th rowSpan={2}>Kg/Hour<br />Production</th>
+                  <th rowSpan={2}>Colour/<br />ID Freq.<br />Normal</th>
+                  <th rowSpan={2}>Remarks</th>
+                </tr>
+                <tr className="dr-thead-r2">
+                  <th>Inlet</th>
+                  <th>Outlet</th>
+                  <th>Actual</th>
+                  <th>FBD</th>
+                  <th>FBD</th>
+                  <th>Chamber</th>
+                </tr>
+              </thead>
+              <tbody>
+                {TIME_SLOTS.map((slot, i) => (
+                  <tr key={slot} className={i % 2 === 0 ? '' : 'dr-tr-alt'}>
+                    <td className="dr-td-time">{slot}</td>
+                    <NI field="temp_inlet"    ri={i} />
+                    <NI field="temp_outlet"   ri={i} />
+                    <NI field="temp_actual"   ri={i} />
+                    <NI field="temp_fbd1"     ri={i} />
+                    <NI field="temp_fbd2"     ri={i} />
+                    <NI field="temp_chamber"  ri={i} />
+                    <NI field="atomizer_freq" ri={i} />
+                    <NI field="feed_fc"       ri={i} />
+                    <NI field="pressure"      ri={i} />
+                    <NI field="pt_temp"       ri={i} />
+                    <NI field="batch_no"      ri={i} type="text" />
+                    <NI field="bags_per_hr"   ri={i} />
+                    <NI field="bag_size_wt"   ri={i} />
+                    <NI field="kg_per_hr"     ri={i} />
+                    <NI field="colour_normal" ri={i} type="text" />
+                    <NI field="remarks"       ri={i} type="text" />
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* ── Footer fields ── */}
+        <div className="dr-footer-bar">
+          <div className="dr-footer-field">
+            <label className="dr-label">Batch No.</label>
+            <input className="dr-input" placeholder="Batch number"
+              value={form.batch_no} onChange={e => set('batch_no', e.target.value)} />
+          </div>
+          <div className="dr-footer-field">
+            <label className="dr-label">Calibration Due Date</label>
+            <input type="date" className="dr-input"
+              value={form.calibration_due} onChange={e => set('calibration_due', e.target.value)} />
+          </div>
+          <div className="dr-footer-field">
+            <label className="dr-label">Total Production of the Day (kg)</label>
+            <input type="number" className="dr-input" placeholder="0"
+              value={form.total_production} onChange={e => set('total_production', e.target.value)} />
+          </div>
+          <div className="dr-footer-field">
+            <label className="dr-label">Incharge</label>
+            <input className="dr-input" placeholder="Name"
+              value={form.incharge} onChange={e => set('incharge', e.target.value)} />
+          </div>
+          <div className="dr-footer-field">
+            <label className="dr-label">Operator</label>
+            <input className="dr-input" placeholder="Name"
+              value={form.operator} onChange={e => set('operator', e.target.value)} />
+          </div>
+        </div>
+
+        {/* ── Actions ── */}
+        <div className="dr-actions">
+          {error && <div className="dr-error">Error: {error}</div>}
+          {saved  && <div className="dr-success">✓ Saved successfully</div>}
+          <button type="submit" className="dr-save-btn" disabled={saving}>
+            {saving ? 'Saving…' : 'Save Log Sheet'}
+          </button>
+          <button type="button" className="dr-reset-btn"
+            onClick={() => { setForm(emptyForm(dryerType)); setSaved(false); setError('') }}>
+            Reset
+          </button>
+        </div>
+
+      </form>
+    </div>
+  )
+}
+
+export default function DryerSection() {
+  const [activeTab, setActiveTab] = useState('new')
+
+  return (
+    <div className="dr-wrapper">
+      {/* ── Sub-tab bar ── */}
+      <div className="dr-tab-bar">
+        <button
+          type="button"
+          className={`dr-tab-btn ${activeTab === 'new' ? 'dr-tab-active' : ''}`}
+          onClick={() => setActiveTab('new')}
+        >
+          New Dryer
+        </button>
+        <button
+          type="button"
+          className={`dr-tab-btn ${activeTab === 'old' ? 'dr-tab-active' : ''}`}
+          onClick={() => setActiveTab('old')}
+        >
+          Old Dryer
+        </button>
+      </div>
+
+      {/* ── Content ── */}
+      <div className="dr-content">
+        {activeTab === 'new' && <DryerForm dryerType="new" label="New Dryer" />}
+        {activeTab === 'old' && <DryerForm dryerType="old" label="Old Dryer" />}
+      </div>
+    </div>
+  )
+}

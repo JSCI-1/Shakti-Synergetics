@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useMemo } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './ThermpackJobCard.css'
 
@@ -221,6 +221,13 @@ export default function ThermpackJobCard() {
       ? form.rows_10l
       : form.rows_6l
 
+  // Auto-sum Ash/Clinker Wt from both 10L and 6L rows
+  const totalClinkerWt = useMemo(() => {
+    const sum10l = form.rows_10l.reduce((s, r) => s + (parseFloat(r.ash_clinker_wt) || 0), 0)
+    const sum6l  = form.rows_6l.reduce( (s, r) => s + (parseFloat(r.ash_clinker_wt) || 0), 0)
+    return sum10l + sum6l
+  }, [form.rows_10l, form.rows_6l])
+
   const setMotorCell = (mi, key, value) =>
     setMotorForm(prev => ({
       ...prev,
@@ -309,9 +316,7 @@ export default function ThermpackJobCard() {
         ? parseFloat(form.total_consumption)
         : null,
 
-      total_clinker_wt: form.total_clinker_wt
-        ? parseFloat(form.total_clinker_wt)
-        : null,
+      total_clinker_wt: totalClinkerWt || null,
 
       dryer_in_use: form.dryer_in_use,
 
@@ -1377,25 +1382,13 @@ export default function ThermpackJobCard() {
               {/* Total Clinker Weight - NUMBER ONLY */}
 
               <div className="common-field-row">
-
-                <div className="common-field-label">
-                  Total Clinker Weight (kg)
+                <div className="common-field-label">Total Clinker Weight (kg)</div>
+                <div className="clinker-auto-val">
+                  <span className="clinker-auto-num">
+                    {totalClinkerWt % 1 === 0 ? totalClinkerWt : totalClinkerWt.toFixed(2)}
+                  </span>
+                  <span className="clinker-auto-hint">auto-calculated</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={form.total_clinker_wt}
-                  onChange={e =>
-                    setNumeric(
-                      'total_clinker_wt',
-                      e.target.value
-                    )
-                  }
-                />
-
               </div>
 
               {/* Dryer in Use - DROPDOWN */}
