@@ -400,196 +400,62 @@ export default function ThermpackJobCard() {
         )}
 
         {/* ══ SECTION 1: Date + Shift + Operator + Helpers ══ */}
-
         <div className="tjc-section">
+          <div className="op-grid">
 
-          <table className="tjc-table">
+            <div className="op-field">
+              <div className="cell-mini-label">Date / <span className="hi">तारीख</span></div>
+              {form.date && <div className="date-display">{fmtDate(form.date)}</div>}
+              <input type="date" className="tjc-input"
+                value={form.date} onChange={e => set('date', e.target.value)} />
+            </div>
 
-            <thead>
-              <tr>
-                <th>
-                  Date
-                  <br />
-                  <span className="hi">
-                    तारीख
-                  </span>
-                </th>
+            <div className="op-field">
+              <div className="cell-mini-label">Shift / <span className="hi">पाली</span></div>
+              <select className="tjc-input" value={form.shift} onChange={e => set('shift', e.target.value)}>
+                <option value="">— Select —</option>
+                <option value="Day">Day / दिन</option>
+                <option value="Night">Night / रात</option>
+              </select>
+            </div>
 
-                <th>
-                  Shift
-                  <br />
-                  <span className="hi">
-                    पाली
-                  </span>
-                </th>
+            <div className="op-field">
+              <div className="cell-mini-label">Operator / <span className="hi">ऑपरेटर</span></div>
+              <input className="tjc-input" placeholder="Operator"
+                value={form.operator} onChange={e => set('operator', e.target.value)} />
+            </div>
 
-                <th>
-                  Operator
-                  <br />
-                  <span className="hi">
-                    ऑपरेटर
-                  </span>
-                </th>
+            <div className="op-field">
+              <div className="cell-mini-label">Helper 1 / <span className="hi">हेल्पर १</span></div>
+              <input className="tjc-input" placeholder="Helper 1"
+                value={form.helper1} onChange={e => set('helper1', e.target.value)} />
+            </div>
 
-                <th>
-                  Helper 1
-                  <br />
-                  <span className="hi">
-                    हेल्पर १
-                  </span>
-                </th>
+            <div className="op-field">
+              <div className="cell-mini-label">Helper 2 / <span className="hi">हेल्पर २</span></div>
+              <input className="tjc-input" placeholder="Helper 2"
+                value={form.helper2} onChange={e => set('helper2', e.target.value)} />
+            </div>
 
-                <th>
-                  Helper 2
-                  <br />
-                  <span className="hi">
-                    हेल्पर २
-                  </span>
-                </th>
+            <div className="op-field">
+              <div className="cell-mini-label">Helper 3 / <span className="hi">हेल्पर ३</span></div>
+              <input className="tjc-input" placeholder="Helper 3"
+                value={form.helper3} onChange={e => set('helper3', e.target.value)} />
+            </div>
 
-                <th>
-                  Helper 3
-                  <br />
-                  <span className="hi">
-                    हेल्पर ३
-                  </span>
-                </th>
+            <div className="op-field">
+              <div className="cell-mini-label">Time In / <span className="hi">समय प्रवेश</span></div>
+              <input type="time" className="tjc-input"
+                value={form.time_in} onChange={e => set('time_in', e.target.value)} />
+            </div>
 
-                <th>
-                  Time In
-                  <br />
-                  <span className="hi">
-                    समय प्रवेश
-                  </span>
-                </th>
+            <div className="op-field">
+              <div className="cell-mini-label">Time Out / <span className="hi">समय बाहर</span></div>
+              <input type="time" className="tjc-input"
+                value={form.time_out} onChange={e => set('time_out', e.target.value)} />
+            </div>
 
-                <th>
-                  Time Out
-                  <br />
-                  <span className="hi">
-                    समय बाहर
-                  </span>
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              <tr>
-
-                <td className="td-date-cell">
-                  <div className="cell-stack">
-
-                    {form.date && (
-                      <div className="date-display">
-                        {fmtDate(form.date)}
-                      </div>
-                    )}
-
-                    <input
-                      type="date"
-                      className="tjc-input"
-                      value={form.date}
-                      onChange={e =>
-                        set('date', e.target.value)
-                      }
-                    />
-
-                  </div>
-                </td>
-
-                <td>
-                  <select
-                    className="tjc-input"
-                    value={form.shift}
-                    onChange={e =>
-                      set('shift', e.target.value)
-                    }
-                  >
-                    <option value="">
-                      — Select —
-                    </option>
-
-                    <option value="Day">
-                      Day/दिन
-                    </option>
-
-                    <option value="Night">
-                      Night/रात
-                    </option>
-                  </select>
-                </td>
-
-                <td>
-                  <input
-                    className="tjc-input"
-                    placeholder="Operator"
-                    value={form.operator}
-                    onChange={e =>
-                      set('operator', e.target.value)
-                    }
-                  />
-                </td>
-
-                <td>
-                  <input
-                    className="tjc-input"
-                    placeholder="Helper 1"
-                    value={form.helper1}
-                    onChange={e =>
-                      set('helper1', e.target.value)
-                    }
-                  />
-                </td>
-
-                <td>
-                  <input
-                    className="tjc-input"
-                    placeholder="Helper 2"
-                    value={form.helper2}
-                    onChange={e =>
-                      set('helper2', e.target.value)
-                    }
-                  />
-                </td>
-
-                <td>
-                  <input
-                    className="tjc-input"
-                    placeholder="Helper 3"
-                    value={form.helper3}
-                    onChange={e =>
-                      set('helper3', e.target.value)
-                    }
-                  />
-                </td>
-
-                <td>
-                  <input
-                    type="time"
-                    className="tjc-input"
-                    value={form.time_in}
-                    onChange={e =>
-                      set('time_in', e.target.value)
-                    }
-                  />
-                </td>
-
-                <td>
-                  <input
-                    type="time"
-                    className="tjc-input"
-                    value={form.time_out}
-                    onChange={e =>
-                      set('time_out', e.target.value)
-                    }
-                  />
-                </td>
-
-              </tr>
-            </tbody>
-
-          </table>
-
+          </div>
         </div>
 
         {/* ══ SECTION 2: Stock Received ══ */}

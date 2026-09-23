@@ -145,7 +145,27 @@
 
 
 /* ════════════════════
-   OPERATOR TABLE
+   OPERATOR GRID (replaces old table — works on all screens)
+   ════════════════════ */
+
+.op-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  padding: 12px 14px;
+  gap: 10px 14px;
+}
+
+.op-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 130px;
+}
+
+/* ════════════════════
+   OPERATOR TABLE (kept for legacy — hidden on mobile)
    ════════════════════ */
 
 .tjc-table {
@@ -1240,9 +1260,11 @@
     font-size: 12px;
   }
 
-  .td-date-cell {
-    width: 100% !important;
-  }
+  /* ── Operator grid — single column on mobile ── */
+  .op-grid { flex-direction: column; padding: 10px; gap: 8px; }
+  .op-field { min-width: 100%; }
+
+  .td-date-cell { width: 100% !important; }
 
 
   /* ════════════════════════════════════
@@ -1440,19 +1462,16 @@
 
   /* ── Common Entries ── */
 
-  .common-entries-grid {
-    flex-direction: column;
-  }
+  .common-entries-grid { flex-direction: column; }
+  .common-entry-field { border-right: none; border-bottom: 1px solid #e0dbd4; }
+  .common-entry-field:last-child { border-bottom: none; }
 
-  .common-entry-field {
-    border-right: none;
-
-    border-bottom: 1px solid #e0dbd4;
-  }
-
-  .common-entry-field:last-child {
-    border-bottom: none;
-  }
+  /* ── Summary two-column → single column on mobile ── */
+  .common-two-col { flex-direction: column; }
+  .common-col { border-right: none; border-bottom: 1px solid #d8d0c8; }
+  .common-col:last-child { border-bottom: none; }
+  .common-field-label { width: 150px; min-width: 150px; font-size: 10px; padding: 5px 8px; }
+  .common-field-row .tjc-input { font-size: 11px; padding: 5px 8px; }
 
 
   /* ── Fuel Total ── */
