@@ -328,7 +328,7 @@ export default function SlurrySection() {
                   <th>Flow Rate<br /><small>(L/Sec)</small></th>
                   <th>Rated Time</th>
                   <th>Current Amp</th>
-                  <th>Zirconia Beads (kg)</th>
+                  <th>Zirconox/Zircosil Beads (kg)</th>
                 </tr>
               </thead>
               <tbody>

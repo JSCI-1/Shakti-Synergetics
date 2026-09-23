@@ -113,8 +113,6 @@ function DryerForm({ dryerType, label }) {
 
       {/* ── Title ── */}
       <div className="dr-title-bar">
-        <div className="dr-title-company">Shakti Synergetics Pvt. Limited</div>
-        <div className="dr-title-address">Plot No. D-73, Ambad MIDC, Nashik – 422 010</div>
         <div className="dr-title-main">{label} — LOG SHEET</div>
       </div>
 
@@ -147,9 +145,9 @@ function DryerForm({ dryerType, label }) {
                   <th colSpan={3}>Temperature Deg. Cent.</th>
                   <th colSpan={3}>Temperature Deg. Cent.</th>
                   <th rowSpan={2}>Atomizer<br />Freq.</th>
-                  <th rowSpan={2}>Feed<br />F.C.</th>
-                  <th rowSpan={2}>Pressure</th>
-                  <th rowSpan={2}>Pt.<br />Temp</th>
+                  <th rowSpan={2}>Feed<br />F.</th>
+                  <th rowSpan={2}>C.Pressure</th>
+                  <th rowSpan={2}>Pr.<br />Temp</th>
                   <th rowSpan={2}>Batch<br />No.</th>
                   <th rowSpan={2}>No. of Bag<br />Per Hours</th>
                   <th rowSpan={2}>Bag Size<br />By Wt.</th>
@@ -162,7 +160,7 @@ function DryerForm({ dryerType, label }) {
                   <th>Inlet</th>
                   <th>Outlet</th>
                   <th>Actual</th>
-                  <th>FBD</th>
+                  <th>IFBD</th>
                   <th>FBD</th>
                   <th>Chamber</th>
                 </tr>
