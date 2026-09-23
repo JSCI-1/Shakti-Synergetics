@@ -12,6 +12,7 @@
   width: 100%;
 }
 
+
 /* ── Title bar ── */
 .tjc-title-bar {
   background: #1a1a1a;
@@ -24,15 +25,28 @@
   font-weight: 700;
   flex-wrap: wrap;
 }
-.tjc-title-en     { color: #f0c890; }
-.tjc-title-divider{ color: #555; }
-.tjc-title-hi     { color: #f0c890; font-weight: 400; font-size: 15px; }
+
+.tjc-title-en      { color: #f0c890; }
+.tjc-title-divider { color: #555; }
+.tjc-title-hi      {
+  color: #f0c890;
+  font-weight: 400;
+  font-size: 15px;
+}
+
 
 /* ── Form ── */
-.tjc-form { display: flex; flex-direction: column; }
+.tjc-form {
+  display: flex;
+  flex-direction: column;
+}
+
 
 /* ── Sections ── */
-.tjc-section { border-bottom: 1px solid #e0dbd4; }
+.tjc-section {
+  border-bottom: 1px solid #e0dbd4;
+}
+
 .tjc-remarks-section {
   padding: 14px 16px;
   display: flex;
@@ -40,12 +54,35 @@
   gap: 6px;
 }
 
+
 /* ── Bilingual labels ── */
-.bi-label { display: flex; flex-direction: column; gap: 2px; }
-.bi-en    { font-size: 12px; font-weight: 600; color: #333; }
-.bi-hi    { font-size: 11px; color: #888; }
-.req      { color: #c0392b; }
-.hi       { font-size: 10px; color: #999; font-weight: 400; }
+.bi-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.bi-en {
+  font-size: 12px;
+  font-weight: 600;
+  color: #333;
+}
+
+.bi-hi {
+  font-size: 11px;
+  color: #888;
+}
+
+.req {
+  color: #c0392b;
+}
+
+.hi {
+  font-size: 10px;
+  color: #999;
+  font-weight: 400;
+}
+
 
 /* ── Generic inputs ── */
 .tjc-input {
@@ -60,7 +97,12 @@
   box-sizing: border-box;
   min-width: 0;
 }
-.tjc-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.tjc-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
 
 .tjc-textarea {
   width: 100%;
@@ -72,28 +114,53 @@
   background: #fafaf8;
   box-sizing: border-box;
 }
-.tjc-textarea:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.tjc-textarea:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
+
 
 /* ── Cell helpers ── */
-.cell-stack { display: flex; flex-direction: column; }
-.cell-mini-label { font-size: 11px; font-weight: 600; color: #555; margin-bottom: 3px; }
-.mt6 { margin-top: 6px; }
-.mt8 { margin-top: 8px; }
+.cell-stack {
+  display: flex;
+  flex-direction: column;
+}
+
+.cell-mini-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 3px;
+}
+
+.mt6 {
+  margin-top: 6px;
+}
+
+.mt8 {
+  margin-top: 8px;
+}
+
 
 /* ════════════════════
    OPERATOR TABLE
    ════════════════════ */
+
 .tjc-table {
   width: 100%;
   border-collapse: collapse;
   table-layout: fixed;
 }
+
 .tjc-table th,
 .tjc-table td {
   border: 1px solid #d8d0c8;
   padding: 8px 10px;
   vertical-align: top;
 }
+
 .tjc-table th {
   background: #f5f0ea;
   font-size: 12px;
@@ -102,7 +169,11 @@
   text-align: center;
   line-height: 1.5;
 }
-.td-date-cell { width: 180px; }
+
+.td-date-cell {
+  width: 180px;
+}
+
 .tjc-table td.row-label {
   font-weight: 600;
   background: #faf7f3;
@@ -111,9 +182,11 @@
   width: 140px;
 }
 
+
 /* ════════════════════
-   STOCK RECEIVED — flex grid (works on all screens)
+   STOCK RECEIVED — flex grid
    ════════════════════ */
+
 .stock-header {
   background: #f5f0ea;
   padding: 8px 14px;
@@ -133,10 +206,17 @@
   align-items: stretch;
   border-bottom: 1px solid #e8e2da;
 }
-.stock-row:last-child { border-bottom: none; }
+
+.stock-row:last-child {
+  border-bottom: none;
+}
+
 
 /* header row with column titles */
-.stock-row-header { background: #f5f0ea; }
+.stock-row-header {
+  background: #f5f0ea;
+}
+
 .stock-col-head {
   font-size: 11px;
   font-weight: 700;
@@ -168,504 +248,1634 @@
   justify-content: center;
   min-width: 0;
 }
-.stock-field:last-child { border-right: none; }
 
-/* ════════════════════
-   HOURLY LOG TABLE — sticky header + time column
-   ════════════════════ */
-.tjc-log-section { 
-  overflow: hidden;
-  position: relative;
+.stock-field:last-child {
+  border-right: none;
 }
-.tjc-log-scroll  { 
-  overflow-x: auto; 
+
+
+/* ════════════════════════════════════
+   HOURLY LOG TABLE
+   Responsive — Laptop + Tablet + Mobile
+   ════════════════════════════════════ */
+
+.tjc-log-section {
+  border-bottom: 1px solid #e0dbd4;
+}
+
+
+/* ── Scroll container ── */
+
+.tjc-log-scroll {
+  width: 100%;
+  overflow-x: auto;
   overflow-y: auto;
   max-height: 600px;
-  -webkit-overflow-scrolling: touch;
   position: relative;
+  isolation: isolate;
+
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
 }
 
+
+/* ── Main table ── */
+
 .tjc-log-table {
-  border-collapse: collapse;
-  min-width: 860px;
-  width: 100%;
-  position: relative;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  /*
+     Desktop:
+     table can use available width.
+
+     Mobile:
+     table remains a real table and
+     horizontal scrolling is enabled.
+  */
+  width: max-content;
+  min-width: 100%;
 }
+
+
+/* ── Table cells ── */
+
 .tjc-log-table th,
 .tjc-log-table td {
-  border: 1px solid #d8d0c8;
-  padding: 4px 5px;
+  border-right: 1px solid #d8d0c8;
+  border-bottom: 1px solid #d8d0c8;
+
+  padding: 5px 6px;
+
   text-align: center;
+  vertical-align: middle;
+
+  box-sizing: border-box;
+}
+
+
+/* Left border */
+.tjc-log-table th:first-child,
+.tjc-log-table td:first-child {
+  border-left: 1px solid #d8d0c8;
+}
+
+
+/* ════════════════════════════════════
+   HOURLY LOG HEADER
+   IMPORTANT:
+   The header rows are sticky individually so that
+   the Time header can also remain horizontally frozen.
+   The JSX uses a 2-row header with rowSpan/colSpan.
+   ════════════════════════════════════ */
+
+/* ── First header row ── */
+.tjc-log-table thead tr:first-child th {
+  position: sticky;
+  top: 0;
+
+  background: #f5f0ea;
+
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+
+  line-height: 1.4;
+  white-space: nowrap;
+
+  height: 48px;
+  min-height: 48px;
+
+  box-sizing: border-box;
+
+  z-index: 10;
+}
+
+
+/* ── Second header row ── */
+.tjc-log-table thead tr:last-child th {
+  position: sticky;
+  top: 48px;
+
+  background: #f5f0ea;
+
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+
+  line-height: 1.4;
+  white-space: nowrap;
+
+  height: 30px;
+  min-height: 30px;
+
+  box-sizing: border-box;
+
+  z-index: 10;
+}
+
+
+/* ════════════════════════════════════
+   FROZEN TIME COLUMN
+   ════════════════════════════════════ */
+
+/*
+   The Time column is frozen horizontally.
+   It must NOT be controlled by the <thead>
+   sticky positioning.
+*/
+
+/* All Time cells */
+.tjc-log-table .col-time {
+  position: sticky;
+  left: 0;
+
+  width: 65px;
+  min-width: 65px;
+
+  white-space: nowrap;
+
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.10);
+}
+
+
+/* Time header:
+   - top: 0 keeps it at the top
+   - left: 0 keeps it horizontally frozen
+   - rowSpan=2 means it covers both header rows
+*/
+.tjc-log-table thead th.col-time {
+  position: sticky;
+
+  top: 0;
+  left: 0;
+
+  width: 65px;
+  min-width: 65px;
+
+  height: 78px;
+  min-height: 78px;
+
+  background: #f5f0ea;
+
+  z-index: 30;
+
   vertical-align: middle;
 }
 
-/* Sticky header — row 1 */
-.tjc-log-table thead tr:first-child th {
-  background: #f5f0ea;
-  font-size: 11px;
-  font-weight: 700;
-  color: #444;
-  line-height: 1.4;
-  white-space: nowrap;
-  position: sticky;
-  top: 0;
-  z-index: 3;
-}
 
-/* Sticky header — row 2 sits below row 1 */
-.tjc-log-table thead tr:last-child th {
-  background: #f5f0ea;
-  font-size: 11px;
-  font-weight: 700;
-  color: #444;
-  line-height: 1.4;
-  white-space: nowrap;
+/* Time column in body */
+.tjc-log-table tbody td.col-time {
   position: sticky;
-  top: 38px;   /* height of first header row */
-  z-index: 3;
-}
 
-/* Sticky Time column (first cell in header + body rows) */
-.tjc-log-table thead th:first-child,
-.tjc-log-table tbody td:first-child {
-  position: sticky;
   left: 0;
-  z-index: 2;
-}
 
-/* Header Time cell gets higher z-index */
-.tjc-log-table thead th:first-child {
-  z-index: 4;
-}
+  width: 65px;
+  min-width: 65px;
 
-.tjc-log-table tbody tr:nth-child(even) { background: #fafaf8; }
-.tjc-log-table tbody tr:hover           { background: #fdf3ee; }
+  background: #fdf8f4;
 
-.time-cell {
+  z-index: 20;
+
   font-weight: 700;
   color: #b85c2c;
-  white-space: nowrap;
-  background: #fdf8f4 !important;
+
   font-size: 12px;
+
+  white-space: nowrap;
+
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.10);
 }
+
+
+/* Saved Time cell */
+.tjc-log-table tbody tr.row-saved td.col-time {
+  background: #f0fdf0 !important;
+}
+
+
+/*
+   The Time header must stay above:
+   1. first-row header cells
+   2. second-row header cells
+   3. body cells
+*/
+.tjc-log-table thead tr:first-child th.col-time {
+  z-index: 40;
+}
+
+
+/* Keep second-row headers below the frozen Time header */
+.tjc-log-table thead tr:last-child th {
+  z-index: 10;
+}
+
+
+/* Ensure the frozen Time column has an opaque background */
+.tjc-log-table thead th.col-time,
+.tjc-log-table tbody td.col-time {
+  background-clip: padding-box;
+}
+
+
+/* ════════════════════════════════════
+   NORMAL LOG COLUMNS
+   ════════════════════════════════════ */
+
+
+.tjc-log-table th:not(.col-time),
+.tjc-log-table td:not(.col-time) {
+  min-width: 85px;
+}
+
+
+/* Slightly wider columns */
+
+.tjc-log-table th:nth-child(2),
+.tjc-log-table td:nth-child(2) {
+  min-width: 95px;
+}
+
+.tjc-log-table th:nth-child(3),
+.tjc-log-table td:nth-child(3) {
+  min-width: 95px;
+}
+
+.tjc-log-table th:nth-child(4),
+.tjc-log-table td:nth-child(4) {
+  min-width: 95px;
+}
+
+
+/* ════════════════════════════════════
+   LOG INPUT
+   ════════════════════════════════════ */
 
 .tjc-log-input {
   width: 52px;
+
   border: 1px solid #ddd;
   border-radius: 3px;
+
   padding: 3px 2px;
+
   font-size: 12px;
+
   text-align: center;
+
   background: transparent;
   color: #2d2d2d;
+
+  box-sizing: border-box;
+
   -moz-appearance: textfield;
 }
-.tjc-log-input::-webkit-outer-spin-button,
-.tjc-log-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-.tjc-log-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
 
-/* Total Fuel bar — outside scroll, always visible */
-.tjc-total-bar {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  padding: 10px 16px;
-  background: #fdf3ee;
-  border-bottom: 1px solid #e8c5a8;
-  flex-wrap: wrap;
+.tjc-log-input::-webkit-outer-spin-button,
+.tjc-log-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
-.tjc-total-bar-label {
-  font-size: 12px;
+
+.tjc-log-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
+
+
+/* ════════════════════════════════════
+   DATE DISPLAY
+   ════════════════════════════════════ */
+
+.date-display {
+  font-size: 13px;
   font-weight: 700;
   color: #b85c2c;
-  flex: 1;
-  min-width: 200px;
+  margin-bottom: 4px;
+  letter-spacing: 0.3px;
 }
-.tjc-total-item {
+
+
+/* ════════════════════════════════════
+   COMMON ENTRIES SECTION
+   ════════════════════════════════════ */
+
+.common-entries-grid {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e0dbd4;
+}
+
+.common-entry-field {
+  flex: 1;
+  padding: 12px 14px;
+  border-right: 1px solid #d8d0c8;
+}
+
+.common-entry-field:last-child { border-right: none; }
+
+/* ── Two-column physical form fields ── */
+.common-two-col {
+  display: flex;
+  border-bottom: 1px solid #e0dbd4;
+}
+.common-col {
+  flex: 1;
+  border-right: 1px solid #d8d0c8;
+}
+.common-col:last-child { border-right: none; }
+
+.common-field-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid #e8e2da;
+  min-height: 36px;
+}
+.common-field-row:last-child { border-bottom: none; }
+
+.common-field-label {
+  width: 180px;
+  min-width: 180px;
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  padding: 6px 10px;
+  background: #faf7f3;
+  border-right: 1px solid #e0dbd4;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+}
+
+.common-field-row .tjc-input {
+  flex: 1;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.common-field-row .tjc-input:focus {
+  background: #fff8f4;
+  outline: none;
+  box-shadow: none;
+}
+
+/* ── Outlet Set Temp °C ── */
+.input-with-unit {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.input-with-unit .tjc-input {
+  flex: 0 1 auto;
+  width: 70px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 4px 6px 10px;
+  font-size: 12px;
+}
+
+.input-unit {
+  font-size: 12px;
+  color: #555;
+  font-weight: 600;
+  white-space: nowrap;
+  margin-left: 2px;
+}
+
+/* ════════════════════════════════════
+   FUEL TOTAL BAR
+   ════════════════════════════════════ */
+
+.fuel-total-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: #fdf3ee;
+  flex-wrap: wrap;
+}
+
+.fuel-total-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: #b85c2c;
+  white-space: nowrap;
+  margin-right: 6px;
+}
+
+.fuel-total-items {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fuel-total-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
   background: #fff;
   border: 1px solid #e8c5a8;
   border-radius: 6px;
-  padding: 6px 14px;
+
+  padding: 5px 12px;
+
+  min-width: 60px;
 }
-.tjc-total-item-label { font-size: 11px; color: #888; }
-.tjc-total-item-val {
+
+.fuel-total-item-label {
+  font-size: 10px;
+  color: #999;
+  margin-bottom: 2px;
+}
+
+.fuel-total-item-val {
+  font-size: 15px;
+  font-weight: 700;
+  color: #b85c2c;
+}
+
+.fuel-total-plus,
+.fuel-total-equals {
   font-size: 16px;
   font-weight: 700;
   color: #b85c2c;
-  min-width: 32px;
-  text-align: right;
 }
 
-.total-input {
-  width: 70px;
-  font-weight: 700;
-  background: #fdf3ee !important;
-  border-color: #e8c5a8 !important;
+.fuel-total-result {
+  background: #b85c2c;
+  border-color: #9e4c22;
 }
 
-/* ── Timestamp column ── */
-.ts-cell { white-space: nowrap; min-width: 72px; text-align: center; }
+.fuel-total-result .fuel-total-item-label {
+  color: #f0c890;
+}
+
+.fuel-total-result .fuel-total-item-val {
+  color: #fff;
+  font-size: 16px;
+}
+
+
+/* ════════════════════════════════════
+   TIMESTAMP COLUMN
+   ════════════════════════════════════ */
+
+.ts-cell {
+  white-space: nowrap;
+  min-width: 90px;
+  text-align: center;
+}
+
 .ts-badge {
   display: inline-block;
+
   background: #e8f5e9;
   color: #2e7d32;
+
   font-size: 11px;
   font-weight: 600;
-  padding: 2px 6px;
-  border-radius: 4px;
-  border: 1px solid #a5d6a7;
-}
-.ts-empty { color: #ccc; font-size: 12px; }
 
-.ts-save-cell { text-align: center; padding: 2px 4px; }
+  padding: 2px 6px;
+
+  border-radius: 4px;
+
+  border: 1px solid #a5d6a7;
+
+  white-space: nowrap;
+}
+
+.ts-empty {
+  color: #ccc;
+  font-size: 12px;
+}
+
+
+/* ── Save cell ── */
+
+.ts-save-cell {
+  text-align: center;
+  padding: 2px 4px;
+  min-width: 65px;
+}
+
 .row-save-btn {
   background: transparent;
+
   border: 1px solid #ccc;
   border-radius: 4px;
+
   padding: 3px 7px;
+
   font-size: 13px;
+
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+
   line-height: 1;
 }
-.row-save-btn:hover    { background: #fdf3ee; border-color: #b85c2c; }
-.row-saved             { background: #f6fff6 !important; }
-.row-saved .row-save-btn { border-color: #4caf50; color: #2e7d32; font-weight: 700; }
 
-/* ── Actions ── */
+.row-save-btn:hover {
+  background: #fdf3ee;
+  border-color: #b85c2c;
+}
+
+.row-saved {
+  background: #f6fff6 !important;
+}
+
+.row-saved .row-save-btn {
+  border-color: #4caf50;
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+
+/* ════════════════════════════════════
+   ACTIONS
+   ════════════════════════════════════ */
+
 .tjc-actions {
   padding: 14px 16px;
+
   display: flex;
   flex-wrap: wrap;
+
   align-items: center;
+
   gap: 10px;
+
   border-top: 1px solid #e0dbd4;
 }
+
 .tjc-save-btn {
   background: #b85c2c;
   color: #fff;
+
   border: none;
+
   padding: 10px 24px;
+
   border-radius: 6px;
+
   font-size: 13px;
   font-weight: 700;
+
   cursor: pointer;
+
   transition: background 0.2s;
 }
-.tjc-save-btn:hover:not(:disabled) { background: #9e4c22; }
-.tjc-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.tjc-save-btn:hover:not(:disabled) {
+  background: #9e4c22;
+}
+
+.tjc-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 
 .tjc-reset-btn {
   background: transparent;
   color: #888;
+
   border: 1px solid #ccc;
+
   padding: 10px 18px;
+
   border-radius: 6px;
+
   font-size: 13px;
+
   cursor: pointer;
 }
-.tjc-reset-btn:hover { border-color: #b85c2c; color: #b85c2c; }
 
-.tjc-error   { color: #c0392b; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
-.tjc-success { color: #27ae60; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+.tjc-reset-btn:hover {
+  border-color: #b85c2c;
+  color: #b85c2c;
+}
 
-/* ── Supabase warning ── */
+
+.tjc-error {
+  color: #c0392b;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1 1 100%;
+}
+
+.tjc-success {
+  color: #27ae60;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1 1 100%;
+}
+
+
+/* ════════════════════════════════════
+   SUPABASE WARNING
+   ════════════════════════════════════ */
+
 .tjc-config-warning {
   background: #fff8e1;
+
   border: 1px solid #f9c74f;
   border-radius: 4px;
+
   padding: 10px 14px;
+
   font-size: 12px;
   color: #7a5c00;
+
   line-height: 1.6;
+
   margin: 12px 16px 0;
 }
+
 .tjc-config-warning code {
   background: #fde68a;
+
   padding: 1px 5px;
+
   border-radius: 3px;
+
   font-family: monospace;
 }
+
 
 /* ════════════════════════════════════
    COLLAPSIBLE — Running Motor Amp
    ════════════════════════════════════ */
-.sc-accordion { border-top: 2px solid #b85c2c; }
+
+.sc-accordion {
+  border-top: 2px solid #b85c2c;
+}
 
 .sc-accordion-header {
   width: 100%;
+
   background: #fdf8f4;
+
   border: none;
+
   padding: 14px 20px;
+
   display: flex;
+
   justify-content: space-between;
   align-items: center;
+
   cursor: pointer;
+
   transition: background 0.15s;
+
   text-align: left;
 }
-.sc-accordion-header:hover { background: #fdf0e6; }
-.sc-accordion-title    { font-size: 14px; font-weight: 700; color: #333; }
-.sc-accordion-title-hi { font-size: 12px; font-weight: 400; color: #888; }
-.sc-accordion-icon     { font-size: 13px; color: #b85c2c; flex-shrink: 0; }
 
-.sc-form { display: flex; flex-direction: column; gap: 0; border-top: 1px solid #e0dbd4; }
+.sc-accordion-header:hover {
+  background: #fdf0e6;
+}
+
+.sc-accordion-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #333;
+}
+
+.sc-accordion-title-hi {
+  font-size: 12px;
+  font-weight: 400;
+  color: #888;
+}
+
+.sc-accordion-icon {
+  font-size: 13px;
+  color: #b85c2c;
+  flex-shrink: 0;
+}
+
+
+.sc-form {
+  display: flex;
+  flex-direction: column;
+
+  gap: 0;
+
+  border-top: 1px solid #e0dbd4;
+}
 
 .sc-meta-row {
   display: flex;
+
   gap: 16px;
+
   padding: 16px 16px 12px;
+
   flex-wrap: wrap;
+
   border-bottom: 1px solid #e0dbd4;
+
   background: #fafaf8;
 }
-.sc-meta-field { display: flex; flex-direction: column; gap: 5px; min-width: 120px; }
-.sc-meta-wide  { flex: 1; min-width: 180px; }
 
-.sc-table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sc-meta-field {
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+
+  min-width: 120px;
+}
+
+.sc-meta-wide {
+  flex: 1;
+  min-width: 180px;
+}
+
+
+.sc-table-scroll {
+  overflow-x: auto;
+
+  -webkit-overflow-scrolling: touch;
+}
+
 
 .sc-table {
   border-collapse: collapse;
+
   min-width: 1000px;
+
   width: 100%;
+
   font-size: 11px;
 }
+
 .sc-table th,
 .sc-table td {
   border: 1px solid #d8d0c8;
+
   padding: 3px 4px;
+
   text-align: center;
   vertical-align: middle;
+
   white-space: nowrap;
 }
+
 .sc-table thead th {
   background: #f5f0ea;
+
   font-size: 11px;
   font-weight: 700;
+
   color: #444;
+
   line-height: 1.4;
 }
-.sc-sr         { font-weight: 700; width: 26px; background: #faf7f3; }
-.sc-motor-name { text-align: left; font-weight: 600; min-width: 120px; background: #faf7f3; padding: 4px 8px; font-size: 11px; }
-.sc-hp         { font-weight: 700; width: 32px; background: #faf7f3; }
+
+.sc-sr {
+  font-weight: 700;
+  width: 26px;
+  background: #faf7f3;
+}
+
+.sc-motor-name {
+  text-align: left;
+
+  font-weight: 600;
+
+  min-width: 120px;
+
+  background: #faf7f3;
+
+  padding: 4px 8px;
+
+  font-size: 11px;
+}
+
+.sc-hp {
+  font-weight: 700;
+  width: 32px;
+  background: #faf7f3;
+}
+
 
 .sc-table tbody tr:nth-child(4n+1),
-.sc-table tbody tr:nth-child(4n+2) { background: #fff; }
-.sc-table tbody tr:nth-child(4n+3),
-.sc-table tbody tr:nth-child(4n+4) { background: #fafaf8; }
+.sc-table tbody tr:nth-child(4n+2) {
+  background: #fff;
+}
 
-.sc-cell      { padding: 2px; }
-.sc-stop-cell { background: #f9f5f2; }
+.sc-table tbody tr:nth-child(4n+3),
+.sc-table tbody tr:nth-child(4n+4) {
+  background: #fafaf8;
+}
+
+
+.sc-cell {
+  padding: 2px;
+}
+
+.sc-stop-cell {
+  background: #f9f5f2;
+}
+
 
 .sc-input {
   width: 38px;
+
   border: 1px solid #ddd;
   border-radius: 2px;
+
   padding: 2px;
+
   font-size: 11px;
+
   text-align: center;
+
   background: transparent;
+
   -moz-appearance: textfield;
 }
+
 .sc-input::-webkit-outer-spin-button,
-.sc-input::-webkit-inner-spin-button { -webkit-appearance: none; }
-.sc-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
+.sc-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.sc-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
+
 
 .sc-stop-select {
   width: 50px;
+
   border: 1px solid #ddd;
   border-radius: 2px;
+
   padding: 1px 2px;
+
   font-size: 10px;
+
   background: transparent;
+
   cursor: pointer;
 }
-.sc-stop-select:focus { outline: none; border-color: #b85c2c; }
 
-.sc-bottom { padding: 14px 16px 0; display: flex; flex-direction: column; gap: 12px; }
-.sc-remark-field { display: flex; flex-direction: column; gap: 5px; }
-.sc-actions { padding: 0; border-top: none; }
+.sc-stop-select:focus {
+  outline: none;
+  border-color: #b85c2c;
+}
+
+
+.sc-bottom {
+  padding: 14px 16px 0;
+
+  display: flex;
+  flex-direction: column;
+
+  gap: 12px;
+}
+
+.sc-remark-field {
+  display: flex;
+  flex-direction: column;
+
+  gap: 5px;
+}
+
+.sc-actions {
+  padding: 0;
+  border-top: none;
+}
 
 
 /* ════════════════════════════════════
-   MOBILE  (≤ 640px)
+   MOBILE — ≤ 640px
    ════════════════════════════════════ */
+
 @media (max-width: 640px) {
 
-  /* Title */
-  .tjc-title-bar { font-size: 14px; padding: 10px 12px; gap: 8px; }
-  .tjc-title-hi  { font-size: 13px; }
+  /* ── Title ── */
 
-  /* ── Operator table only — stack on mobile ── */
+  .tjc-title-bar {
+    font-size: 14px;
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .tjc-title-hi {
+    font-size: 13px;
+  }
+
+
+  /* ════════════════════════════════════
+     OPERATOR TABLE
+     Stack on mobile
+     ════════════════════════════════════ */
+
   .tjc-table,
   .tjc-table thead,
   .tjc-table tbody,
   .tjc-table tfoot,
   .tjc-table tr,
   .tjc-table th,
-  .tjc-table td { display: block; width: 100% !important; }
+  .tjc-table td {
+    display: block;
+    width: 100% !important;
+  }
 
-  .tjc-table thead { display: none; }
+  .tjc-table thead {
+    display: none;
+  }
 
   .tjc-table tr {
     border: 1px solid #d8d0c8;
+
     border-radius: 6px;
+
     margin: 8px;
+
     padding: 8px;
+
     background: #fff;
+
     width: calc(100% - 16px) !important;
   }
+
   .tjc-table td {
     border: none;
+
     border-bottom: 1px solid #f0ede8;
+
     padding: 6px 4px;
   }
-  .tjc-table td:last-child { border-bottom: none; }
+
+  .tjc-table td:last-child {
+    border-bottom: none;
+  }
+
   .tjc-table td.row-label {
     width: 100% !important;
+
     background: #f5f0ea;
+
     border-radius: 4px 4px 0 0;
+
     padding: 6px 8px;
+
     font-size: 12px;
   }
-  .td-date-cell { width: 100% !important; }
 
-  /* ── Stock grid — stack on mobile ── */
-  /* hide column header row on mobile — labels shown inline */
-  .stock-row-header { display: none; }
+  .td-date-cell {
+    width: 100% !important;
+  }
+
+
+  /* ════════════════════════════════════
+     HOURLY LOG — MOBILE
+     ════════════════════════════════════ */
+
+  /*
+     IMPORTANT:
+     The Hourly Log is NOT converted
+     into display:block.
+
+     It remains a real table.
+
+     The user can swipe horizontally
+     to view all columns.
+  */
+
+  .tjc-log-scroll {
+    width: 100%;
+
+    overflow-x: auto;
+    overflow-y: auto;
+
+    max-height: 70vh;
+
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tjc-log-table {
+    width: max-content;
+
+    /*
+       Keep enough width so the
+       columns do not become cramped.
+    */
+    min-width: 1050px;
+  }
+
+  .tjc-log-table th,
+  .tjc-log-table td {
+    padding: 4px 5px;
+
+    font-size: 10px;
+  }
+
+
+  /* Mobile Time column */
+
+  .tjc-log-table .col-time {
+    width: 58px;
+    min-width: 58px;
+  }
+
+
+  /* Mobile inputs */
+
+  .tjc-log-input {
+    width: 48px;
+
+    font-size: 11px;
+  }
+
+  .tjc-log-time {
+    width: 70px !important;
+
+    font-size: 10px !important;
+  }
+
+
+  /*
+     Mobile Hourly Log header
+
+     Keep the two header rows individually sticky so
+     horizontal scrolling does NOT move the Time column.
+  */
+
+  .tjc-log-table thead tr:first-child th {
+    position: sticky;
+    top: 0;
+
+    height: 44px;
+    min-height: 44px;
+
+    font-size: 10px;
+
+    background: #f5f0ea;
+    z-index: 10;
+  }
+
+  .tjc-log-table thead tr:last-child th {
+    position: sticky;
+    top: 44px;
+
+    height: 28px;
+    min-height: 28px;
+
+    font-size: 10px;
+
+    background: #f5f0ea;
+    z-index: 10;
+  }
+
+
+  /*
+     Mobile Time header:
+     it is rowSpan=2, so it covers the
+     complete 44px + 28px header area.
+  */
+  .tjc-log-table thead tr:first-child th.col-time {
+    position: sticky;
+
+    top: 0;
+    left: 0;
+
+    width: 58px;
+    min-width: 58px;
+
+    height: 72px;
+    min-height: 72px;
+
+    background: #f5f0ea;
+
+    z-index: 40;
+  }
+
+
+  /*
+     Mobile Time body cells remain frozen
+     while all other columns scroll horizontally.
+  */
+  .tjc-log-table tbody td.col-time {
+    position: sticky;
+
+    left: 0;
+
+    width: 58px;
+    min-width: 58px;
+
+    background: #fdf8f4;
+
+    z-index: 20;
+
+    box-shadow: 2px 0 4px rgba(0, 0, 0, 0.10);
+  }
+
+
+/* ── Stock grid — stack on mobile ── */
+
+  .stock-row-header {
+    display: none;
+  }
 
   .stock-row {
     flex-direction: column;
+
     align-items: stretch;
+
     border: 1px solid #d8d0c8;
+
     border-radius: 6px;
+
     margin: 8px;
+
     overflow: hidden;
   }
-  .stock-row:last-child { border-bottom: 1px solid #d8d0c8; }
+
+  .stock-row:last-child {
+    border-bottom: 1px solid #d8d0c8;
+  }
 
   .stock-label {
     width: 100%;
+
     border-right: none;
+
     border-bottom: 1px solid #d8d0c8;
+
     font-size: 13px;
+
     padding: 8px 12px;
   }
 
   .stock-field {
     border-right: none;
+
     border-bottom: 1px solid #e8e2da;
+
     padding: 8px 12px;
   }
-  .stock-field:last-child { border-bottom: none; }
 
-  /* Remarks */
-  .tjc-remarks-section { padding: 10px; }
+  .stock-field:last-child {
+    border-bottom: none;
+  }
 
-  /* Actions */
-  .tjc-actions { padding: 12px 10px; gap: 8px; }
-  .tjc-save-btn  { flex: 1; text-align: center; padding: 12px 10px; }
-  .tjc-reset-btn { flex: 1; text-align: center; padding: 12px 10px; }
 
-  .tjc-config-warning { margin: 8px 10px 0; font-size: 11px; }
+  /* ── Common Entries ── */
 
-  /* SC Accordion */
-  .sc-accordion-header { padding: 12px 14px; }
-  .sc-accordion-title  { font-size: 13px; }
-  .sc-meta-row  { flex-direction: column; padding: 12px 10px; gap: 10px; }
-  .sc-meta-field{ min-width: 100%; }
-  .sc-bottom    { padding: 10px 10px 0; }
+  .common-entries-grid {
+    flex-direction: column;
+  }
+
+  .common-entry-field {
+    border-right: none;
+
+    border-bottom: 1px solid #e0dbd4;
+  }
+
+  .common-entry-field:last-child {
+    border-bottom: none;
+  }
+
+
+  /* ── Fuel Total ── */
+
+  .fuel-total-bar {
+    padding: 8px 10px;
+  }
+
+  .fuel-total-items {
+    gap: 6px;
+  }
+
+
+  /* ── Remarks ── */
+
+  .tjc-remarks-section {
+    padding: 10px;
+  }
+
+
+  /* ── Actions ── */
+
+  .tjc-actions {
+    padding: 12px 10px;
+    gap: 8px;
+  }
+
+  .tjc-save-btn {
+    flex: 1;
+    text-align: center;
+    padding: 12px 10px;
+  }
+
+  .tjc-reset-btn {
+    flex: 1;
+    text-align: center;
+    padding: 12px 10px;
+  }
+
+
+  /* ── Supabase warning ── */
+
+  .tjc-config-warning {
+    margin: 8px 10px 0;
+    font-size: 11px;
+  }
+
+
+  /* ════════════════════════════════════
+     SC ACCORDION
+     ════════════════════════════════════ */
+
+  .sc-accordion-header {
+    padding: 12px 14px;
+  }
+
+  .sc-accordion-title {
+    font-size: 13px;
+  }
+
+  .sc-meta-row {
+    flex-direction: column;
+
+    padding: 12px 10px;
+
+    gap: 10px;
+  }
+
+  .sc-meta-field {
+    min-width: 100%;
+  }
+
+  .sc-bottom {
+    padding: 10px 10px 0;
+  }
+
   .sc-actions .tjc-save-btn,
-  .sc-actions .tjc-reset-btn { flex: 1; }
+  .sc-actions .tjc-reset-btn {
+    flex: 1;
+  }
 }
 
 
 /* ════════════════════════════════════
-   TABLET  (641px – 1024px)
+   TABLET — 641px – 1024px
    ════════════════════════════════════ */
+
 @media (min-width: 641px) and (max-width: 1024px) {
-  .tjc-title-bar { font-size: 15px; padding: 11px 16px; }
-  .tjc-table th, .tjc-table td { padding: 7px 8px; }
-  .tjc-log-input { width: 48px; }
-  .sc-meta-row   { gap: 12px; }
-  .sc-meta-field { min-width: 100px; }
+
+  .tjc-title-bar {
+    font-size: 15px;
+    padding: 11px 16px;
+  }
+
+  .tjc-table th,
+  .tjc-table td {
+    padding: 7px 8px;
+  }
+
+  /*
+     Tablet Hourly Log:
+     horizontal scroll if required.
+  */
+
+  .tjc-log-scroll {
+    overflow-x: auto;
+  }
+
+  .tjc-log-table {
+    width: max-content;
+    min-width: 1050px;
+  }
+
+  .tjc-log-input {
+    width: 48px;
+  }
+
+  .sc-meta-row {
+    gap: 12px;
+  }
+
+  .sc-meta-field {
+    min-width: 100px;
+  }
 }
 
-/* ── Auto-total cells in tfoot ── */
+
+/* ════════════════════════════════════
+   LAPTOP / DESKTOP — ≥ 1025px
+   ════════════════════════════════════ */
+
+@media (min-width: 1025px) {
+
+  /*
+     On laptop the table uses the available
+     width, but retains a minimum width so
+     columns don't become too narrow.
+  */
+
+  .tjc-log-scroll {
+    overflow-x: auto;
+  }
+
+  .tjc-log-table {
+    width: 100%;
+    min-width: 1100px;
+  }
+
+  .tjc-log-table th,
+  .tjc-log-table td {
+    padding: 5px 7px;
+  }
+}
+
+
+/* ════════════════════════════════════
+   AUTO-TOTAL CELLS IN TFOOT
+   ════════════════════════════════════ */
+
 .total-value-cell {
   background: #fdf3ee;
+
   padding: 6px 8px !important;
+
   text-align: center;
+
   vertical-align: middle;
 }
+
 .total-value-label {
   font-size: 9px;
   color: #999;
+
   margin-bottom: 2px;
 }
+
 .total-value {
   font-size: 14px;
+
   font-weight: 700;
+
   color: #b85c2c;
+
   letter-spacing: 0.3px;
 }
 
-/* ── Simplified motor table (single date) ── */
+
+/* ════════════════════════════════════
+   SIMPLIFIED MOTOR TABLE
+   Single date
+   ════════════════════════════════════ */
+
 .sc-single-table {
   border-collapse: collapse;
+
   width: 100%;
+
   min-width: 420px;
+
   font-size: 13px;
 }
+
 .sc-single-table th,
 .sc-single-table td {
   border: 1px solid #d8d0c8;
+
   padding: 8px 12px;
+
   text-align: center;
+
   vertical-align: middle;
 }
+
 .sc-single-table thead th {
   background: #f5f0ea;
+
   font-size: 12px;
+
   font-weight: 700;
+
   color: #444;
+
   line-height: 1.5;
 }
-.sc-single-table tbody tr:nth-child(even) { background: #fafaf8; }
-.sc-single-table tbody tr:hover           { background: #fdf3ee; }
+
+.sc-single-table tbody tr:nth-child(even) {
+  background: #fafaf8;
+}
+
+.sc-single-table tbody tr:hover {
+  background: #fdf3ee;
+}
+
+
+/* ── Wide motor input ── */
 
 .sc-input-wide {
   width: 90px;
+
   border: 1px solid #ddd;
+
   border-radius: 4px;
+
   padding: 5px 6px;
+
   font-size: 13px;
+
   text-align: center;
+
   background: transparent;
+
   -moz-appearance: textfield;
 }
+
 .sc-input-wide::-webkit-outer-spin-button,
-.sc-input-wide::-webkit-inner-spin-button { -webkit-appearance: none; }
-.sc-input-wide:focus { outline: none; border-color: #b85c2c; background: #fff; }
+.sc-input-wide::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.sc-input-wide:focus {
+  outline: none;
+
+  border-color: #b85c2c;
+
+  background: #fff;
+}
+
+
+/* ── Wide stop select ── */
 
 .sc-stop-select-wide {
   width: 90px;
+
   border: 1px solid #ddd;
+
   border-radius: 4px;
+
   padding: 5px 6px;
+
   font-size: 13px;
+
   background: transparent;
+
   cursor: pointer;
 }
-.sc-stop-select-wide:focus { outline: none; border-color: #b85c2c; }
+
+.sc-stop-select-wide:focus {
+  outline: none;
+
+  border-color: #b85c2c;
+}
+
+
+/* ── Total label ── */
 
 .total-label {
   font-size: 12px;
+
   font-weight: 700;
+
   text-align: right;
+
   padding-right: 10px;
+
   background: #f5f0ea;
+}
+
+
+/* ════════════════════════════════════
+   LOG VARIANT SELECTOR BAR
+   ════════════════════════════════════ */
+
+.log-variant-bar {
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+
+  padding: 10px 14px;
+
+  background: #fafaf8;
+
+  border-bottom: 1px solid #e0dbd4;
+
+  flex-wrap: wrap;
+}
+
+.log-variant-label {
+  font-size: 12px;
+
+  font-weight: 600;
+
+  color: #555;
+}
+
+.log-variant-btns {
+  display: flex;
+
+  gap: 8px;
+}
+
+
+.log-variant-btn {
+  background: transparent;
+
+  border: 1px solid #ccc;
+
+  color: #666;
+
+  padding: 6px 18px;
+
+  border-radius: 20px;
+
+  font-size: 12px;
+
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition: all 0.15s;
+}
+
+.log-variant-btn:hover {
+  border-color: #b85c2c;
+  color: #b85c2c;
+}
+
+.log-variant-active {
+  background: #b85c2c !important;
+
+  border-color: #b85c2c !important;
+
+  color: #fff !important;
+}
+
+
+/* ════════════════════════════════════
+   TIME INPUT INSIDE LOG TABLE
+   ════════════════════════════════════ */
+
+.tjc-log-time {
+  width: 80px !important;
+
+  font-size: 11px !important;
+
+  padding: 2px 2px !important;
+
+  box-sizing: border-box;
+}
+
+
+/* ════════════════════════════════════
+   ACTIVE VARIANT BADGE
+   ════════════════════════════════════ */
+
+.log-variant-badge {
+  font-size: 11px;
+
+  font-weight: 700;
+
+  color: #b85c2c;
+
+  background: #fdf3ee;
+
+  border: 1px solid #e8c5a8;
+
+  border-radius: 4px;
+
+  padding: 3px 10px;
+
+  margin-left: auto;
+}
+
+
+/* ════════════════════════════════════
+   HOURLY LOG ROW STYLING
+   ════════════════════════════════════ */
+
+.tjc-log-table tbody tr:nth-child(even) {
+  background: #fafaf8;
+}
+
+.tjc-log-table tbody tr:hover {
+  background: #fdf3ee;
 }
