@@ -405,7 +405,6 @@ export default function ThermpackJobCard() {
 
             <div className="op-field">
               <div className="cell-mini-label">Date / <span className="hi">तारीख</span></div>
-              {form.date && <div className="date-display">{fmtDate(form.date)}</div>}
               <input type="date" className="tjc-input"
                 value={form.date} onChange={e => set('date', e.target.value)} />
             </div>
@@ -420,25 +419,25 @@ export default function ThermpackJobCard() {
             </div>
 
             <div className="op-field">
-              <div className="cell-mini-label">Operator / <span className="hi">ऑपरेटर</span></div>
+              <div className="cell-mini-label">Operator Name/ <span className="hi">ऑपरेटर नाम</span></div>
               <input className="tjc-input" placeholder="Operator"
                 value={form.operator} onChange={e => set('operator', e.target.value)} />
             </div>
 
             <div className="op-field">
-              <div className="cell-mini-label">Helper 1 / <span className="hi">हेल्पर १</span></div>
+              <div className="cell-mini-label">Helper 1 Name/ <span className="hi">हेल्पर १ नाम</span></div>
               <input className="tjc-input" placeholder="Helper 1"
                 value={form.helper1} onChange={e => set('helper1', e.target.value)} />
             </div>
 
             <div className="op-field">
-              <div className="cell-mini-label">Helper 2 / <span className="hi">हेल्पर २</span></div>
+              <div className="cell-mini-label">Helper 2 Name / <span className="hi">हेल्पर २ नाम</span></div>
               <input className="tjc-input" placeholder="Helper 2"
                 value={form.helper2} onChange={e => set('helper2', e.target.value)} />
             </div>
 
             <div className="op-field">
-              <div className="cell-mini-label">Helper 3 / <span className="hi">हेल्पर ३</span></div>
+              <div className="cell-mini-label">Helper 3 Name/ <span className="hi">हेल्पर ३ नाम</span></div>
               <input className="tjc-input" placeholder="Helper 3"
                 value={form.helper3} onChange={e => set('helper3', e.target.value)} />
             </div>
