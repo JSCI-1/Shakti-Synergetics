@@ -18,22 +18,21 @@ function emptyRow() {
     bags_per_hr: '',
     bag_size_wt: '',
     kg_per_hr: '',
-    colour_normal: '',
+    colour: '',
+    id_frequency: '',
     remarks: '',
   }
 }
 
 function emptyForm(dryerType) {
   return {
-    dryer_type: dryerType,   // 'new' or 'old'
+    dryer_type: dryerType,
     date: '',
     shift: '',
-    // Left-side blower fields
     id_blower_dp: '', id_blower_mr: '',
     fd_blower_dp: '', fd_blower_mr: '',
     chamber_dp:   '', chamber_mr:   '',
     fbd_pct_dp:   '', fbd_pct_mr:   '',
-    // Footer
     batch_no: '',
     calibration_due: '',
     total_production: '',
@@ -42,6 +41,13 @@ function emptyForm(dryerType) {
     rows: TIME_SLOTS.map(() => emptyRow()),
   }
 }
+
+const BLOWERS = [
+  { label: 'ID Blower', dp: 'id_blower_dp', mr: 'id_blower_mr' },
+  { label: 'FD Blower', dp: 'fd_blower_dp', mr: 'fd_blower_mr' },
+  { label: 'Chamber',   dp: 'chamber_dp',   mr: 'chamber_mr'   },
+  { label: 'FBD %',     dp: 'fbd_pct_dp',   mr: 'fbd_pct_mr'   },
+]
 
 function DryerForm({ dryerType, label }) {
   const [form, setForm]     = useState(emptyForm(dryerType))
@@ -85,10 +91,18 @@ function DryerForm({ dryerType, label }) {
     else { setSaved(true); setForm(emptyForm(dryerType)) }
   }
 
-  const NI = ({ field, ri, type = 'number' }) => (
+  // Numeric input cell
+  const NC = ({ field, ri }) => (
     <td>
-      <input type={type} className="dr-cell-input"
-        placeholder="—"
+      <input type="number" className="dr-cell-input" placeholder="—"
+        value={form.rows[ri][field]}
+        onChange={e => setRow(ri, field, e.target.value)} />
+    </td>
+  )
+  // Text input cell
+  const TC = ({ field, ri }) => (
+    <td>
+      <input type="text" className="dr-cell-input" placeholder="—"
         value={form.rows[ri][field]}
         onChange={e => setRow(ri, field, e.target.value)} />
     </td>
@@ -106,7 +120,7 @@ function DryerForm({ dryerType, label }) {
 
       <form onSubmit={handleSubmit}>
 
-        {/* ── Meta bar: Date + Shift ── */}
+        {/* ── Meta: Date + Shift ── */}
         <div className="dr-meta-bar">
           <div className="dr-meta-field">
             <label className="dr-label">Date</label>
@@ -123,30 +137,6 @@ function DryerForm({ dryerType, label }) {
           </div>
         </div>
 
-        {/* ── Left-side blower fields ── */}
-        <div className="dr-blower-bar">
-          {[
-            { label: 'ID Blower', dp: 'id_blower_dp', mr: 'id_blower_mr' },
-            { label: 'FD Blower', dp: 'fd_blower_dp', mr: 'fd_blower_mr' },
-            { label: 'Chamber',   dp: 'chamber_dp',   mr: 'chamber_mr'   },
-            { label: 'FBD %',     dp: 'fbd_pct_dp',   mr: 'fbd_pct_mr'   },
-          ].map(b => (
-            <div key={b.label} className="dr-blower-card">
-              <div className="dr-blower-title">{b.label}</div>
-              <div className="dr-blower-row">
-                <span className="dr-blower-sub">DP</span>
-                <input className="dr-input dr-input-sm" placeholder="—"
-                  value={form[b.dp]} onChange={e => set(b.dp, e.target.value)} />
-              </div>
-              <div className="dr-blower-row">
-                <span className="dr-blower-sub">MR</span>
-                <input className="dr-input dr-input-sm" placeholder="—"
-                  value={form[b.mr]} onChange={e => set(b.mr, e.target.value)} />
-              </div>
-            </div>
-          ))}
-        </div>
-
         {/* ── Main Log Table ── */}
         <div className="dr-table-section">
           <div className="dr-table-scroll">
@@ -154,17 +144,18 @@ function DryerForm({ dryerType, label }) {
               <thead>
                 <tr className="dr-thead-r1">
                   <th className="dr-th-time" rowSpan={2}>Time</th>
-                  <th colSpan={3}>Temperature (°C)</th>
-                  <th colSpan={3}>Temp. (°C)</th>
+                  <th colSpan={3}>Temperature Deg. Cent.</th>
+                  <th colSpan={3}>Temperature Deg. Cent.</th>
                   <th rowSpan={2}>Atomizer<br />Freq.</th>
                   <th rowSpan={2}>Feed<br />F.C.</th>
                   <th rowSpan={2}>Pressure</th>
                   <th rowSpan={2}>Pt.<br />Temp</th>
                   <th rowSpan={2}>Batch<br />No.</th>
-                  <th rowSpan={2}>No. of Bags<br />Per Hour</th>
+                  <th rowSpan={2}>No. of Bag<br />Per Hours</th>
                   <th rowSpan={2}>Bag Size<br />By Wt.</th>
-                  <th rowSpan={2}>Kg/Hour<br />Production</th>
-                  <th rowSpan={2}>Colour/<br />ID Freq.<br />Normal</th>
+                  <th rowSpan={2}>Kg./Hour<br />Production</th>
+                  <th rowSpan={2}>Colour /<br />Normal</th>
+                  <th rowSpan={2}>I.D.<br />Frequency</th>
                   <th rowSpan={2}>Remarks</th>
                 </tr>
                 <tr className="dr-thead-r2">
@@ -180,27 +171,47 @@ function DryerForm({ dryerType, label }) {
                 {TIME_SLOTS.map((slot, i) => (
                   <tr key={slot} className={i % 2 === 0 ? '' : 'dr-tr-alt'}>
                     <td className="dr-td-time">{slot}</td>
-                    <NI field="temp_inlet"    ri={i} />
-                    <NI field="temp_outlet"   ri={i} />
-                    <NI field="temp_actual"   ri={i} />
-                    <NI field="temp_fbd1"     ri={i} />
-                    <NI field="temp_fbd2"     ri={i} />
-                    <NI field="temp_chamber"  ri={i} />
-                    <NI field="atomizer_freq" ri={i} />
-                    <NI field="feed_fc"       ri={i} />
-                    <NI field="pressure"      ri={i} />
-                    <NI field="pt_temp"       ri={i} />
-                    <NI field="batch_no"      ri={i} type="text" />
-                    <NI field="bags_per_hr"   ri={i} />
-                    <NI field="bag_size_wt"   ri={i} />
-                    <NI field="kg_per_hr"     ri={i} />
-                    <NI field="colour_normal" ri={i} type="text" />
-                    <NI field="remarks"       ri={i} type="text" />
+                    <NC field="temp_inlet"    ri={i} />
+                    <NC field="temp_outlet"   ri={i} />
+                    <NC field="temp_actual"   ri={i} />
+                    <NC field="temp_fbd1"     ri={i} />
+                    <NC field="temp_fbd2"     ri={i} />
+                    <NC field="temp_chamber"  ri={i} />
+                    <NC field="atomizer_freq" ri={i} />
+                    <NC field="feed_fc"       ri={i} />
+                    <NC field="pressure"      ri={i} />
+                    <NC field="pt_temp"       ri={i} />
+                    <TC field="batch_no"      ri={i} />
+                    <NC field="bags_per_hr"   ri={i} />
+                    <NC field="bag_size_wt"   ri={i} />
+                    <NC field="kg_per_hr"     ri={i} />
+                    <TC field="colour"        ri={i} />
+                    <TC field="id_frequency"  ri={i} />
+                    <TC field="remarks"       ri={i} />
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
+        </div>
+
+        {/* ── Blower fields — after table, before footer ── */}
+        <div className="dr-blower-bar">
+          {BLOWERS.map(b => (
+            <div key={b.label} className="dr-blower-card">
+              <div className="dr-blower-title">{b.label}</div>
+              <div className="dr-blower-row">
+                <span className="dr-blower-sub">DP</span>
+                <input className="dr-input dr-input-sm" placeholder="—"
+                  value={form[b.dp]} onChange={e => set(b.dp, e.target.value)} />
+              </div>
+              <div className="dr-blower-row">
+                <span className="dr-blower-sub">MR</span>
+                <input className="dr-input dr-input-sm" placeholder="—"
+                  value={form[b.mr]} onChange={e => set(b.mr, e.target.value)} />
+              </div>
+            </div>
+          ))}
         </div>
 
         {/* ── Footer fields ── */}
@@ -255,25 +266,18 @@ export default function DryerSection() {
 
   return (
     <div className="dr-wrapper">
-      {/* ── Sub-tab bar ── */}
       <div className="dr-tab-bar">
-        <button
-          type="button"
+        <button type="button"
           className={`dr-tab-btn ${activeTab === 'new' ? 'dr-tab-active' : ''}`}
-          onClick={() => setActiveTab('new')}
-        >
+          onClick={() => setActiveTab('new')}>
           New Dryer
         </button>
-        <button
-          type="button"
+        <button type="button"
           className={`dr-tab-btn ${activeTab === 'old' ? 'dr-tab-active' : ''}`}
-          onClick={() => setActiveTab('old')}
-        >
+          onClick={() => setActiveTab('old')}>
           Old Dryer
         </button>
       </div>
-
-      {/* ── Content ── */}
       <div className="dr-content">
         {activeTab === 'new' && <DryerForm dryerType="new" label="New Dryer" />}
         {activeTab === 'old' && <DryerForm dryerType="old" label="Old Dryer" />}
