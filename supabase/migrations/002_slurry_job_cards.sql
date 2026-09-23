@@ -80,3 +80,27 @@ create policy "anon_insert_batch"
 
 create policy "anon_select_batch"
   on batch_traceability for select to anon using (true);
+
+
+-- ── TABLE: slurry_motor_amp ─────────────────────────────────
+-- Running Motor Amp Status for Slurry Section (accordion at bottom of Process Job Card)
+drop table if exists slurry_motor_amp cascade;
+
+create table slurry_motor_amp (
+  id           uuid default gen_random_uuid() primary key,
+  created_at   timestamptz default now(),
+  running_date date not null,    -- today only — enforced in UI, stored here
+  checked_by   text,
+  remark       text,
+  -- Array of 12 motor objects (Vertical Mill 01-10, Attrition Mill 01-02)
+  -- Each: { amp: "reading", stop: "OK|STOP|" }
+  motor_data   jsonb
+);
+
+alter table slurry_motor_amp enable row level security;
+
+create policy "anon_insert_slurry_motor"
+  on slurry_motor_amp for insert to anon with check (true);
+
+create policy "anon_select_slurry_motor"
+  on slurry_motor_amp for select to anon using (true);

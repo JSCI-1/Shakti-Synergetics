@@ -21,6 +21,38 @@ const BATCH_OPTIONS = [
   ]},
 ]
 
+// ── Running Motor Amp Status — Slurry Section motors ──
+const SLURRY_MOTORS = [
+  { id: 1,  name: 'Vertical Mill 01', hp: 50 },
+  { id: 2,  name: 'Vertical Mill 02', hp: 50 },
+  { id: 3,  name: 'Vertical Mill 03', hp: 50 },
+  { id: 4,  name: 'Vertical Mill 04', hp: 50 },
+  { id: 5,  name: 'Vertical Mill 05', hp: 50 },
+  { id: 6,  name: 'Vertical Mill 06', hp: 50 },
+  { id: 7,  name: 'Vertical Mill 07', hp: 50 },
+  { id: 8,  name: 'Vertical Mill 08', hp: 50 },
+  { id: 9,  name: 'Vertical Mill 09', hp: 50 },
+  { id: 10, name: 'Vertical Mill 10', hp: 50 },
+  { id: 11, name: 'Attrition Mill 01', hp: 75 },
+  { id: 12, name: 'Attrition Mill 02', hp: 60 },
+]
+
+// Today's date in yyyy-mm-dd (for the date input value + min/max restriction)
+function todayISO() {
+  return new Date().toISOString().slice(0, 10)
+}
+
+function emptyMotorEntry() { return { amp: '', stop: '' } }
+
+function emptyMotorForm() {
+  return {
+    running_date: todayISO(),
+    checked_by: '',
+    remark: '',
+    motors: SLURRY_MOTORS.map(() => emptyMotorEntry()),
+  }
+}
+
 function emptyBatch(index) {
   return { id: Date.now() + Math.random(), label: `Batch-${index + 1}`, tank_type: '' }
 }
@@ -48,10 +80,17 @@ function emptyForm() {
 }
 
 export default function SlurrySection() {
-  const [form, setForm]     = useState(emptyForm())
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved]   = useState(false)
-  const [error, setError]   = useState('')
+  const [form, setForm]         = useState(emptyForm())
+  const [saving, setSaving]     = useState(false)
+  const [saved, setSaved]       = useState(false)
+  const [error, setError]       = useState('')
+
+  // ── Motor Amp accordion state ──
+  const [motorOpen, setMotorOpen]       = useState(false)
+  const [motorForm, setMotorForm]       = useState(emptyMotorForm())
+  const [motorSaving, setMotorSaving]   = useState(false)
+  const [motorSaved, setMotorSaved]     = useState(false)
+  const [motorError, setMotorError]     = useState('')
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -136,6 +175,29 @@ export default function SlurrySection() {
     setSaving(false)
     if (err) setError(err.message)
     else { setSaved(true); setForm(emptyForm()) }
+  }
+
+  // ── Motor Amp cell setter ──
+  const setMotorCell = (mi, key, val) =>
+    setMotorForm(p => ({
+      ...p,
+      motors: p.motors.map((m, idx) => idx === mi ? { ...m, [key]: val } : m),
+    }))
+
+  // ── Save motor amp record ──
+  async function handleMotorSubmit(e) {
+    e.preventDefault()
+    if (!supabaseReady) { setMotorError('Supabase not configured.'); return }
+    setMotorSaving(true); setMotorError(''); setMotorSaved(false)
+    const { error: err } = await supabase.from('slurry_motor_amp').insert([{
+      running_date: motorForm.running_date,
+      checked_by:   motorForm.checked_by,
+      remark:       motorForm.remark,
+      motor_data:   motorForm.motors,
+    }])
+    setMotorSaving(false)
+    if (err) setMotorError(err.message)
+    else { setMotorSaved(true); setMotorForm(emptyMotorForm()) }
   }
 
   return (
@@ -342,6 +404,106 @@ export default function SlurrySection() {
         </div>
 
       </form>
+
+      {/* ══ ACCORDION: Running Motor Amp Status ══ */}
+      <div className="sl-accordion">
+        <button type="button" className="sl-accordion-header"
+          onClick={() => setMotorOpen(o => !o)}>
+          <span className="sl-accordion-title">Running Motor Amp Status</span>
+          <span className="sl-accordion-icon">{motorOpen ? '▲' : '▼'}</span>
+        </button>
+
+        {motorOpen && (
+          <form className="sl-motor-form" onSubmit={handleMotorSubmit}>
+
+            {/* ── Date (today only) + Checked By ── */}
+            <div className="sl-motor-meta">
+              <div className="sl-motor-meta-field">
+                <label className="sl-label">Running Date</label>
+                <input
+                  type="date"
+                  className="sl-input"
+                  value={motorForm.running_date}
+                  min={todayISO()}
+                  max={todayISO()}
+                  readOnly
+                  style={{ background: '#f5f0ea', cursor: 'not-allowed' }}
+                />
+                <div style={{ fontSize: '10px', color: '#999', marginTop: '3px' }}>
+                  Today only — {motorForm.running_date.split('-').reverse().join('/')}
+                </div>
+              </div>
+              <div className="sl-motor-meta-field">
+                <label className="sl-label">Checked By</label>
+                <input className="sl-input" placeholder="Name"
+                  value={motorForm.checked_by}
+                  onChange={e => setMotorForm(p => ({ ...p, checked_by: e.target.value }))} />
+              </div>
+            </div>
+
+            {/* ── Motor table ── */}
+            <div className="sl-motor-scroll">
+              <table className="sl-motor-table">
+                <thead>
+                  <tr>
+                    <th>Sr. No.</th>
+                    <th>Motor Name</th>
+                    <th>HP</th>
+                    <th>Amp Reading</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {SLURRY_MOTORS.map((motor, mi) => (
+                    <tr key={motor.id} className={mi % 2 === 0 ? '' : 'sl-motor-alt'}>
+                      <td className="sl-motor-sr">{motor.id}</td>
+                      <td className="sl-motor-name">{motor.name}</td>
+                      <td className="sl-motor-hp">{motor.hp}</td>
+                      <td>
+                        <input type="number" className="sl-motor-input" placeholder="—"
+                          value={motorForm.motors[mi].amp}
+                          onChange={e => setMotorCell(mi, 'amp', e.target.value)} />
+                      </td>
+                      <td>
+                        <select className="sl-motor-select"
+                          value={motorForm.motors[mi].stop}
+                          onChange={e => setMotorCell(mi, 'stop', e.target.value)}>
+                          <option value="">—</option>
+                          <option value="OK">OK</option>
+                          <option value="STOP">STOP</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* ── Remark ── */}
+            <div className="sl-motor-remark">
+              <label className="sl-label">Remark</label>
+              <input className="sl-input" placeholder="Remark..."
+                value={motorForm.remark}
+                onChange={e => setMotorForm(p => ({ ...p, remark: e.target.value }))} />
+            </div>
+
+            {/* ── Actions ── */}
+            <div className="sl-actions">
+              {motorError && <div className="sl-error">Error: {motorError}</div>}
+              {motorSaved  && <div className="sl-success">✓ Saved successfully</div>}
+              <button type="submit" className="sl-save-btn" disabled={motorSaving}>
+                {motorSaving ? 'Saving…' : 'Save Motor Status'}
+              </button>
+              <button type="button" className="sl-reset-btn"
+                onClick={() => { setMotorForm(emptyMotorForm()); setMotorSaved(false); setMotorError('') }}>
+                Reset
+              </button>
+            </div>
+
+          </form>
+        )}
+      </div>
+
     </div>
   )
 }
