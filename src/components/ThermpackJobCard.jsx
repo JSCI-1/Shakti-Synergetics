@@ -125,8 +125,9 @@ function emptyForm() {
 }
 
 function emptyMotorForm() {
+  const today = new Date().toISOString().slice(0, 10)
   return {
-    running_date: new Date().toISOString().slice(0, 10),
+    running_date: today,
     checked_by: '',
     remark: '',
     motors: MOTORS.map(() => emptyMotorEntry()),
@@ -1539,25 +1540,19 @@ export default function ThermpackJobCard() {
             <div className="sc-meta-row">
 
               <div className="sc-meta-field">
-
-                <Label
-                  en="Running Date"
-                  hi="चलने की तारीख"
-                />
-
+                <Label en="Running Date" hi="चलने की तारीख" />
                 <input
                   type="date"
                   className="tjc-input"
                   value={motorForm.running_date}
-                  onChange={e =>
-                    setMotorForm(p => ({
-                      ...p,
-                      running_date:
-                        e.target.value,
-                    }))
-                  }
+                  min={motorForm.running_date}
+                  max={motorForm.running_date}
+                  readOnly
+                  style={{ background: '#f5f0ea', cursor: 'not-allowed' }}
                 />
-
+                <div style={{ fontSize: '10px', color: '#999', marginTop: '3px' }}>
+                  Today only — {motorForm.running_date.split('-').reverse().join('/')}
+                </div>
               </div>
 
               <div className="sc-meta-field sc-meta-wide">
