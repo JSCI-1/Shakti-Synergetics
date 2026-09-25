@@ -684,3 +684,125 @@
 .sl-motor-ts        { text-align: center; white-space: nowrap; padding: 2px 6px; }
 .sl-motor-save-cell { text-align: center; padding: 2px; }
 .sl-motor-saved td  { background: #f6fff6 !important; }
+
+/* ── Bilingual label helpers ── */
+.sl-label-hi { font-size: 10px; color: #999; font-weight: 400; }
+.sl-hi       { font-size: 10px; color: #999; font-weight: 400; }
+
+/* ── Batch pair header (Origin + Qty side by side) ── */
+.sl-th-batch-pair {
+  min-width: 220px;
+  padding: 4px 6px !important;
+  vertical-align: top;
+  background: #f5f0ea;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+.sl-batch-sub-headers {
+  display: flex;
+  gap: 0;
+  margin-top: 4px;
+  border-top: 1px solid #d8d0c8;
+}
+.sl-batch-sub-headers span {
+  flex: 1;
+  font-size: 10px;
+  font-weight: 600;
+  color: #555;
+  padding: 3px 4px;
+  text-align: center;
+  border-right: 1px solid #d8d0c8;
+}
+.sl-batch-sub-headers span:last-child { border-right: none; }
+
+/* ── Origin per-batch cell ── */
+.sl-td-origin-cell {
+  padding: 3px 4px;
+  min-width: 100px;
+  background: #faf7f3;
+}
+.sl-td-origin-cell .sl-input-cell {
+  font-size: 11px;
+}
+
+/* ── BatchTraceability bilingual ── */
+.bt-hi       { font-size: 9px; color: #aaa; font-weight: 400; display: block; }
+.bt-label-hi { font-size: 10px; color: #999; font-weight: 400; }
+
+/* ── Total bar separator ── */
+.sl-total-bar-sep {
+  font-size: 12px;
+  color: #b85c2c;
+  font-weight: 700;
+  margin: 0 2px;
+}
+
+/* ── Flow Rate multi-reading cell ── */
+.sl-mill-flow-cell {
+  padding: 4px 6px;
+  min-width: 180px;
+}
+
+.sl-flow-entry {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+.sl-flow-entry:last-of-type { margin-bottom: 6px; }
+
+.sl-flow-stamp-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sl-flow-stamp-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
+
+.sl-flow-ts {
+  font-size: 10px;
+  font-weight: 600;
+  color: #2e7d32;
+  background: #e8f5e9;
+  padding: 1px 5px;
+  border-radius: 3px;
+  border: 1px solid #a5d6a7;
+  white-space: nowrap;
+}
+
+.sl-flow-del-btn {
+  background: transparent;
+  border: 1px solid #e0a0a0;
+  color: #c0392b;
+  border-radius: 3px;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.sl-flow-del-btn:hover { background: #fde8e8; }
+
+.sl-flow-add-btn {
+  background: transparent;
+  border: 1px dashed #b85c2c;
+  color: #b85c2c;
+  border-radius: 3px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  width: 100%;
+  text-align: center;
+}
+.sl-flow-add-btn:hover { background: #fdf3ee; }

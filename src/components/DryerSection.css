@@ -333,3 +333,101 @@
   .dr-actions { padding: 12px 10px; }
   .dr-save-btn, .dr-reset-btn { flex: 1; text-align: center; }
 }
+
+/* ── Bilingual helpers ── */
+.dr-hi        { font-size: 9px;  color: #aaa; font-weight: 400; display: block; }
+.dr-title-hi  { font-size: 12px; color: #f0c890; font-weight: 400; }
+.dr-label-hi  { font-size: 10px; color: #999; font-weight: 400; }
+.dr-blower-hi { font-size: 10px; color: #999; font-weight: 400; }
+
+/* ── Calibration table inside footer ── */
+.dr-footer-cal {
+  flex: 1.5;       /* slightly wider than other footer fields */
+  min-width: 200px;
+}
+
+.dr-cal-table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 10px;
+  font-size: 12px;
+}
+.dr-cal-table th,
+.dr-cal-table td {
+  border: 1px solid #d8d0c8;
+  padding: 4px 8px;
+  vertical-align: middle;
+}
+.dr-cal-table thead th {
+  background: #f5f0ea;
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  text-align: center;
+  line-height: 1.4;
+}
+.dr-cal-table tbody tr:nth-child(even) { background: #fafaf8; }
+.dr-cal-label {
+  font-weight: 600;
+  font-size: 11px;
+  color: #555;
+  background: #faf7f3;
+  white-space: nowrap;
+}
+.dr-cal-input {
+  border: none !important;
+  background: transparent !important;
+  padding: 4px 6px !important;
+  font-size: 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.dr-cal-input:focus { outline: none; background: rgba(184,92,44,0.06) !important; }
+
+@media (max-width: 640px) {
+  .dr-footer-cal { flex: 0 0 100%; }
+}
+
+/* ── Log table timestamp + save ── */
+.dr-td-ts   { text-align: center; padding: 2px 4px; white-space: nowrap; min-width: 80px; }
+.dr-td-save { text-align: center; padding: 2px; width: 36px; }
+
+.dr-ts-badge {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid #a5d6a7;
+  white-space: nowrap;
+}
+.dr-ts-empty { color: #ccc; font-size: 11px; }
+
+.dr-row-save-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+.dr-row-save-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
+
+.dr-row-saved td            { background: #f6fff6 !important; }
+.dr-row-saved .dr-td-time   { background: #edfaed !important; }
+.dr-row-saved .dr-row-save-btn { border-color: #4caf50; color: #2e7d32; font-weight: 700; }
+
+/* ── 3-column calibration table ── */
+.dr-cal-table thead th {
+  background: #f5f0ea;
+  font-size: 10px;
+  font-weight: 700;
+  color: #444;
+  text-align: center;
+  padding: 4px 6px;
+  line-height: 1.4;
+}

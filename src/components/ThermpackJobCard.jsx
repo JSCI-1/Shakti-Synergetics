@@ -76,7 +76,15 @@ function emptyMotorEntry() {
   return {
     val: '',
     stop: '',
+    timestamp: '',
+    saved: false,
   }
+}
+
+function stamp12hr() {
+  return new Date().toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
 }
 
 function emptyForm() {
@@ -130,7 +138,9 @@ function emptyMotorForm() {
     running_date: today,
     checked_by: '',
     remark: '',
-    motors: MOTORS.map(() => emptyMotorEntry()),
+    motor_variant: '10L',
+    motors_10l: MOTORS.map(() => emptyMotorEntry()),
+    motors_6l:  MOTORS.map(() => emptyMotorEntry()),
   }
 }
 
@@ -229,17 +239,31 @@ export default function ThermpackJobCard() {
   }, [form.rows_10l, form.rows_6l])
 
   const setMotorCell = (mi, key, value) =>
-    setMotorForm(prev => ({
-      ...prev,
-      motors: prev.motors.map((m, idx) =>
-        idx === mi
-          ? {
-              ...m,
-              [key]: value,
-            }
-          : m
-      ),
-    }))
+    setMotorForm(prev => {
+      const varKey = prev.motor_variant === '10L' ? 'motors_10l' : 'motors_6l'
+      return {
+        ...prev,
+        [varKey]: prev[varKey].map((m, idx) =>
+          idx === mi ? { ...m, [key]: value } : m
+        ),
+      }
+    })
+
+  function saveMotorRow(mi) {
+    setMotorForm(prev => {
+      const varKey = prev.motor_variant === '10L' ? 'motors_10l' : 'motors_6l'
+      return {
+        ...prev,
+        [varKey]: prev[varKey].map((m, idx) =>
+          idx === mi ? { ...m, timestamp: stamp12hr(), saved: true } : m
+        ),
+      }
+    })
+  }
+
+  const activeMotors = motorForm.motor_variant === '10L'
+    ? motorForm.motors_10l
+    : motorForm.motors_6l
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -359,10 +383,12 @@ export default function ThermpackJobCard() {
       .from('motor_amp_status')
       .insert([
         {
-          running_date: motorForm.running_date || null,
-          checked_by: motorForm.checked_by,
-          remark: motorForm.remark,
-          motor_data: motorForm.motors,
+          running_date:   motorForm.running_date || null,
+          checked_by:     motorForm.checked_by,
+          remark:         motorForm.remark,
+          motor_variant:  motorForm.motor_variant,
+          motor_data_10l: motorForm.motors_10l,
+          motor_data_6l:  motorForm.motors_6l,
         },
       ])
 
@@ -1166,262 +1192,116 @@ export default function ThermpackJobCard() {
         <div className="tjc-section">
 
           <div className="stock-header">
-            Summary /{' '}
-            <span className="hi">
-              सारांश
-            </span>
+            Summary / <span className="hi">सारांश</span>
           </div>
 
           <div className="common-two-col">
 
             {/* Left column */}
-
             <div className="common-col">
 
-              {/* Outlet Set Temp */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Outlet Set Temp (°C)
+                  Outlet Set Temp (°C)<br /><span className="hi">आउटलेट सेट तापमान</span>
                 </div>
-
                 <div className="input-with-unit">
-
-                  <input
-                    className="tjc-input"
-                    type="text"
-                    inputMode="decimal"
-                    placeholder="0"
+                  <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
                     value={form.outlet_set_temp}
-                    onChange={e =>
-                      setNumeric(
-                        'outlet_set_temp',
-                        e.target.value
-                      )
-                    }
-                  />
-
-                  <span className="input-unit">
-                    °C
-                  </span>
-
+                    onChange={e => setNumeric('outlet_set_temp', e.target.value)} />
+                  <span className="input-unit">°C</span>
                 </div>
-
               </div>
 
-              {/* Expansion Tank Level */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Expansion Tank Level
+                  Expansion Tank Level<br /><span className="hi">एक्सपेंशन टैंक स्तर</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  placeholder=""
+                <input className="tjc-input" placeholder=""
                   value={form.expansion_tank_level}
-                  onChange={e =>
-                    set(
-                      'expansion_tank_level',
-                      e.target.value
-                    )
-                  }
-                />
-
+                  onChange={e => set('expansion_tank_level', e.target.value)} />
               </div>
 
-              {/* Type of Fuel - STRING ONLY */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Type of Fuel
+                  Type of Fuel / <br /><span className="hi">ईंधन का प्रकार</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  type="text"
-                  placeholder=""
+                <input className="tjc-input" type="text" placeholder=""
                   value={form.type_of_fuel}
-                  onChange={e =>
-                    set(
-                      'type_of_fuel',
-                      e.target.value
-                    )
-                  }
-                />
-
+                  onChange={e => set('type_of_fuel', e.target.value)} />
               </div>
 
-              {/* Qty. of Fuel Used */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Qty. of Fuel Used
+                  Qty. of Fuel Used / <br /><span className="hi">ईंधन की मात्रा</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  placeholder=""
+                <input className="tjc-input" placeholder=""
                   value={form.qty_fuel_used}
-                  onChange={e =>
-                    set(
-                      'qty_fuel_used',
-                      e.target.value
-                    )
-                  }
-                />
-
+                  onChange={e => set('qty_fuel_used', e.target.value)} />
               </div>
 
-              {/* Date of Last Boiler Cleaning */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Date of Last Boiler Cleaning
+                  Date of Last Boiler Cleaning<br /><span className="hi">अंतिम बॉयलर सफाई तारीख</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  type="date"
-                  value={
-                    form.date_of_last_boiler_cleaning
-                  }
-                  onChange={e =>
-                    set(
-                      'date_of_last_boiler_cleaning',
-                      e.target.value
-                    )
-                  }
-                />
-
+                <input className="tjc-input" type="date"
+                  value={form.date_of_last_boiler_cleaning}
+                  onChange={e => set('date_of_last_boiler_cleaning', e.target.value)} />
               </div>
 
             </div>
 
             {/* Right column */}
-
             <div className="common-col">
 
-              {/* Total Running Hrs. - NUMBER ONLY */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Total Running Hrs.
+                  Total Running Hrs.<br /><span className="hi">कुल चलने के घंटे</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
+                <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
                   value={form.total_running_hrs}
-                  onChange={e =>
-                    setNumeric(
-                      'total_running_hrs',
-                      e.target.value
-                    )
-                  }
-                />
-
+                  onChange={e => setNumeric('total_running_hrs', e.target.value)} />
               </div>
 
-              {/* Consumption Per Hrs. - NUMBER ONLY */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Consumption Per Hrs.
+                  Consumption Per Hrs.<br /><span className="hi">प्रति घंटा खपत</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
+                <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
                   value={form.consumption_per_hr}
-                  onChange={e =>
-                    setNumeric(
-                      'consumption_per_hr',
-                      e.target.value
-                    )
-                  }
-                />
-
+                  onChange={e => setNumeric('consumption_per_hr', e.target.value)} />
               </div>
 
-              {/* Total Consumption - NUMBER ONLY */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Total Consumption (kg)
+                  Total Consumption (kg)<br /><span className="hi">कुल खपत (किग्रा)</span>
                 </div>
-
-                <input
-                  className="tjc-input"
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0"
+                <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
                   value={form.total_consumption}
-                  onChange={e =>
-                    setNumeric(
-                      'total_consumption',
-                      e.target.value
-                    )
-                  }
-                />
-
+                  onChange={e => setNumeric('total_consumption', e.target.value)} />
               </div>
 
-              {/* Total Clinker Weight - NUMBER ONLY */}
-
               <div className="common-field-row">
-                <div className="common-field-label">Total Clinker Weight (kg)</div>
+                <div className="common-field-label">
+                  Total Clinker Weight (kg)<br /><span className="hi">कुल क्लिंकर वजन (किग्रा)</span>
+                </div>
                 <div className="clinker-auto-val">
                   <span className="clinker-auto-num">
                     {totalClinkerWt % 1 === 0 ? totalClinkerWt : totalClinkerWt.toFixed(2)}
                   </span>
-                  <span className="clinker-auto-hint">auto-calculated</span>
+                  <span className="clinker-auto-hint">auto / स्वतः</span>
                 </div>
               </div>
 
-              {/* Dryer in Use - DROPDOWN */}
-
               <div className="common-field-row">
-
                 <div className="common-field-label">
-                  Dryer in Use
+                  Dryer in Use<br /><span className="hi">ड्रायर उपयोग में</span>
                 </div>
-
-                <select
-                  className="tjc-input"
-                  value={form.dryer_in_use}
-                  onChange={e =>
-                    set(
-                      'dryer_in_use',
-                      e.target.value
-                    )
-                  }
-                >
-                  <option value="">
-                    Select
-                  </option>
-
-                  <option value="Old">
-                    Old
-                  </option>
-
-                  <option value="New">
-                    New
-                  </option>
+                <select className="tjc-input" value={form.dryer_in_use}
+                  onChange={e => set('dryer_in_use', e.target.value)}>
+                  <option value="">Select / चुनें</option>
+                  <option value="Old">Old / पुराना</option>
+                  <option value="New">New / नया</option>
                 </select>
-
               </div>
 
             </div>
@@ -1494,263 +1374,131 @@ export default function ThermpackJobCard() {
       </form>
 
       {/* ══ COLLAPSIBLE: Running Motor Amp Status ══ */}
-
       <div className="sc-accordion">
 
-        <button
-          type="button"
-          className="sc-accordion-header"
-          onClick={() =>
-            setMotorOpen(o => !o)
-          }
-          aria-expanded={motorOpen}
-        >
-
+        <button type="button" className="sc-accordion-header"
+          onClick={() => setMotorOpen(o => !o)} aria-expanded={motorOpen}>
           <span className="sc-accordion-title">
-
             Running Motor Amp Status
-
-            <span className="sc-accordion-title-hi">
-              {' '}
-              / रनिंग मोटर एम्प स्थिति
-            </span>
-
+            <span className="sc-accordion-title-hi"> / रनिंग मोटर एम्प स्थिति</span>
           </span>
-
-          <span className="sc-accordion-icon">
-            {motorOpen ? '▲' : '▼'}
-          </span>
-
+          <span className="sc-accordion-icon">{motorOpen ? '▲' : '▼'}</span>
         </button>
 
         {motorOpen && (
+          <form className="sc-form" onSubmit={handleMotorSubmit}>
 
-          <form
-            className="sc-form"
-            onSubmit={handleMotorSubmit}
-          >
-
+            {/* ── Meta ── */}
             <div className="sc-meta-row">
-
               <div className="sc-meta-field">
                 <Label en="Running Date" hi="चलने की तारीख" />
-                <input
-                  type="date"
-                  className="tjc-input"
+                <input type="date" className="tjc-input"
                   value={motorForm.running_date}
-                  min={motorForm.running_date}
-                  max={motorForm.running_date}
-                  readOnly
-                  style={{ background: '#f5f0ea', cursor: 'not-allowed' }}
-                />
+                  min={motorForm.running_date} max={motorForm.running_date}
+                  readOnly style={{ background: '#f5f0ea', cursor: 'not-allowed' }} />
                 <div style={{ fontSize: '10px', color: '#999', marginTop: '3px' }}>
                   Today only — {motorForm.running_date.split('-').reverse().join('/')}
                 </div>
               </div>
-
               <div className="sc-meta-field sc-meta-wide">
-
-                <Label
-                  en="Checked By"
-                  hi="जाँच की गई"
-                />
-
-                <input
-                  className="tjc-input"
-                  placeholder="Name / नाम"
+                <Label en="Checked By" hi="जाँच की गई" />
+                <input className="tjc-input" placeholder="Name / नाम"
                   value={motorForm.checked_by}
-                  onChange={e =>
-                    setMotorForm(p => ({
-                      ...p,
-                      checked_by:
-                        e.target.value,
-                    }))
-                  }
-                />
-
+                  onChange={e => setMotorForm(p => ({ ...p, checked_by: e.target.value }))} />
               </div>
-
             </div>
 
+            {/* ── Variant selector (10L / 6L) ── */}
+            <div className="log-variant-bar">
+              <span className="log-variant-label">
+                Thermopack Type / <span className="hi">प्रकार</span>
+              </span>
+              <div className="log-variant-btns">
+                {['10L', '6L'].map(v => (
+                  <button key={v} type="button"
+                    className={`log-variant-btn ${motorForm.motor_variant === v ? 'log-variant-active' : ''}`}
+                    onClick={() => setMotorForm(p => ({ ...p, motor_variant: v }))}>
+                    {v === '10L' ? '10 L kCal' : '6 L kCal'}
+                  </button>
+                ))}
+              </div>
+              <span className="log-variant-badge">
+                Motor Amp — {motorForm.motor_variant === '10L' ? '10 L kCal' : '6 L kCal'}
+              </span>
+            </div>
+
+            {/* ── Motor table ── */}
             <div className="sc-table-scroll">
-
               <table className="sc-single-table">
-
                 <thead>
-
                   <tr>
-
-                    <th>
-                      Sr. No.
-                    </th>
-
-                    <th>
-                      Motor Name /{' '}
-                      <span className="hi">
-                        मोटर नाम
-                      </span>
-                    </th>
-
-                    <th>
-                      HP
-                    </th>
-
-                    <th>
-                      Amp Reading /{' '}
-                      <span className="hi">
-                        एम्प रीडिंग
-                      </span>
-                    </th>
-
-                    <th>
-                      Status /{' '}
-                      <span className="hi">
-                        स्थिति
-                      </span>
-                    </th>
-
+                    <th>Sr. No.<br /><span className="hi">क्र.सं.</span></th>
+                    <th>Motor Name<br /><span className="hi">मोटर नाम</span></th>
+                    <th>HP</th>
+                    <th>Amp Reading<br /><span className="hi">एम्प रीडिंग</span></th>
+                    <th>Status<br /><span className="hi">स्थिति</span></th>
+                    <th>Timestamp<br /><span className="hi">समय</span></th>
+                    <th>Save<br /><span className="hi">सहेजें</span></th>
                   </tr>
-
                 </thead>
-
                 <tbody>
-
                   {MOTORS.map((motor, mi) => (
-
-                    <tr key={motor.id}>
-
-                      <td className="sc-sr">
-                        {motor.id}
-                      </td>
-
-                      <td className="sc-motor-name">
-                        {motor.name}
-                      </td>
-
-                      <td className="sc-hp">
-                        {motor.hp}
-                      </td>
-
+                    <tr key={motor.id}
+                      className={activeMotors[mi].saved ? 'row-saved' : ''}>
+                      <td className="sc-sr">{motor.id}</td>
+                      <td className="sc-motor-name">{motor.name}</td>
+                      <td className="sc-hp">{motor.hp}</td>
                       <td className="sc-cell">
-
-                        <input
-                          type="number"
-                          className="sc-input-wide"
-                          placeholder="—"
-                          value={
-                            motorForm.motors[mi].val
-                          }
-                          onChange={e =>
-                            setMotorCell(
-                              mi,
-                              'val',
-                              e.target.value
-                            )
-                          }
-                        />
-
+                        <input type="number" className="sc-input-wide" placeholder="—"
+                          value={activeMotors[mi].val}
+                          onChange={e => setMotorCell(mi, 'val', e.target.value)} />
                       </td>
-
                       <td className="sc-cell sc-stop-cell">
-
-                        <select
-                          className="sc-stop-select-wide"
-                          value={
-                            motorForm.motors[mi].stop
-                          }
-                          onChange={e =>
-                            setMotorCell(
-                              mi,
-                              'stop',
-                              e.target.value
-                            )
-                          }
-                        >
-
-                          <option value="">
-                            —
-                          </option>
-
-                          <option value="STOP">
-                            STOP
-                          </option>
-
-                          <option value="OK">
-                            OK
-                          </option>
-
+                        <select className="sc-stop-select-wide"
+                          value={activeMotors[mi].stop}
+                          onChange={e => setMotorCell(mi, 'stop', e.target.value)}>
+                          <option value="">—</option>
+                          <option value="STOP">STOP</option>
+                          <option value="OK">OK</option>
                         </select>
-
                       </td>
-
+                      <td className="ts-cell">
+                        {activeMotors[mi].timestamp
+                          ? <span className="ts-badge">{activeMotors[mi].timestamp}</span>
+                          : <span className="ts-empty">—</span>}
+                      </td>
+                      <td className="ts-save-cell">
+                        <button type="button" className="row-save-btn"
+                          onClick={() => saveMotorRow(mi)}>
+                          {activeMotors[mi].saved ? '✓' : '💾'}
+                        </button>
+                      </td>
                     </tr>
-
                   ))}
-
                 </tbody>
-
               </table>
-
             </div>
 
             <div className="sc-bottom">
-
               <div className="sc-remark-field">
-
-                <Label
-                  en="Remark"
-                  hi="टिप्पणी"
-                />
-
-                <input
-                  className="tjc-input"
-                  placeholder="Remark / टिप्पणी"
+                <Label en="Remark" hi="टिप्पणी" />
+                <input className="tjc-input" placeholder="Remark / टिप्पणी"
                   value={motorForm.remark}
-                  onChange={e =>
-                    setMotorForm(p => ({
-                      ...p,
-                      remark: e.target.value,
-                    }))
-                  }
-                />
-
+                  onChange={e => setMotorForm(p => ({ ...p, remark: e.target.value }))} />
               </div>
-
               <div className="tjc-actions sc-actions">
-
-                {savedMotor && (
-                  <div className="tjc-success">
-                    ✓ Saved / सहेजा गया
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  className="tjc-save-btn"
-                  disabled={saving}
-                >
-                  {saving
-                    ? 'Saving…'
-                    : 'Save Motor Status / मोटर स्थिति सहेजें'}
+                {savedMotor && <div className="tjc-success">✓ Saved / सहेजा गया</div>}
+                <button type="submit" className="tjc-save-btn" disabled={saving}>
+                  {saving ? 'Saving…' : 'Save Motor Status / मोटर स्थिति सहेजें'}
                 </button>
-
-                <button
-                  type="button"
-                  className="tjc-reset-btn"
-                  onClick={() => {
-                    setMotorForm(emptyMotorForm())
-                    setSavedMotor(false)
-                  }}
-                >
+                <button type="button" className="tjc-reset-btn"
+                  onClick={() => { setMotorForm(emptyMotorForm()); setSavedMotor(false) }}>
                   Reset / रीसेट
                 </button>
-
               </div>
-
             </div>
 
           </form>
-
         )}
 
       </div>

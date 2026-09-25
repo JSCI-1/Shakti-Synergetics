@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './BatchTraceability.css'
 
@@ -22,10 +22,10 @@ const TOTAL_RUNNING_TANKS = [
   { key: 'nm',  label: 'NM (2000 Lt.)'   },
 ]
 
-function emptyRow() {
+function emptyRow(batch_no = '') {
   return {
     id: Date.now() + Math.random(),
-    batch_no: '',
+    batch_no,
     charge_tank: '', charge_start: '', charge_stop: '',
     hs_tank: '',     hs_start: '',     hs_stop: '',
     lst_start: '',   lst_stop: '',
@@ -35,22 +35,40 @@ function emptyRow() {
   }
 }
 
-function emptyForm() {
+function emptyForm(sharedBatches) {
   return {
     date: '',
-    rows: Array.from({ length: 2 }, () => emptyRow()),
+    // One row per batch from Process Job Card
+    rows: sharedBatches.length > 0
+      ? sharedBatches.map(b => emptyRow(b.batch_no))
+      : [emptyRow()],
     total_hs1: '', total_hs2: '', total_hs3: '', total_nm: '',
     checked_by: '', approved_by: '',
   }
 }
 
-export default function BatchTraceability() {
-  const [form, setForm]     = useState(emptyForm())
+export default function BatchTraceability({ sharedBatches = [] }) {
+  const [form, setForm]     = useState(() => emptyForm(sharedBatches))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
 
+  // Sync rows when sharedBatches changes (new batch added in Process Job Card)
+  useEffect(() => {
+    setForm(prev => {
+      const newRows = sharedBatches.map((b, i) => {
+        // Preserve existing row data if it exists, just update batch_no
+        const existing = prev.rows[i]
+        return existing
+          ? { ...existing, batch_no: b.batch_no || existing.batch_no }
+          : emptyRow(b.batch_no)
+      })
+      return { ...prev, rows: newRows.length > 0 ? newRows : [emptyRow()] }
+    })
+  }, [sharedBatches])
+
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+
   const setRow = (idx, field, val) =>
     setForm(p => ({
       ...p,
@@ -75,7 +93,7 @@ export default function BatchTraceability() {
     }])
     setSaving(false)
     if (err) setError(err.message)
-    else { setSaved(true); setForm(emptyForm()) }
+    else { setSaved(true); setForm(emptyForm(sharedBatches)) }
   }
 
   const TC = ({ row, field, ri }) => (
@@ -100,14 +118,16 @@ export default function BatchTraceability() {
   return (
     <div className="bt-wrapper">
       <div className="bt-title-bar">
-        <div className="bt-title-main">Batch Traceability Records</div>
+        <div className="bt-title-main">
+          Batch Traceability Records / <span className="bt-title-hi">बैच ट्रेसेबिलिटी रिकॉर्ड</span>
+        </div>
       </div>
 
       <form className="bt-form" onSubmit={handleSubmit}>
 
         <div className="bt-meta-bar">
           <div className="bt-meta-field">
-            <label className="bt-label">Date</label>
+            <label className="bt-label">Date / <span className="bt-label-hi">तारीख</span></label>
             <input type="date" className="bt-input"
               value={form.date} onChange={e => set('date', e.target.value)} />
           </div>
@@ -118,51 +138,74 @@ export default function BatchTraceability() {
           <table className="bt-table">
             <thead>
               <tr className="bt-thead-r1">
-                <th className="bt-th-sticky bt-th-batch" rowSpan={2}>Batch<br />No.</th>
-                <th colSpan={3} className="bt-th-group">Batch Charge In</th>
-                <th colSpan={3} className="bt-th-group">High Speed Mixing</th>
-                <th colSpan={2} className="bt-th-group">Transfer HS to LS<br /><small>(LST 1/2)</small></th>
-                <th colSpan={2} className="bt-th-group">1st Storage</th>
-                <th colSpan={2} className="bt-th-group">2nd Storage</th>
-                <th colSpan={3} className="bt-th-group">Finish Slurry</th>
+                <th className="bt-th-sticky bt-th-batch" rowSpan={2}>
+                  Batch No.<br /><span className="bt-hi">बैच नं.</span>
+                </th>
+                <th colSpan={3} className="bt-th-group">
+                  Batch Charge In<br /><span className="bt-hi">बैच चार्ज इन</span>
+                </th>
+                <th colSpan={3} className="bt-th-group">
+                  High Speed Mixing<br /><span className="bt-hi">हाई स्पीड मिक्सिंग</span>
+                </th>
+                <th colSpan={2} className="bt-th-group">
+                  Transfer HS to LS (LST 1/2)<br /><span className="bt-hi">HS से LS ट्रांसफर</span>
+                </th>
+                <th colSpan={2} className="bt-th-group">
+                  1st Storage<br /><span className="bt-hi">प्रथम स्टोरेज</span>
+                </th>
+                <th colSpan={2} className="bt-th-group">
+                  2nd Storage<br /><span className="bt-hi">द्वितीय स्टोरेज</span>
+                </th>
+                <th colSpan={3} className="bt-th-group">
+                  Finish Slurry<br /><span className="bt-hi">फिनिश स्लरी</span>
+                </th>
                 <th rowSpan={2} className="bt-th-del"></th>
               </tr>
               <tr className="bt-thead-r2">
-                <th>Tank</th><th>Start</th><th>Stop</th>
-                <th>Tank</th><th>Start</th><th>Stop</th>
-                <th>Start</th><th>Stop</th>
-                <th>Start</th><th>Stop</th>
-                <th>Start</th><th>Stop</th>
-                <th>Tank</th><th>Start</th><th>Stop</th>
+                <th>Tank<br /><span className="bt-hi">टैंक</span></th>
+                <th>Start<br /><span className="bt-hi">शुरू</span></th>
+                <th>Stop<br /><span className="bt-hi">बंद</span></th>
+                <th>Tank<br /><span className="bt-hi">टैंक</span></th>
+                <th>Start<br /><span className="bt-hi">शुरू</span></th>
+                <th>Stop<br /><span className="bt-hi">बंद</span></th>
+                <th>Start<br /><span className="bt-hi">शुरू</span></th>
+                <th>Stop<br /><span className="bt-hi">बंद</span></th>
+                <th>Start<br /><span className="bt-hi">शुरू</span></th>
+                <th>Stop<br /><span className="bt-hi">बंद</span></th>
+                <th>Start<br /><span className="bt-hi">शुरू</span></th>
+                <th>Stop<br /><span className="bt-hi">बंद</span></th>
+                <th>Tank<br /><span className="bt-hi">टैंक</span></th>
+                <th>Start<br /><span className="bt-hi">शुरू</span></th>
+                <th>Stop<br /><span className="bt-hi">बंद</span></th>
               </tr>
             </thead>
             <tbody>
               {form.rows.map((row, ri) => (
                 <tr key={row.id} className={ri % 2 === 0 ? '' : 'bt-tr-alt'}>
                   <td className="bt-td-sticky bt-td-batch">
-                    <input className="bt-input-cell" placeholder="3512"
+                    <input className="bt-input-cell"
+                      placeholder="Batch No. / बैच नं."
                       value={row.batch_no}
                       onChange={e => setRow(ri, 'batch_no', e.target.value)} />
                   </td>
-                  <SC row={row} field="charge_tank" ri={ri} options={HS_TANKS} />
+                  <SC row={row} field="charge_tank"  ri={ri} options={HS_TANKS} />
                   <TC row={row} field="charge_start" ri={ri} />
                   <TC row={row} field="charge_stop"  ri={ri} />
-                  <SC row={row} field="hs_tank" ri={ri} options={HS_TANKS} />
-                  <TC row={row} field="hs_start" ri={ri} />
-                  <TC row={row} field="hs_stop"  ri={ri} />
+                  <SC row={row} field="hs_tank"  ri={ri} options={HS_TANKS} />
+                  <TC row={row} field="hs_start"  ri={ri} />
+                  <TC row={row} field="hs_stop"   ri={ri} />
                   <TC row={row} field="lst_start" ri={ri} />
                   <TC row={row} field="lst_stop"  ri={ri} />
-                  <TC row={row} field="s1_start" ri={ri} />
-                  <TC row={row} field="s1_stop"  ri={ri} />
-                  <TC row={row} field="s2_start" ri={ri} />
-                  <TC row={row} field="s2_stop"  ri={ri} />
-                  <SC row={row} field="finish_tank" ri={ri} options={FST_TANKS} />
+                  <TC row={row} field="s1_start"  ri={ri} />
+                  <TC row={row} field="s1_stop"   ri={ri} />
+                  <TC row={row} field="s2_start"  ri={ri} />
+                  <TC row={row} field="s2_stop"   ri={ri} />
+                  <SC row={row} field="finish_tank"  ri={ri} options={FST_TANKS} />
                   <TC row={row} field="finish_start" ri={ri} />
                   <TC row={row} field="finish_stop"  ri={ri} />
                   <td className="bt-td-del">
                     {form.rows.length > 1 && (
-                      <button type="button" className="bt-del-btn"
-                        onClick={() => removeRow(ri)}>✕</button>
+                      <button type="button" className="bt-del-btn" onClick={() => removeRow(ri)}>✕</button>
                     )}
                   </td>
                 </tr>
@@ -172,11 +215,15 @@ export default function BatchTraceability() {
         </div>
 
         <div className="bt-controls-bar">
-          <button type="button" className="bt-add-btn" onClick={addRow}>+ Add Batch Row</button>
+          <button type="button" className="bt-add-btn" onClick={addRow}>
+            + Add Batch Row / <span style={{fontSize:'10px'}}>बैच पंक्ति जोड़ें</span>
+          </button>
         </div>
 
         <div className="bt-total-section">
-          <div className="bt-section-title">Total Running Hours</div>
+          <div className="bt-section-title">
+            Total Running Hours / <span style={{fontWeight:'400',fontSize:'11px'}}>कुल चलने के घंटे</span>
+          </div>
           <div className="bt-total-grid">
             {TOTAL_RUNNING_TANKS.map(t => (
               <div key={t.key} className="bt-total-field">
@@ -191,26 +238,26 @@ export default function BatchTraceability() {
 
         <div className="bt-sig-bar">
           <div className="bt-sig-field">
-            <label className="bt-label">Checked By</label>
-            <input className="bt-input" placeholder="Name / Signature"
+            <label className="bt-label">Checked By / <span className="bt-label-hi">जाँच की गई</span></label>
+            <input className="bt-input" placeholder="Name / नाम"
               value={form.checked_by} onChange={e => set('checked_by', e.target.value)} />
           </div>
           <div className="bt-sig-field">
-            <label className="bt-label">Approved By</label>
-            <input className="bt-input" placeholder="Name / Signature"
+            <label className="bt-label">Approved By / <span className="bt-label-hi">अनुमोदित</span></label>
+            <input className="bt-input" placeholder="Name / नाम"
               value={form.approved_by} onChange={e => set('approved_by', e.target.value)} />
           </div>
         </div>
 
         <div className="bt-actions">
           {error && <div className="bt-error">Error: {error}</div>}
-          {saved  && <div className="bt-success">✓ Saved successfully</div>}
+          {saved  && <div className="bt-success">✓ Saved successfully / सफलतापूर्वक सहेजा गया</div>}
           <button type="submit" className="bt-save-btn" disabled={saving}>
-            {saving ? 'Saving…' : 'Save Record'}
+            {saving ? 'Saving…' : 'Save Record / रिकॉर्ड सहेजें'}
           </button>
           <button type="button" className="bt-reset-btn"
-            onClick={() => { setForm(emptyForm()); setSaved(false); setError('') }}>
-            Reset
+            onClick={() => { setForm(emptyForm(sharedBatches)); setSaved(false); setError('') }}>
+            Reset / रीसेट
           </button>
         </div>
 
