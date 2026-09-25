@@ -9,7 +9,6 @@ const DEFAULT_INPUTS = [
 
 const MILLS = ['V1','V2','V3','V4','V5','V6','V7','H1']
 
-// ── Batch (tank) dropdown options ──
 const BATCH_OPTIONS = [
   { group: 'Attrition Mills', options: [
     { label: '1st Attrition Mill — 1.6 MT', value: 'Attrition-1st-1.6MT' },
@@ -21,7 +20,6 @@ const BATCH_OPTIONS = [
   ]},
 ]
 
-// ── Running Motor Amp Status — Slurry Section motors ──
 const SLURRY_MOTORS = [
   { id: 1,  name: 'Vertical Mill 01', hp: 50 },
   { id: 2,  name: 'Vertical Mill 02', hp: 50 },
@@ -37,12 +35,8 @@ const SLURRY_MOTORS = [
   { id: 12, name: 'Attrition Mill 02', hp: 60 },
 ]
 
-// Today's date in yyyy-mm-dd (for the date input value + min/max restriction)
-function todayISO() {
-  return new Date().toISOString().slice(0, 10)
-}
-
-function emptyMotorEntry() { return { amp: '', stop: '' } }
+function todayISO() { return new Date().toISOString().slice(0, 10) }
+function emptyMotorEntry() { return { amp: '', stop: '', timestamp: '', saved: false } }
 
 function emptyMotorForm() {
   return {
@@ -53,16 +47,25 @@ function emptyMotorForm() {
   }
 }
 
+// Batch now has batch_no field for user entry
 function emptyBatch(index) {
-  return { id: Date.now() + Math.random(), label: `Batch-${index + 1}`, tank_type: '' }
+  return { id: Date.now() + Math.random(), batch_no: '', tank_type: '' }
 }
 
 function emptyInputRow(name = '') {
-  return { id: Date.now() + Math.random(), input_name: name, origin_rm_batch: '', batches: [] }
+  return {
+    id: Date.now() + Math.random(),
+    input_name: name,
+    origin_rm_batch: '',
+    batches: [],
+    timestamp: '',
+    saved: false,
+  }
 }
 
+// Mill row — replaced rated_time with remarks
 function emptyMillRow(mill) {
-  return { mill, flow_rate: '', rated_time: '', current_amp: '', zirconia_beads: '' }
+  return { mill, flow_rate: '', current_amp: '', zirconia_beads: '', remarks: '' }
 }
 
 function emptyForm() {
@@ -70,37 +73,42 @@ function emptyForm() {
     date: '',
     shift1_operator: '',
     shift2_operator: '',
-    batches: [emptyBatch(0)],           // array of batch column headers
+    batches: [emptyBatch(0)],
     input_rows: DEFAULT_INPUTS.map(n => emptyInputRow(n)),
     mills: MILLS.map(m => emptyMillRow(m)),
-    suspension1: '', suspension2: '',
-    remark: '',
     operator: '', supervisor: '', manager: '',
   }
 }
 
-export default function SlurrySection() {
-  const [form, setForm]         = useState(emptyForm())
-  const [saving, setSaving]     = useState(false)
-  const [saved, setSaved]       = useState(false)
-  const [error, setError]       = useState('')
+// 12-hour timestamp
+function stamp12hr() {
+  return new Date().toLocaleTimeString('en-IN', {
+    hour: '2-digit', minute: '2-digit', hour12: true,
+  })
+}
 
-  // ── Motor Amp accordion state ──
-  const [motorOpen, setMotorOpen]       = useState(false)
-  const [motorForm, setMotorForm]       = useState(emptyMotorForm())
-  const [motorSaving, setMotorSaving]   = useState(false)
-  const [motorSaved, setMotorSaved]     = useState(false)
-  const [motorError, setMotorError]     = useState('')
+export default function SlurrySection() {
+  const [form, setForm]       = useState(emptyForm())
+  const [saving, setSaving]   = useState(false)
+  const [saved, setSaved]     = useState(false)
+  const [error, setError]     = useState('')
+
+  const [motorOpen, setMotorOpen]     = useState(false)
+  const [motorForm, setMotorForm]     = useState(emptyMotorForm())
+  const [motorSaving, setMotorSaving] = useState(false)
+  const [motorSaved, setMotorSaved]   = useState(false)
+  const [motorError, setMotorError]   = useState('')
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
-  // update batch header (tank type dropdown)
-  const setBatchTank = (bi, val) =>
+  // ── Batch header ──
+  const setBatchField = (bi, field, val) =>
     setForm(p => ({
       ...p,
-      batches: p.batches.map((b, i) => i === bi ? { ...b, tank_type: val } : b),
+      batches: p.batches.map((b, i) => i === bi ? { ...b, [field]: val } : b),
     }))
 
+  // ── Input rows ──
   const setInputRow = (idx, field, val) =>
     setForm(p => ({
       ...p,
@@ -117,6 +125,16 @@ export default function SlurrySection() {
         return { ...r, batches }
       }),
     }))
+
+  // Save a single input row (stamp timestamp)
+  function saveInputRow(idx) {
+    setForm(p => ({
+      ...p,
+      input_rows: p.input_rows.map((r, i) =>
+        i === idx ? { ...r, timestamp: stamp12hr(), saved: true } : r
+      ),
+    }))
+  }
 
   const setMill = (idx, field, val) =>
     setForm(p => ({
@@ -165,9 +183,6 @@ export default function SlurrySection() {
       batches:         form.batches,
       input_rows:      form.input_rows,
       mills:           form.mills,
-      suspension1:     form.suspension1,
-      suspension2:     form.suspension2,
-      remark:          form.remark,
       operator:        form.operator,
       supervisor:      form.supervisor,
       manager:         form.manager,
@@ -177,14 +192,22 @@ export default function SlurrySection() {
     else { setSaved(true); setForm(emptyForm()) }
   }
 
-  // ── Motor Amp cell setter ──
+  // ── Motor Amp ──
   const setMotorCell = (mi, key, val) =>
     setMotorForm(p => ({
       ...p,
       motors: p.motors.map((m, idx) => idx === mi ? { ...m, [key]: val } : m),
     }))
 
-  // ── Save motor amp record ──
+  function saveMotorRow(mi) {
+    setMotorForm(p => ({
+      ...p,
+      motors: p.motors.map((m, idx) =>
+        idx === mi ? { ...m, timestamp: stamp12hr(), saved: true } : m
+      ),
+    }))
+  }
+
   async function handleMotorSubmit(e) {
     e.preventDefault()
     if (!supabaseReady) { setMotorError('Supabase not configured.'); return }
@@ -209,7 +232,7 @@ export default function SlurrySection() {
 
       <form className="sl-form" onSubmit={handleSubmit}>
 
-        {/* ══ META: Date + Shifts only ══ */}
+        {/* ══ META ══ */}
         <div className="sl-meta-bar">
           <div className="sl-meta-field">
             <label className="sl-label">Date</label>
@@ -242,12 +265,19 @@ export default function SlurrySection() {
                       <span className="sl-batch-num">Batch-{bi + 1}</span>
                       {form.batches.length > 1 && (
                         <button type="button" className="sl-del-batch-btn"
-                          onClick={() => removeBatch(bi)} title="Delete batch">✕</button>
+                          onClick={() => removeBatch(bi)}>✕</button>
                       )}
                     </div>
+                    {/* User-entered batch number */}
+                    <input
+                      className="sl-batch-no-input"
+                      placeholder="Batch No."
+                      value={batch.batch_no}
+                      onChange={e => setBatchField(bi, 'batch_no', e.target.value)}
+                    />
                     <select className="sl-batch-select"
                       value={batch.tank_type}
-                      onChange={e => setBatchTank(bi, e.target.value)}>
+                      onChange={e => setBatchField(bi, 'tank_type', e.target.value)}>
                       <option value="">— Select Tank —</option>
                       {BATCH_OPTIONS.map(grp => (
                         <optgroup key={grp.group} label={grp.group}>
@@ -259,12 +289,14 @@ export default function SlurrySection() {
                     </select>
                   </th>
                 ))}
+                <th className="sl-th-ts">Timestamp</th>
+                <th className="sl-th-save">Save</th>
                 <th className="sl-th-action"></th>
               </tr>
             </thead>
             <tbody>
               {form.input_rows.map((row, ri) => (
-                <tr key={row.id} className={ri % 2 === 0 ? '' : 'sl-tr-alt'}>
+                <tr key={row.id} className={`${ri % 2 === 0 ? '' : 'sl-tr-alt'} ${row.saved ? 'sl-row-saved' : ''}`}>
                   <td className="sl-td-sticky sl-td-input">
                     <input className="sl-input-cell" placeholder="Input name"
                       value={row.input_name}
@@ -282,10 +314,23 @@ export default function SlurrySection() {
                         onChange={e => setInputBatch(ri, bi, e.target.value)} />
                     </td>
                   ))}
+                  {/* Timestamp */}
+                  <td className="sl-td-ts">
+                    {row.timestamp
+                      ? <span className="sl-ts-badge">{row.timestamp}</span>
+                      : <span className="sl-ts-empty">—</span>}
+                  </td>
+                  {/* Row save button */}
+                  <td className="sl-td-save">
+                    <button type="button" className="sl-row-save-btn"
+                      onClick={() => saveInputRow(ri)}>
+                      {row.saved ? '✓' : '💾'}
+                    </button>
+                  </td>
                   <td className="sl-td-action">
                     {form.input_rows.length > 1 && (
                       <button type="button" className="sl-remove-btn"
-                        onClick={() => removeInputRow(ri)} title="Remove row">✕</button>
+                        onClick={() => removeInputRow(ri)}>✕</button>
                     )}
                   </td>
                 </tr>
@@ -294,13 +339,15 @@ export default function SlurrySection() {
           </table>
         </div>
 
-        {/* ── Total WT — outside scroll, always visible ── */}
+        {/* ── Total WT ── */}
         <div className="sl-total-bar">
           <span className="sl-total-bar-label">TOTAL WT.</span>
           <div className="sl-total-bar-cols">
             {colTotals.map((total, bi) => (
               <span key={bi} className="sl-total-bar-item">
-                <span className="sl-total-bar-batch">Batch-{bi + 1}</span>
+                <span className="sl-total-bar-batch">
+                  {form.batches[bi]?.batch_no || `Batch-${bi + 1}`}
+                </span>
                 <span className="sl-total-bar-val">{total > 0 ? total : '—'}</span>
               </span>
             ))}
@@ -317,58 +364,35 @@ export default function SlurrySection() {
           </button>
         </div>
 
-        {/* ══ BOTTOM SPLIT ══ */}
-        <div className="sl-bottom-split">
-          <div className="sl-milling-block">
-            <div className="sl-section-title">Sand Milling Details</div>
-            <table className="sl-mill-table">
-              <thead>
-                <tr>
-                  <th>Mill No.</th>
-                  <th>Flow Rate<br /><small>(L/Sec)</small></th>
-                  <th>Rated Time</th>
-                  <th>Current Amp</th>
-                  <th>Zirconox/Zircosil Beads (kg)</th>
+        {/* ══ SAND MILLING — no suspension block, full width ══ */}
+        <div className="sl-section-title">Sand Milling Details</div>
+        <div className="sl-mill-scroll">
+          <table className="sl-mill-table">
+            <thead>
+              <tr>
+                <th>Mill No.</th>
+                <th>Flow Rate (L/Sec)</th>
+                <th>Current Amp</th>
+                <th>Zirconox/Zircosil Beads (kg)</th>
+                <th>Remarks</th>
+              </tr>
+            </thead>
+            <tbody>
+              {form.mills.map((mill, mi) => (
+                <tr key={mill.mill} className={mi % 2 === 0 ? '' : 'sl-tr-alt'}>
+                  <td className="sl-mill-name">Mill No. {mill.mill}</td>
+                  <td><input type="number" className="sl-input-num-wide" placeholder="—"
+                    value={mill.flow_rate} onChange={e => setMill(mi, 'flow_rate', e.target.value)} /></td>
+                  <td><input type="number" className="sl-input-num-wide" placeholder="—"
+                    value={mill.current_amp} onChange={e => setMill(mi, 'current_amp', e.target.value)} /></td>
+                  <td><input type="number" className="sl-input-num-wide" placeholder="—"
+                    value={mill.zirconia_beads} onChange={e => setMill(mi, 'zirconia_beads', e.target.value)} /></td>
+                  <td><input className="sl-input-wide-text" placeholder="—"
+                    value={mill.remarks} onChange={e => setMill(mi, 'remarks', e.target.value)} /></td>
                 </tr>
-              </thead>
-              <tbody>
-                {form.mills.map((mill, mi) => (
-                  <tr key={mill.mill} className={mi % 2 === 0 ? '' : 'sl-tr-alt'}>
-                    <td className="sl-mill-name">Mill No. {mill.mill}</td>
-                    <td><input type="number" className="sl-input-num-wide" placeholder="—"
-                      value={mill.flow_rate} onChange={e => setMill(mi, 'flow_rate', e.target.value)} /></td>
-                    <td><input type="number" className="sl-input-num-wide" placeholder="—"
-                      value={mill.rated_time} onChange={e => setMill(mi, 'rated_time', e.target.value)} /></td>
-                    <td><input type="number" className="sl-input-num-wide" placeholder="—"
-                      value={mill.current_amp} onChange={e => setMill(mi, 'current_amp', e.target.value)} /></td>
-                    <td><input type="number" className="sl-input-num-wide" placeholder="—"
-                      value={mill.zirconia_beads} onChange={e => setMill(mi, 'zirconia_beads', e.target.value)} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="sl-susp-block">
-            <div className="sl-section-title">Suspension &amp; Remarks</div>
-            <div className="sl-susp-fields">
-              <div className="sl-field-group">
-                <label className="sl-label">I Suspension</label>
-                <input className="sl-input" placeholder="Value"
-                  value={form.suspension1} onChange={e => set('suspension1', e.target.value)} />
-              </div>
-              <div className="sl-field-group">
-                <label className="sl-label">II Suspension</label>
-                <input className="sl-input" placeholder="Value"
-                  value={form.suspension2} onChange={e => set('suspension2', e.target.value)} />
-              </div>
-              <div className="sl-field-group">
-                <label className="sl-label">Remark</label>
-                <textarea className="sl-textarea" rows={3} placeholder="Remark..."
-                  value={form.remark} onChange={e => set('remark', e.target.value)} />
-              </div>
-            </div>
-          </div>
+              ))}
+            </tbody>
+          </table>
         </div>
 
         {/* ══ APPROVAL ══ */}
@@ -415,20 +439,13 @@ export default function SlurrySection() {
 
         {motorOpen && (
           <form className="sl-motor-form" onSubmit={handleMotorSubmit}>
-
-            {/* ── Date (today only) + Checked By ── */}
             <div className="sl-motor-meta">
               <div className="sl-motor-meta-field">
                 <label className="sl-label">Running Date</label>
-                <input
-                  type="date"
-                  className="sl-input"
+                <input type="date" className="sl-input"
                   value={motorForm.running_date}
-                  min={todayISO()}
-                  max={todayISO()}
-                  readOnly
-                  style={{ background: '#f5f0ea', cursor: 'not-allowed' }}
-                />
+                  min={todayISO()} max={todayISO()} readOnly
+                  style={{ background: '#f5f0ea', cursor: 'not-allowed' }} />
                 <div style={{ fontSize: '10px', color: '#999', marginTop: '3px' }}>
                   Today only — {motorForm.running_date.split('-').reverse().join('/')}
                 </div>
@@ -441,7 +458,6 @@ export default function SlurrySection() {
               </div>
             </div>
 
-            {/* ── Motor table ── */}
             <div className="sl-motor-scroll">
               <table className="sl-motor-table">
                 <thead>
@@ -451,11 +467,14 @@ export default function SlurrySection() {
                     <th>HP</th>
                     <th>Amp Reading</th>
                     <th>Status</th>
+                    <th>Timestamp</th>
+                    <th>Save</th>
                   </tr>
                 </thead>
                 <tbody>
                   {SLURRY_MOTORS.map((motor, mi) => (
-                    <tr key={motor.id} className={mi % 2 === 0 ? '' : 'sl-motor-alt'}>
+                    <tr key={motor.id}
+                      className={`${mi % 2 === 0 ? '' : 'sl-motor-alt'} ${motorForm.motors[mi].saved ? 'sl-motor-saved' : ''}`}>
                       <td className="sl-motor-sr">{motor.id}</td>
                       <td className="sl-motor-name">{motor.name}</td>
                       <td className="sl-motor-hp">{motor.hp}</td>
@@ -473,13 +492,23 @@ export default function SlurrySection() {
                           <option value="STOP">STOP</option>
                         </select>
                       </td>
+                      <td className="sl-motor-ts">
+                        {motorForm.motors[mi].timestamp
+                          ? <span className="sl-ts-badge">{motorForm.motors[mi].timestamp}</span>
+                          : <span className="sl-ts-empty">—</span>}
+                      </td>
+                      <td className="sl-motor-save-cell">
+                        <button type="button" className="sl-row-save-btn"
+                          onClick={() => saveMotorRow(mi)}>
+                          {motorForm.motors[mi].saved ? '✓' : '💾'}
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
 
-            {/* ── Remark ── */}
             <div className="sl-motor-remark">
               <label className="sl-label">Remark</label>
               <input className="sl-input" placeholder="Remark..."
@@ -487,7 +516,6 @@ export default function SlurrySection() {
                 onChange={e => setMotorForm(p => ({ ...p, remark: e.target.value }))} />
             </div>
 
-            {/* ── Actions ── */}
             <div className="sl-actions">
               {motorError && <div className="sl-error">Error: {motorError}</div>}
               {motorSaved  && <div className="sl-success">✓ Saved successfully</div>}
@@ -499,7 +527,6 @@ export default function SlurrySection() {
                 Reset
               </button>
             </div>
-
           </form>
         )}
       </div>

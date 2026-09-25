@@ -606,3 +606,81 @@
   .sl-motor-meta-field { min-width: 100%; }
   .sl-motor-remark { padding: 10px; }
 }
+
+/* ── Batch number input in header ── */
+.sl-batch-no-input {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 3px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  background: #fff;
+  box-sizing: border-box;
+  margin-bottom: 3px;
+}
+.sl-batch-no-input:focus { outline: none; border-color: #b85c2c; }
+
+/* ── Timestamp + Save columns in inputs table ── */
+.sl-th-ts   { min-width: 90px; white-space: nowrap; }
+.sl-th-save { width: 42px; }
+
+.sl-td-ts   { text-align: center; padding: 2px 4px; white-space: nowrap; }
+.sl-td-save { text-align: center; padding: 2px; }
+
+.sl-ts-badge {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 5px;
+  border-radius: 4px;
+  border: 1px solid #a5d6a7;
+  white-space: nowrap;
+}
+.sl-ts-empty { color: #ccc; font-size: 11px; }
+
+.sl-row-save-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 3px 7px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  line-height: 1;
+}
+.sl-row-save-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
+
+.sl-row-saved { background: #f6fff6 !important; }
+.sl-row-saved .sl-row-save-btn { border-color: #4caf50; color: #2e7d32; font-weight: 700; }
+
+/* saved row highlight */
+.sl-row-saved td { background: #f6fff6 !important; }
+.sl-row-saved .sl-td-sticky  { background: #edfaed !important; }
+.sl-row-saved .sl-td-sticky2 { background: #f0fdf0 !important; }
+
+/* ── Sand Milling — full width, no split ── */
+.sl-mill-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid #e0dbd4;
+}
+.sl-input-wide-text {
+  width: 100%;
+  min-width: 100px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 12px;
+  background: transparent;
+  box-sizing: border-box;
+}
+.sl-input-wide-text:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+/* ── Motor table timestamp + save ── */
+.sl-motor-ts        { text-align: center; white-space: nowrap; padding: 2px 6px; }
+.sl-motor-save-cell { text-align: center; padding: 2px; }
+.sl-motor-saved td  { background: #f6fff6 !important; }
