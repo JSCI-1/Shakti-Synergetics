@@ -2,6 +2,14 @@ import React, { useState, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './BatchTraceability.css'
 
+// Tank options — matches Process Job Card BATCH_OPTIONS exactly so tank selection syncs
+const CHARGE_TANKS = [
+  { value: 'Attrition-1st-1.6MT', label: '1st Attrition Mill — 1.6 MT' },
+  { value: 'Attrition-2nd-1.2MT', label: '2nd Attrition Mill — 1.2 MT' },
+  { value: 'HST-1st-8MT',         label: 'HST 1st — 8 MT'              },
+  { value: 'HST-2nd-6MT',         label: 'HST 2nd — 6 MT'              },
+]
+
 const HS_TANKS = [
   { value: 'HS-1(6000)', label: 'HS-1 (6000)' },
   { value: 'HS-2(4000)', label: 'HS-2 (4000)' },
@@ -192,7 +200,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
                       value={row.batch_no}
                       onChange={e => setRow(ri, 'batch_no', e.target.value)} />
                   </td>
-                  <SC row={row} field="charge_tank"  ri={ri} options={HS_TANKS} />
+                  <SC row={row} field="charge_tank"  ri={ri} options={CHARGE_TANKS} />
                   <TC row={row} field="charge_start" ri={ri} />
                   <TC row={row} field="charge_stop"  ri={ri} />
                   <SC row={row} field="hs_tank"  ri={ri} options={HS_TANKS} />
