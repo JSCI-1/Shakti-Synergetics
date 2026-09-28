@@ -17,10 +17,23 @@
   padding: 12px 20px 10px;
   text-align: center;
 }
-.sl-title-main { font-size: 18px; font-weight: 700; color: #f0c890; }
-.sl-title-sub  { font-size: 12px; color: #aaa; margin-top: 3px; }
 
-.sl-form { display: flex; flex-direction: column; }
+.sl-title-main {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f0c890;
+}
+
+.sl-title-sub {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 3px;
+}
+
+.sl-form {
+  display: flex;
+  flex-direction: column;
+}
 
 .sl-label {
   font-size: 11px;
@@ -41,7 +54,12 @@
   box-sizing: border-box;
   transition: border-color 0.15s;
 }
-.sl-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.sl-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
 
 .sl-textarea {
   width: 100%;
@@ -53,7 +71,12 @@
   background: #fafaf8;
   box-sizing: border-box;
 }
-.sl-textarea:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.sl-textarea:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
 
 .sl-section-title {
   background: #f5f0ea;
@@ -65,7 +88,9 @@
   color: #b85c2c;
 }
 
+
 /* ══ META ══ */
+
 .sl-meta-bar {
   display: flex;
   gap: 16px;
@@ -74,9 +99,17 @@
   border-bottom: 1px solid #e0dbd4;
   background: #fafaf8;
 }
-.sl-meta-field { flex: 1; min-width: 150px; display: flex; flex-direction: column; }
+
+.sl-meta-field {
+  flex: 1;
+  min-width: 150px;
+  display: flex;
+  flex-direction: column;
+}
+
 
 /* ══ TABLE SCROLL CONTAINER ══ */
+
 .sl-table-scroll {
   overflow-x: auto;
   overflow-y: auto;
@@ -85,20 +118,29 @@
   position: relative;
 }
 
+
 /* ══ INPUTS TABLE ══ */
+
 .sl-table {
   border-collapse: collapse;
+  border-spacing: 0;
   width: 100%;
+  min-width: 650px;
   font-size: 12px;
+  table-layout: fixed;
 }
+
 .sl-table th,
 .sl-table td {
   border: 1px solid #d8d0c8;
   padding: 0;
   vertical-align: middle;
+  box-sizing: border-box;
 }
 
+
 /* ── Sticky header ── */
+
 .sl-table thead th {
   background: #f5f0ea;
   font-size: 11px;
@@ -110,52 +152,164 @@
   top: 0;
   z-index: 3;
   padding: 4px 6px;
-  vertical-align: bottom;  /* align all headers to bottom edge */
+  vertical-align: middle;
 }
 
-/* ── Sticky column 1 — Inputs (left: 0) ── */
+
+/* ── Sticky column 1 — Inputs ── */
+
 .sl-th-sticky,
 .sl-td-sticky {
   position: sticky;
   left: 0;
   z-index: 2;
   background: #faf7f3;
-  box-shadow: 2px 0 4px rgba(0,0,0,0.06);
+  box-shadow: 2px 0 4px rgba(0, 0, 0, 0.06);
 }
-.sl-table thead .sl-th-sticky { z-index: 5; background: #f5f0ea; }
 
-/* ── Sticky column 2 — Origin (left: 130px = width of col 1) ── */
-.sl-th-origin,
-.sl-td-sticky2 {
-  position: sticky;
-  left: 130px;
-  z-index: 2;
-  background: #fff;
+.sl-table thead .sl-th-sticky {
+  z-index: 6;
+  background: #f5f0ea;
+}
+
+
+/* =========================================================
+   IMPORTANT:
+   Origin/RM is NOT sticky.
+   It is now a real table column that aligns directly
+   with the body Origin/RM <td>.
+   ========================================================= */
+
+.sl-th-origin {
+  position: static;
   min-width: 140px;
   width: 140px;
-  box-shadow: 2px 0 4px rgba(0,0,0,0.04);
+  max-width: 140px;
+  background: #f5f0ea;
+  text-align: center;
+  vertical-align: middle;
+  padding: 6px 4px !important;
+  box-shadow: none;
+  z-index: 4;
 }
-.sl-table thead .sl-th-origin { z-index: 5; background: #f5f0ea; }
 
-.sl-th-input  { min-width: 130px; width: 130px; }
-.sl-th-batch  { min-width: 140px; }
-.sl-th-action { width: 32px; }
+.sl-td-sticky2 {
+  position: static;
+}
 
-.sl-td-input  { background: #faf7f3; min-width: 130px; width: 130px; padding: 0; }
-.sl-td-origin { background: #fff; padding: 0; }
-.sl-td-batch  { text-align: center; padding: 4px 6px; }
-.sl-td-action { text-align: center; padding: 2px; }
 
-/* alternating rows */
-.sl-tr-alt td { background: #fafaf8; }
-.sl-tr-alt .sl-td-sticky  { background: #f5f2ee; }
-.sl-tr-alt .sl-td-sticky2 { background: #f8f8f6; }
+/* ── Column widths ── */
 
-/* ── Batch header cell — aligns to bottom like other headers ── */
-.sl-th-batch-head {
+.sl-th-input {
+  min-width: 130px;
+  width: 130px;
+  max-width: 130px;
+}
+
+.sl-td-input {
+  background: #faf7f3;
+  min-width: 130px;
+  width: 130px;
+  max-width: 130px;
+  padding: 0;
+}
+
+
+/* =========================================================
+   ORIGIN COLUMN
+   ========================================================= */
+
+.sl-th-origin {
+  min-width: 140px;
+  width: 140px;
+  max-width: 140px;
+}
+
+.sl-td-origin-cell {
+  min-width: 140px;
+  width: 140px;
+  max-width: 140px;
+  padding: 3px 4px;
+  background: #faf7f3;
+  text-align: center;
+  vertical-align: middle;
+}
+
+
+/* =========================================================
+   QTY COLUMN
+   ========================================================= */
+
+.sl-th-qty {
+  min-width: 80px;
+  width: 80px;
+  max-width: 80px;
+  background: #f5f0ea;
+  text-align: center;
+  vertical-align: middle;
+  padding: 6px 4px !important;
+}
+
+.sl-td-batch {
+  min-width: 80px;
+  width: 80px;
+  max-width: 80px;
+  text-align: center;
+  padding: 4px 6px;
+  vertical-align: middle;
+}
+
+
+/* ── Action column ── */
+
+.sl-th-action {
+  width: 32px;
+  min-width: 32px;
+  max-width: 32px;
+}
+
+.sl-td-action {
+  text-align: center;
+  padding: 2px;
+  width: 32px;
+}
+
+
+/* ── Alternating rows ── */
+
+.sl-tr-alt td {
+  background: #fafaf8;
+}
+
+.sl-tr-alt .sl-td-sticky {
+  background: #f5f2ee;
+}
+
+.sl-tr-alt .sl-td-sticky2 {
+  background: #f8f8f6;
+}
+
+.sl-tr-alt .sl-td-origin-cell {
+  background: #fafaf8;
+}
+
+
+/* ══ BATCH HEADER ══ */
+
+/* Batch header spans exactly the Origin + Qty columns */
+
+.sl-th-batch-pair {
+  min-width: 220px;
   padding: 4px 6px !important;
-  vertical-align: bottom;
+  vertical-align: top !important;
+  background: #f5f0ea;
+  position: sticky;
+  top: 0;
+  z-index: 4;
 }
+
+
+/* Batch header contents */
 
 .sl-batch-head-row {
   display: flex;
@@ -163,11 +317,13 @@
   justify-content: space-between;
   margin-bottom: 3px;
 }
+
 .sl-batch-num {
   font-weight: 700;
   font-size: 11px;
   color: #333;
 }
+
 .sl-del-batch-btn {
   background: transparent;
   border: 1px solid #e0a0a0;
@@ -183,7 +339,13 @@
   justify-content: center;
   flex-shrink: 0;
 }
-.sl-del-batch-btn:hover { background: #fde8e8; }
+
+.sl-del-batch-btn:hover {
+  background: #fde8e8;
+}
+
+
+/* ── Batch select ── */
 
 .sl-batch-select {
   width: 100%;
@@ -196,9 +358,64 @@
   cursor: pointer;
   height: 22px;
 }
-.sl-batch-select:focus { outline: none; border-color: #b85c2c; }
 
-/* Cell inputs — borderless flush style for Inputs and Origin columns */
+.sl-batch-select:focus {
+  outline: none;
+  border-color: #b85c2c;
+}
+
+
+/* ── Batch number input ── */
+
+.sl-batch-no-input {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  padding: 3px 5px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  background: #fff;
+  box-sizing: border-box;
+  margin-bottom: 3px;
+}
+
+.sl-batch-no-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+}
+
+
+/* =========================================================
+   Origin / Qty SUB-HEADER
+   These are REAL <th> cells now.
+   Do NOT use flex here.
+   ========================================================= */
+
+.sl-th-origin,
+.sl-th-qty {
+  text-align: center;
+  vertical-align: middle !important;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+
+/* Divider between Origin and Qty */
+
+.sl-th-origin {
+  border-right: 1px solid #d8d0c8 !important;
+}
+
+.sl-th-qty {
+  border-left: 1px solid #d8d0c8 !important;
+}
+
+
+/* =========================================================
+   CELL INPUTS
+   ========================================================= */
+
 .sl-input-cell {
   width: 100%;
   border: none;
@@ -210,10 +427,22 @@
   box-sizing: border-box;
   display: block;
 }
+
 .sl-input-cell:focus {
   outline: none;
-  background: rgba(184,92,44,0.06);
+  background: rgba(184, 92, 44, 0.06);
 }
+
+
+/* Origin input */
+
+.sl-td-origin-cell .sl-input-cell {
+  font-size: 11px;
+  width: 100%;
+}
+
+
+/* Quantity input */
 
 .sl-input-num {
   width: 54px;
@@ -224,10 +453,22 @@
   text-align: center;
   background: transparent;
   -moz-appearance: textfield;
+  box-sizing: border-box;
 }
+
 .sl-input-num::-webkit-outer-spin-button,
-.sl-input-num::-webkit-inner-spin-button { -webkit-appearance: none; }
-.sl-input-num:focus { outline: none; border-color: #b85c2c; background: #fff; }
+.sl-input-num::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.sl-input-num:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
+
+
+/* ── Remove button ── */
 
 .sl-remove-btn {
   background: transparent;
@@ -242,10 +483,18 @@
   align-items: center;
   justify-content: center;
 }
-.sl-remove-btn:hover { background: #fde8e8; }
 
-/* Total row */
-.sl-total-row td { background: #fdf3ee !important; }
+.sl-remove-btn:hover {
+  background: #fde8e8;
+}
+
+
+/* ══ Total row ══ */
+
+.sl-total-row td {
+  background: #fdf3ee !important;
+}
+
 .sl-total-label {
   font-weight: 700;
   font-size: 12px;
@@ -254,6 +503,7 @@
   padding-right: 10px;
   background: #fdf0e6 !important;
 }
+
 .sl-total-val {
   font-weight: 700;
   color: #b85c2c;
@@ -261,7 +511,9 @@
   text-align: center;
 }
 
-/* ── Total WT bar — outside scroll, always visible ── */
+
+/* ══ Total WT bar — outside scroll, always visible ══ */
+
 .sl-total-bar {
   display: flex;
   align-items: center;
@@ -271,17 +523,20 @@
   border-bottom: 1px solid #e8c5a8;
   flex-wrap: wrap;
 }
+
 .sl-total-bar-label {
   font-size: 12px;
   font-weight: 700;
   color: #b85c2c;
   white-space: nowrap;
 }
+
 .sl-total-bar-cols {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .sl-total-bar-item {
   display: flex;
   align-items: center;
@@ -291,10 +546,12 @@
   border-radius: 5px;
   padding: 4px 10px;
 }
+
 .sl-total-bar-batch {
   font-size: 10px;
   color: #999;
 }
+
 .sl-total-bar-val {
   font-size: 14px;
   font-weight: 700;
@@ -303,7 +560,10 @@
   text-align: right;
 }
 
-/* ── Controls bar ── */.sl-add-row-bar {
+
+/* ══ Controls bar ══ */
+
+.sl-add-row-bar {
   padding: 8px 16px;
   border-bottom: 1px solid #e0dbd4;
   background: #fafaf8;
@@ -311,6 +571,7 @@
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .sl-add-btn {
   background: transparent;
   border: 1px dashed #b85c2c;
@@ -322,22 +583,43 @@
   cursor: pointer;
   transition: background 0.15s;
 }
-.sl-add-btn:hover { background: #fdf3ee; }
-.sl-add-batch-btn { border-color: #2e7d32; color: #2e7d32; }
-.sl-add-batch-btn:hover { background: #e8f5e9; }
+
+.sl-add-btn:hover {
+  background: #fdf3ee;
+}
+
+.sl-add-batch-btn {
+  border-color: #2e7d32;
+  color: #2e7d32;
+}
+
+.sl-add-batch-btn:hover {
+  background: #e8f5e9;
+}
+
 
 /* ══ BOTTOM SPLIT ══ */
+
 .sl-bottom-split {
   display: flex;
   gap: 0;
   border-bottom: 1px solid #e0dbd4;
 }
+
 .sl-milling-block {
   flex: 1.6;
   border-right: 1px solid #d8d0c8;
   overflow-x: auto;
 }
-.sl-susp-block { flex: 1; display: flex; flex-direction: column; }
+
+.sl-susp-block {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+
+/* ══ MILL TABLE ══ */
 
 .sl-mill-table {
   border-collapse: collapse;
@@ -345,6 +627,7 @@
   min-width: 400px;
   font-size: 12px;
 }
+
 .sl-mill-table th,
 .sl-mill-table td {
   border: 1px solid #d8d0c8;
@@ -352,6 +635,7 @@
   text-align: center;
   vertical-align: middle;
 }
+
 .sl-mill-table thead th {
   background: #f5f0ea;
   font-size: 11px;
@@ -359,8 +643,15 @@
   color: #444;
   line-height: 1.4;
 }
-.sl-mill-table tbody tr:nth-child(even) { background: #fafaf8; }
-.sl-mill-table tbody tr:hover { background: #fdf3ee; }
+
+.sl-mill-table tbody tr:nth-child(even) {
+  background: #fafaf8;
+}
+
+.sl-mill-table tbody tr:hover {
+  background: #fdf3ee;
+}
+
 .sl-mill-name {
   font-weight: 700;
   font-size: 11px;
@@ -369,6 +660,10 @@
   text-align: left;
   background: #fdf8f4;
 }
+
+
+/* ── Wide numeric input ── */
+
 .sl-input-num-wide {
   width: 70px;
   border: 1px solid #ddd;
@@ -379,19 +674,40 @@
   background: transparent;
   -moz-appearance: textfield;
 }
-.sl-input-num-wide::-webkit-outer-spin-button,
-.sl-input-num-wide::-webkit-inner-spin-button { -webkit-appearance: none; }
-.sl-input-num-wide:focus { outline: none; border-color: #b85c2c; background: #fff; }
 
-.sl-susp-fields { display: flex; flex-direction: column; gap: 12px; padding: 14px; }
-.sl-field-group  { display: flex; flex-direction: column; gap: 4px; }
+.sl-input-num-wide::-webkit-outer-spin-button,
+.sl-input-num-wide::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.sl-input-num-wide:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
+
+.sl-susp-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+}
+
+.sl-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 
 /* ══ APPROVAL ══ */
+
 .sl-approval-bar {
   display: flex;
   gap: 0;
   border-bottom: 1px solid #e0dbd4;
 }
+
 .sl-approval-field {
   flex: 1;
   padding: 12px 14px;
@@ -400,9 +716,14 @@
   flex-direction: column;
   gap: 5px;
 }
-.sl-approval-field:last-child { border-right: none; }
+
+.sl-approval-field:last-child {
+  border-right: none;
+}
+
 
 /* ══ ACTIONS ══ */
+
 .sl-actions {
   padding: 14px 16px;
   display: flex;
@@ -411,6 +732,7 @@
   gap: 10px;
   background: #fafaf8;
 }
+
 .sl-save-btn {
   background: #b85c2c;
   color: #fff;
@@ -422,8 +744,16 @@
   cursor: pointer;
   transition: background 0.2s;
 }
-.sl-save-btn:hover:not(:disabled) { background: #9e4c22; }
-.sl-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.sl-save-btn:hover:not(:disabled) {
+  background: #9e4c22;
+}
+
+.sl-save-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 .sl-reset-btn {
   background: transparent;
   color: #888;
@@ -433,45 +763,142 @@
   font-size: 13px;
   cursor: pointer;
 }
-.sl-reset-btn:hover { border-color: #b85c2c; color: #b85c2c; }
 
-.sl-error   { color: #c0392b; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
-.sl-success { color: #27ae60; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+.sl-reset-btn:hover {
+  border-color: #b85c2c;
+  color: #b85c2c;
+}
+
+.sl-error {
+  color: #c0392b;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1 1 100%;
+}
+
+.sl-success {
+  color: #27ae60;
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1 1 100%;
+}
+
 
 /* ════════════════════
    MOBILE (≤ 640px)
    ════════════════════ */
+
 @media (max-width: 640px) {
-  .sl-title-main { font-size: 15px; }
 
-  .sl-meta-bar   { flex-direction: column; gap: 10px; padding: 12px 10px; }
-  .sl-meta-field { min-width: 100%; }
+  .sl-title-main {
+    font-size: 15px;
+  }
 
-  /* On mobile — release Origin column from sticky, only Inputs stays pinned */
+  .sl-meta-bar {
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 10px;
+  }
+
+  .sl-meta-field {
+    min-width: 100%;
+  }
+
+
+  /* =====================================================
+     MOBILE TABLE
+     Only Inputs column remains sticky.
+     Origin and Qty scroll normally together.
+     ===================================================== */
+
   .sl-th-origin,
+  .sl-th-qty {
+    position: static !important;
+    left: auto !important;
+  }
+
   .sl-td-sticky2 {
     position: static !important;
     left: auto !important;
-    min-width: 110px;
-    width: 110px;
   }
 
+  .sl-th-origin {
+    min-width: 140px;
+    width: 140px;
+    max-width: 140px;
+  }
+
+  .sl-th-qty {
+    min-width: 80px;
+    width: 80px;
+    max-width: 80px;
+  }
+
+  .sl-td-origin-cell {
+    min-width: 140px;
+    width: 140px;
+    max-width: 140px;
+  }
+
+  .sl-td-batch {
+    min-width: 80px;
+    width: 80px;
+    max-width: 80px;
+  }
+
+
   /* Inputs column stays sticky but narrower */
+
   .sl-th-input,
-  .sl-td-input { min-width: 100px; width: 100px; }
+  .sl-td-input {
+    min-width: 100px;
+    width: 100px;
+    max-width: 100px;
+  }
 
-  .sl-bottom-split { flex-direction: column; }
-  .sl-milling-block { border-right: none; border-bottom: 1px solid #d8d0c8; }
 
-  .sl-approval-bar { flex-direction: column; }
-  .sl-approval-field { border-right: none; border-bottom: 1px solid #e0dbd4; }
-  .sl-approval-field:last-child { border-bottom: none; }
+  .sl-bottom-split {
+    flex-direction: column;
+  }
 
-  .sl-actions { padding: 12px 10px; }
-  .sl-save-btn, .sl-reset-btn { flex: 1; text-align: center; }
-  .sl-add-row-bar { flex-direction: column; }
-  .sl-add-btn { width: 100%; text-align: center; }
+  .sl-milling-block {
+    border-right: none;
+    border-bottom: 1px solid #d8d0c8;
+  }
+
+  .sl-approval-bar {
+    flex-direction: column;
+  }
+
+  .sl-approval-field {
+    border-right: none;
+    border-bottom: 1px solid #e0dbd4;
+  }
+
+  .sl-approval-field:last-child {
+    border-bottom: none;
+  }
+
+  .sl-actions {
+    padding: 12px 10px;
+  }
+
+  .sl-save-btn,
+  .sl-reset-btn {
+    flex: 1;
+    text-align: center;
+  }
+
+  .sl-add-row-bar {
+    flex-direction: column;
+  }
+
+  .sl-add-btn {
+    width: 100%;
+    text-align: center;
+  }
 }
+
 
 /* ════════════════════════════════════
    RUNNING MOTOR AMP STATUS — Accordion
@@ -493,7 +920,10 @@
   transition: background 0.15s;
   text-align: left;
 }
-.sl-accordion-header:hover { background: #fdf0e6; }
+
+.sl-accordion-header:hover {
+  background: #fdf0e6;
+}
 
 .sl-accordion-title {
   font-size: 14px;
@@ -507,7 +937,9 @@
   flex-shrink: 0;
 }
 
+
 /* ── Motor form ── */
+
 .sl-motor-form {
   border-top: 1px solid #e0dbd4;
   display: flex;
@@ -522,6 +954,7 @@
   background: #fafaf8;
   flex-wrap: wrap;
 }
+
 .sl-motor-meta-field {
   flex: 1;
   min-width: 160px;
@@ -530,7 +963,9 @@
   gap: 4px;
 }
 
+
 /* ── Motor table ── */
+
 .sl-motor-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -542,6 +977,7 @@
   min-width: 420px;
   font-size: 13px;
 }
+
 .sl-motor-table th,
 .sl-motor-table td {
   border: 1px solid #d8d0c8;
@@ -549,6 +985,7 @@
   text-align: center;
   vertical-align: middle;
 }
+
 .sl-motor-table thead th {
   background: #f5f0ea;
   font-size: 12px;
@@ -556,12 +993,33 @@
   color: #444;
   line-height: 1.4;
 }
-.sl-motor-alt { background: #fafaf8; }
-.sl-motor-table tbody tr:hover { background: #fdf3ee; }
 
-.sl-motor-sr   { font-weight: 700; width: 40px; background: #faf7f3; }
-.sl-motor-name { text-align: left; font-weight: 600; padding-left: 10px; background: #faf7f3; }
-.sl-motor-hp   { font-weight: 700; width: 50px; background: #faf7f3; }
+.sl-motor-alt {
+  background: #fafaf8;
+}
+
+.sl-motor-table tbody tr:hover {
+  background: #fdf3ee;
+}
+
+.sl-motor-sr {
+  font-weight: 700;
+  width: 40px;
+  background: #faf7f3;
+}
+
+.sl-motor-name {
+  text-align: left;
+  font-weight: 600;
+  padding-left: 10px;
+  background: #faf7f3;
+}
+
+.sl-motor-hp {
+  font-weight: 700;
+  width: 50px;
+  background: #faf7f3;
+}
 
 .sl-motor-input {
   width: 80px;
@@ -573,9 +1031,17 @@
   background: transparent;
   -moz-appearance: textfield;
 }
+
 .sl-motor-input::-webkit-outer-spin-button,
-.sl-motor-input::-webkit-inner-spin-button { -webkit-appearance: none; }
-.sl-motor-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
+.sl-motor-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+}
+
+.sl-motor-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
 
 .sl-motor-select {
   width: 80px;
@@ -586,9 +1052,15 @@
   background: transparent;
   cursor: pointer;
 }
-.sl-motor-select:focus { outline: none; border-color: #b85c2c; }
+
+.sl-motor-select:focus {
+  outline: none;
+  border-color: #b85c2c;
+}
+
 
 /* ── Remark ── */
+
 .sl-motor-remark {
   padding: 12px 16px;
   border-top: 1px solid #e0dbd4;
@@ -598,36 +1070,64 @@
   background: #fafaf8;
 }
 
+
 /* ── Mobile ── */
+
 @media (max-width: 640px) {
-  .sl-accordion-header { padding: 12px 14px; }
-  .sl-accordion-title  { font-size: 13px; }
-  .sl-motor-meta { flex-direction: column; padding: 12px 10px; gap: 10px; }
-  .sl-motor-meta-field { min-width: 100%; }
-  .sl-motor-remark { padding: 10px; }
+
+  .sl-accordion-header {
+    padding: 12px 14px;
+  }
+
+  .sl-accordion-title {
+    font-size: 13px;
+  }
+
+  .sl-motor-meta {
+    flex-direction: column;
+    padding: 12px 10px;
+    gap: 10px;
+  }
+
+  .sl-motor-meta-field {
+    min-width: 100%;
+  }
+
+  .sl-motor-remark {
+    padding: 10px;
+  }
 }
 
-/* ── Batch number input in header ── */
-.sl-batch-no-input {
-  width: 100%;
-  border: 1px solid #ccc;
-  border-radius: 3px;
-  padding: 3px 5px;
-  font-size: 11px;
-  font-weight: 600;
-  color: #333;
-  background: #fff;
-  box-sizing: border-box;
-  margin-bottom: 3px;
+
+/* ══ Timestamp + Save columns in inputs table ══ */
+
+.sl-th-ts {
+  min-width: 90px;
+  width: 90px;
+  max-width: 90px;
+  white-space: nowrap;
 }
-.sl-batch-no-input:focus { outline: none; border-color: #b85c2c; }
 
-/* ── Timestamp + Save columns in inputs table ── */
-.sl-th-ts   { min-width: 90px; white-space: nowrap; }
-.sl-th-save { width: 42px; }
+.sl-th-save {
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
+}
 
-.sl-td-ts   { text-align: center; padding: 2px 4px; white-space: nowrap; }
-.sl-td-save { text-align: center; padding: 2px; }
+.sl-td-ts {
+  text-align: center;
+  padding: 2px 4px;
+  white-space: nowrap;
+  width: 90px;
+  min-width: 90px;
+}
+
+.sl-td-save {
+  text-align: center;
+  padding: 2px;
+  width: 42px;
+  min-width: 42px;
+}
 
 .sl-ts-badge {
   display: inline-block;
@@ -640,7 +1140,11 @@
   border: 1px solid #a5d6a7;
   white-space: nowrap;
 }
-.sl-ts-empty { color: #ccc; font-size: 11px; }
+
+.sl-ts-empty {
+  color: #ccc;
+  font-size: 11px;
+}
 
 .sl-row-save-btn {
   background: transparent;
@@ -652,22 +1156,46 @@
   transition: background 0.15s, border-color 0.15s;
   line-height: 1;
 }
-.sl-row-save-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
 
-.sl-row-saved { background: #f6fff6 !important; }
-.sl-row-saved .sl-row-save-btn { border-color: #4caf50; color: #2e7d32; font-weight: 700; }
+.sl-row-save-btn:hover {
+  background: #fdf3ee;
+  border-color: #b85c2c;
+}
 
-/* saved row highlight */
-.sl-row-saved td { background: #f6fff6 !important; }
-.sl-row-saved .sl-td-sticky  { background: #edfaed !important; }
-.sl-row-saved .sl-td-sticky2 { background: #f0fdf0 !important; }
+.sl-row-saved {
+  background: #f6fff6 !important;
+}
+
+.sl-row-saved .sl-row-save-btn {
+  border-color: #4caf50;
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+
+/* ── Saved row highlight ── */
+
+.sl-row-saved td {
+  background: #f6fff6 !important;
+}
+
+.sl-row-saved .sl-td-sticky {
+  background: #edfaed !important;
+}
+
+.sl-row-saved .sl-td-sticky2 {
+  background: #f0fdf0 !important;
+}
+
 
 /* ── Sand Milling — full width, no split ── */
+
 .sl-mill-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border-bottom: 1px solid #e0dbd4;
 }
+
 .sl-input-wide-text {
   width: 100%;
   min-width: 100px;
@@ -678,59 +1206,55 @@
   background: transparent;
   box-sizing: border-box;
 }
-.sl-input-wide-text:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.sl-input-wide-text:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
+
 
 /* ── Motor table timestamp + save ── */
-.sl-motor-ts        { text-align: center; white-space: nowrap; padding: 2px 6px; }
-.sl-motor-save-cell { text-align: center; padding: 2px; }
-.sl-motor-saved td  { background: #f6fff6 !important; }
+
+.sl-motor-ts {
+  text-align: center;
+  white-space: nowrap;
+  padding: 2px 6px;
+}
+
+.sl-motor-save-cell {
+  text-align: center;
+  padding: 2px;
+}
+
+.sl-motor-saved td {
+  background: #f6fff6 !important;
+}
+
 
 /* ── Bilingual label helpers ── */
-.sl-label-hi { font-size: 10px; color: #999; font-weight: 400; }
-.sl-hi       { font-size: 10px; color: #999; font-weight: 400; }
 
-/* ── Batch pair header (Origin + Qty side by side) ── */
-.sl-th-batch-pair {
-  min-width: 220px;
-  padding: 4px 6px !important;
-  vertical-align: top;
-  background: #f5f0ea;
-  position: sticky;
-  top: 0;
-  z-index: 3;
-}
-.sl-batch-sub-headers {
-  display: flex;
-  gap: 0;
-  margin-top: 4px;
-  border-top: 1px solid #d8d0c8;
-}
-.sl-batch-sub-headers span {
-  flex: 1;
+.sl-label-hi {
   font-size: 10px;
-  font-weight: 600;
-  color: #555;
-  padding: 3px 4px;
-  text-align: center;
-  border-right: 1px solid #d8d0c8;
-}
-.sl-batch-sub-headers span:last-child { border-right: none; }
-
-/* ── Origin per-batch cell ── */
-.sl-td-origin-cell {
-  padding: 3px 4px;
-  min-width: 100px;
-  background: #faf7f3;
-}
-.sl-td-origin-cell .sl-input-cell {
-  font-size: 11px;
+  color: #999;
+  font-weight: 400;
 }
 
-/* ── BatchTraceability bilingual ── */
-.bt-hi       { font-size: 9px; color: #aaa; font-weight: 400; display: block; }
-.bt-label-hi { font-size: 10px; color: #999; font-weight: 400; }
+.sl-hi {
+  font-size: 10px;
+  color: #999;
+  font-weight: 400;
+}
+
+
+/* =========================================================
+   OLD .sl-batch-sub-headers STYLES REMOVED
+   Origin/RM and Qty are now real table <th> cells.
+   ========================================================= */
+
 
 /* ── Total bar separator ── */
+
 .sl-total-bar-sep {
   font-size: 12px;
   color: #b85c2c;
@@ -738,7 +1262,9 @@
   margin: 0 2px;
 }
 
-/* ── Flow Rate multi-reading cell ── */
+
+/* ══ Flow Rate multi-reading cell ══ */
+
 .sl-mill-flow-cell {
   padding: 4px 6px;
   min-width: 180px;
@@ -750,7 +1276,10 @@
   gap: 4px;
   margin-bottom: 4px;
 }
-.sl-flow-entry:last-of-type { margin-bottom: 6px; }
+
+.sl-flow-entry:last-of-type {
+  margin-bottom: 6px;
+}
 
 .sl-flow-stamp-btn {
   background: transparent;
@@ -763,7 +1292,11 @@
   flex-shrink: 0;
   transition: background 0.15s, border-color 0.15s;
 }
-.sl-flow-stamp-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
+
+.sl-flow-stamp-btn:hover {
+  background: #fdf3ee;
+  border-color: #b85c2c;
+}
 
 .sl-flow-ts {
   font-size: 10px;
@@ -790,7 +1323,10 @@
   justify-content: center;
   flex-shrink: 0;
 }
-.sl-flow-del-btn:hover { background: #fde8e8; }
+
+.sl-flow-del-btn:hover {
+  background: #fde8e8;
+}
 
 .sl-flow-add-btn {
   background: transparent;
@@ -805,4 +1341,7 @@
   width: 100%;
   text-align: center;
 }
-.sl-flow-add-btn:hover { background: #fdf3ee; }
+
+.sl-flow-add-btn:hover {
+  background: #fdf3ee;
+}

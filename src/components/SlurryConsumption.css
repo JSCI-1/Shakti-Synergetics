@@ -1,0 +1,266 @@
+/* ════════════════════════════════════
+   SLURRY CONSUMPTION REPORT
+   ════════════════════════════════════ */
+
+.sc-wrapper {
+  background: #fff;
+  border: 1px solid #d8d0c8;
+  border-radius: 0 0 6px 6px;
+  overflow: hidden;
+  font-size: 13px;
+  color: #2d2d2d;
+  width: 100%;
+}
+
+.sc-title-bar {
+  background: #1a1a1a;
+  padding: 10px 20px 8px;
+  text-align: center;
+}
+.sc-title-addr { font-size: 11px; color: #aaa; margin-bottom: 3px; }
+.sc-title-main { font-size: 16px; font-weight: 700; color: #f0c890; }
+.sc-title-hi   { font-size: 13px; font-weight: 400; color: #f0c890; }
+
+/* ── Table ── */
+.sc-table-scroll {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 560px;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+.sc-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  font-size: 12px;
+}
+.sc-table th,
+.sc-table td {
+  border-right: 1px solid #d8d0c8;
+  border-bottom: 1px solid #d8d0c8;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+}
+.sc-table th:first-child,
+.sc-table td:first-child { border-left: 1px solid #d8d0c8; }
+.sc-table thead tr:first-child th { border-top: 1px solid #d8d0c8; }
+
+/* Sticky header */
+.sc-table thead th {
+  background: #f5f0ea;
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  line-height: 1.4;
+  white-space: nowrap;
+  padding: 5px 6px;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+}
+
+/* Sticky Date column */
+.sc-th-sticky,
+.sc-td-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #faf7f3;
+}
+.sc-table thead .sc-th-sticky {
+  z-index: 5;
+  background: #f5f0ea;
+}
+
+/* Auto-calc column highlight */
+.sc-th-calc { background: #fdf3ee !important; color: #b85c2c !important; }
+.sc-calc-cell { background: #fdf3ee; padding: 6px 8px !important; }
+.sc-calc-val {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b85c2c;
+}
+.sc-pos { color: #2e7d32; }
+.sc-neg { color: #c0392b; }
+
+.sc-th-date { min-width: 110px; width: 110px; }
+.sc-td-date { min-width: 110px; width: 110px; }
+.sc-th-del  { width: 28px; }
+.sc-td-del  { text-align: center; padding: 2px; width: 28px; }
+
+/* alternating rows */
+.sc-tr-alt td { background: #fafaf8; }
+.sc-tr-alt .sc-td-sticky { background: #f5f2ee; }
+.sc-tr-alt .sc-calc-cell  { background: #fdf0e6; }
+
+/* Inputs */
+.sc-input-cell {
+  width: 100%;
+  border: none;
+  padding: 6px 4px;
+  font-size: 11px;
+  background: transparent;
+  text-align: center;
+  box-sizing: border-box;
+}
+.sc-input-cell:focus { outline: none; background: rgba(184,92,44,0.06); }
+
+.sc-input-num {
+  width: 80px;
+  border: none;
+  padding: 6px 4px;
+  font-size: 12px;
+  text-align: center;
+  background: transparent;
+  -moz-appearance: textfield;
+}
+.sc-input-num::-webkit-outer-spin-button,
+.sc-input-num::-webkit-inner-spin-button { -webkit-appearance: none; }
+.sc-input-num:focus { outline: none; background: rgba(184,92,44,0.06); }
+
+.sc-input-text {
+  width: 80px;
+  border: none;
+  padding: 6px 4px;
+  font-size: 11px;
+  text-align: center;
+  background: transparent;
+}
+.sc-input-text:focus { outline: none; background: rgba(184,92,44,0.06); }
+
+.sc-del-btn {
+  background: transparent;
+  border: 1px solid #e0a0a0;
+  color: #c0392b;
+  border-radius: 3px;
+  width: 20px; height: 20px;
+  font-size: 10px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.sc-del-btn:hover { background: #fde8e8; }
+
+/* Controls */
+.sc-controls-bar {
+  padding: 8px 16px;
+  border-bottom: 1px solid #e0dbd4;
+  background: #fafaf8;
+}
+.sc-add-btn {
+  background: transparent;
+  border: 1px dashed #b85c2c;
+  color: #b85c2c;
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.sc-add-btn:hover { background: #fdf3ee; }
+
+/* Actions */
+.sc-actions {
+  padding: 14px 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  background: #fafaf8;
+}
+.sc-save-btn {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 10px 28px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sc-save-btn:hover:not(:disabled) { background: #9e4c22; }
+.sc-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+.sc-reset-btn {
+  background: transparent;
+  color: #888;
+  border: 1px solid #ccc;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.sc-reset-btn:hover { border-color: #b85c2c; color: #b85c2c; }
+
+.sc-hi      { font-size: 9px;  color: #aaa; font-weight: 400; display: block; }
+.sc-error   { color: #c0392b; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+.sc-success { color: #27ae60;  font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+
+/* Mobile */
+@media (max-width: 640px) {
+  .sc-title-main { font-size: 13px; }
+  .sc-actions { padding: 12px 10px; }
+  .sc-save-btn, .sc-reset-btn { flex: 1; text-align: center; }
+}
+
+/* ── Date bar (today only) ── */
+.sc-date-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #fafaf8;
+  border-bottom: 1px solid #e0dbd4;
+}
+.sc-date-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+}
+.sc-hi-inline { font-size: 10px; color: #999; font-weight: 400; }
+.sc-date-val {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: #b85c2c;
+}
+.sc-date-lock {
+  font-size: 10px;
+  color: #999;
+  background: #f5f0ea;
+  border: 1px solid #e0dbd4;
+  border-radius: 4px;
+  padding: 2px 8px;
+}
+
+/* ── Timestamp + save ── */
+.sc-ts-cell  { text-align: center; padding: 4px 6px; white-space: nowrap; min-width: 80px; }
+.sc-save-cell{ text-align: center; padding: 2px; width: 36px; }
+
+.sc-ts-badge {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2e7d32;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid #a5d6a7;
+  white-space: nowrap;
+}
+.sc-ts-empty { color: #ccc; font-size: 11px; }
+
+.sc-stamp-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.sc-stamp-btn:hover { background: #fdf3ee; border-color: #b85c2c; }

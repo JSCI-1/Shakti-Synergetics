@@ -22,11 +22,12 @@ const TOTAL_RUNNING_TANKS = [
   { key: 'nm',  label: 'NM (2000 Lt.)'   },
 ]
 
-function emptyRow(batch_no = '') {
+function emptyRow(batch_no = '', charge_tank = '') {
   return {
     id: Date.now() + Math.random(),
     batch_no,
-    charge_tank: '', charge_start: '', charge_stop: '',
+    charge_tank,   // pre-filled from Process Job Card tank selection
+    charge_start: '', charge_stop: '',
     hs_tank: '',     hs_start: '',     hs_stop: '',
     lst_start: '',   lst_stop: '',
     s1_start: '',    s1_stop: '',
@@ -40,7 +41,7 @@ function emptyForm(sharedBatches) {
     date: '',
     // One row per batch from Process Job Card
     rows: sharedBatches.length > 0
-      ? sharedBatches.map(b => emptyRow(b.batch_no))
+      ? sharedBatches.map(b => emptyRow(b.batch_no, b.tank_type))
       : [emptyRow()],
     total_hs1: '', total_hs2: '', total_hs3: '', total_nm: '',
     checked_by: '', approved_by: '',
@@ -57,11 +58,14 @@ export default function BatchTraceability({ sharedBatches = [] }) {
   useEffect(() => {
     setForm(prev => {
       const newRows = sharedBatches.map((b, i) => {
-        // Preserve existing row data if it exists, just update batch_no
         const existing = prev.rows[i]
         return existing
-          ? { ...existing, batch_no: b.batch_no || existing.batch_no }
-          : emptyRow(b.batch_no)
+          ? {
+              ...existing,
+              batch_no:    b.batch_no    || existing.batch_no,
+              charge_tank: b.tank_type   || existing.charge_tank,  // sync tank selection
+            }
+          : emptyRow(b.batch_no, b.tank_type)
       })
       return { ...prev, rows: newRows.length > 0 ? newRows : [emptyRow()] }
     })

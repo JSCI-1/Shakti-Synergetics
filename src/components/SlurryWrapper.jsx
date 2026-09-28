@@ -1,22 +1,22 @@
 import React, { useState } from 'react'
 import SlurrySection from './SlurrySection.jsx'
 import BatchTraceability from './BatchTraceability.jsx'
+import SlurryConsumption from './SlurryConsumption.jsx'
 import './SlurryWrapper.css'
 
 const SLURRY_TABS = [
   { key: 'process',      label: 'Process Job Card' },
   { key: 'traceability', label: 'Batch Traceability Records' },
+  { key: 'consumption',  label: 'Slurry Consumption Report' },
 ]
 
-// emptyBatch kept here so both children see the same shape
-export function emptyBatch(index) {
+export function emptyBatch() {
   return { id: Date.now() + Math.random(), batch_no: '', tank_type: '' }
 }
 
 export default function SlurryWrapper() {
   const [activeTab, setActiveTab] = useState('process')
-  // Shared batch list — Process Job Card writes, Traceability reads
-  const [sharedBatches, setSharedBatches] = useState([emptyBatch(0)])
+  const [sharedBatches, setSharedBatches] = useState([emptyBatch()])
 
   return (
     <div className="sw-wrapper">
@@ -29,16 +29,21 @@ export default function SlurryWrapper() {
           </button>
         ))}
       </div>
+
       <div className="sw-content">
-        {activeTab === 'process' && (
+        {/* All tabs always mounted — hidden via CSS so data is preserved */}
+        <div style={{ display: activeTab === 'process' ? 'block' : 'none' }}>
           <SlurrySection
             sharedBatches={sharedBatches}
             setSharedBatches={setSharedBatches}
           />
-        )}
-        {activeTab === 'traceability' && (
+        </div>
+        <div style={{ display: activeTab === 'traceability' ? 'block' : 'none' }}>
           <BatchTraceability sharedBatches={sharedBatches} />
-        )}
+        </div>
+        <div style={{ display: activeTab === 'consumption' ? 'block' : 'none' }}>
+          <SlurryConsumption />
+        </div>
       </div>
     </div>
   )

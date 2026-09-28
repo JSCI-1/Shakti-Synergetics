@@ -108,25 +108,34 @@ function emptyForm() {
     bugass_charged: '',
     diesel_charged: '',
 
-    // Additional common entries from physical form
-    outlet_set_temp: '',
-    expansion_tank_level: '',
-    type_of_fuel: '',
-    qty_fuel_used: '',
-
-    // Changed from fuel_supplier
-    date_of_last_boiler_cleaning: '',
-
-    total_running_hrs: '',
-    consumption_per_hr: '',
-    total_consumption: '',
-    total_clinker_wt: '',
-    dryer_in_use: '',
-
     log_variant: '10L',
 
+    // Summary fields — separate per variant
+    summary_10l: {
+      outlet_set_temp: '',
+      expansion_tank_level: '',
+      type_of_fuel: '',
+      qty_fuel_used: '',
+      date_of_last_boiler_cleaning: '',
+      total_running_hrs: '',
+      consumption_per_hr: '',
+      total_consumption: '',
+      dryer_in_use: '',
+    },
+    summary_6l: {
+      outlet_set_temp: '',
+      expansion_tank_level: '',
+      type_of_fuel: '',
+      qty_fuel_used: '',
+      date_of_last_boiler_cleaning: '',
+      total_running_hrs: '',
+      consumption_per_hr: '',
+      total_consumption: '',
+      dryer_in_use: '',
+    },
+
     rows_10l: TIME_SLOTS.map(() => emptyRow()),
-    rows_6l: TIME_SLOTS.map(() => emptyRow()),
+    rows_6l:  TIME_SLOTS.map(() => emptyRow()),
 
     remarks: '',
   }
@@ -231,6 +240,21 @@ export default function ThermpackJobCard() {
       ? form.rows_10l
       : form.rows_6l
 
+  // active summary for rendering — switches with variant
+  const activeSummary = form.log_variant === '10L' ? form.summary_10l : form.summary_6l
+
+  const setSummary = (field, val) => {
+    const key = form.log_variant === '10L' ? 'summary_10l' : 'summary_6l'
+    setForm(prev => ({
+      ...prev,
+      [key]: { ...prev[key], [field]: val },
+    }))
+  }
+
+  const setSummaryNumeric = (field, val) => {
+    if (val === '' || /^\d*\.?\d*$/.test(val)) setSummary(field, val)
+  }
+
   // Auto-sum Ash/Clinker Wt from both 10L and 6L rows
   const totalClinkerWt = useMemo(() => {
     const sum10l = form.rows_10l.reduce((s, r) => s + (parseFloat(r.ash_clinker_wt) || 0), 0)
@@ -314,35 +338,20 @@ export default function ThermpackJobCard() {
         : null,
 
       // Summary fields
-      outlet_set_temp: form.outlet_set_temp
-        ? parseFloat(form.outlet_set_temp)
+      outlet_set_temp: form.summary_10l.outlet_set_temp
+        ? parseFloat(form.summary_10l.outlet_set_temp)
         : null,
-
-      expansion_tank_level: form.expansion_tank_level,
-
-      type_of_fuel: form.type_of_fuel,
-
-      qty_fuel_used: form.qty_fuel_used,
-
-      // Changed from fuel_supplier
-      date_of_last_boiler_cleaning:
-        form.date_of_last_boiler_cleaning || null,
-
-      total_running_hrs: form.total_running_hrs
-        ? parseFloat(form.total_running_hrs)
-        : null,
-
-      consumption_per_hr: form.consumption_per_hr
-        ? parseFloat(form.consumption_per_hr)
-        : null,
-
-      total_consumption: form.total_consumption
-        ? parseFloat(form.total_consumption)
-        : null,
-
-      total_clinker_wt: totalClinkerWt || null,
-
-      dryer_in_use: form.dryer_in_use,
+      expansion_tank_level:         form.log_variant === '10L' ? form.summary_10l.expansion_tank_level : form.summary_6l.expansion_tank_level,
+      type_of_fuel:                 form.log_variant === '10L' ? form.summary_10l.type_of_fuel         : form.summary_6l.type_of_fuel,
+      qty_fuel_used:                form.log_variant === '10L' ? form.summary_10l.qty_fuel_used        : form.summary_6l.qty_fuel_used,
+      date_of_last_boiler_cleaning: (form.log_variant === '10L' ? form.summary_10l.date_of_last_boiler_cleaning : form.summary_6l.date_of_last_boiler_cleaning) || null,
+      total_running_hrs:            form.log_variant === '10L' ? (parseFloat(form.summary_10l.total_running_hrs) || null) : (parseFloat(form.summary_6l.total_running_hrs) || null),
+      consumption_per_hr:           form.log_variant === '10L' ? (parseFloat(form.summary_10l.consumption_per_hr) || null) : (parseFloat(form.summary_6l.consumption_per_hr) || null),
+      total_consumption:            form.log_variant === '10L' ? (parseFloat(form.summary_10l.total_consumption) || null) : (parseFloat(form.summary_6l.total_consumption) || null),
+      total_clinker_wt:             totalClinkerWt || null,
+      dryer_in_use:                 form.log_variant === '10L' ? form.summary_10l.dryer_in_use : form.summary_6l.dryer_in_use,
+      summary_10l:                  form.summary_10l,
+      summary_6l:                   form.summary_6l,
 
       log_variant: form.log_variant,
 
@@ -712,67 +721,31 @@ export default function ThermpackJobCard() {
             <div className="fuel-total-items">
 
               <div className="fuel-total-item">
-
-                <span className="fuel-total-item-label">
-                  Coal
-                </span>
-
+                <span className="fuel-total-item-label">Coal</span>
                 <span className="fuel-total-item-val">
                   {parseFloat(form.coal_charged) || 0} MT
                 </span>
-
               </div>
 
-              <span className="fuel-total-plus">
-                +
-              </span>
+              <span className="fuel-total-plus">+</span>
 
               <div className="fuel-total-item">
-
-                <span className="fuel-total-item-label">
-                  Bugass
-                </span>
-
+                <span className="fuel-total-item-label">Bugass</span>
                 <span className="fuel-total-item-val">
                   {parseFloat(form.bugass_charged) || 0} MT
                 </span>
-
               </div>
 
-              <span className="fuel-total-plus">
-                +
-              </span>
-
-              <div className="fuel-total-item">
-
-                <span className="fuel-total-item-label">
-                  Diesel
-                </span>
-
-                <span className="fuel-total-item-val">
-                  {parseFloat(form.diesel_charged) || 0} Ltr
-                </span>
-
-              </div>
-
-              <span className="fuel-total-equals">
-                =
-              </span>
+              <span className="fuel-total-equals">=</span>
 
               <div className="fuel-total-item fuel-total-result">
-
-                <span className="fuel-total-item-label">
-                  Total
-                </span>
-
+                <span className="fuel-total-item-label">Total</span>
                 <span className="fuel-total-item-val">
                   {(
                     (parseFloat(form.coal_charged) || 0) +
-                    (parseFloat(form.bugass_charged) || 0) +
-                    (parseFloat(form.diesel_charged) || 0)
+                    (parseFloat(form.bugass_charged) || 0)
                   ).toFixed(2)}
                 </span>
-
               </div>
 
             </div>
@@ -1193,6 +1166,9 @@ export default function ThermpackJobCard() {
 
           <div className="stock-header">
             Summary / <span className="hi">सारांश</span>
+            <span className="log-variant-badge" style={{marginLeft:'12px',fontSize:'11px'}}>
+              {form.log_variant === '10L' ? '10 L kCal' : '6 L kCal'}
+            </span>
           </div>
 
           <div className="common-two-col">
@@ -1202,23 +1178,23 @@ export default function ThermpackJobCard() {
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Outlet Set Temp (°C)<br /><span className="hi">आउटलेट सेट तापमान</span>
+                  Outlet Set Temp (°C) / <br /><span className="hi">आउटलेट सेट तापमान</span>
                 </div>
                 <div className="input-with-unit">
                   <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
-                    value={form.outlet_set_temp}
-                    onChange={e => setNumeric('outlet_set_temp', e.target.value)} />
+                    value={activeSummary.outlet_set_temp}
+                    onChange={e => setSummaryNumeric('outlet_set_temp', e.target.value)} />
                   <span className="input-unit">°C</span>
                 </div>
               </div>
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Expansion Tank Level<br /><span className="hi">एक्सपेंशन टैंक स्तर</span>
+                  Expansion Tank Level / <br /><span className="hi">एक्सपेंशन टैंक स्तर</span>
                 </div>
                 <input className="tjc-input" placeholder=""
-                  value={form.expansion_tank_level}
-                  onChange={e => set('expansion_tank_level', e.target.value)} />
+                  value={activeSummary.expansion_tank_level}
+                  onChange={e => setSummary('expansion_tank_level', e.target.value)} />
               </div>
 
               <div className="common-field-row">
@@ -1226,8 +1202,8 @@ export default function ThermpackJobCard() {
                   Type of Fuel / <br /><span className="hi">ईंधन का प्रकार</span>
                 </div>
                 <input className="tjc-input" type="text" placeholder=""
-                  value={form.type_of_fuel}
-                  onChange={e => set('type_of_fuel', e.target.value)} />
+                  value={activeSummary.type_of_fuel}
+                  onChange={e => setSummary('type_of_fuel', e.target.value)} />
               </div>
 
               <div className="common-field-row">
@@ -1235,17 +1211,17 @@ export default function ThermpackJobCard() {
                   Qty. of Fuel Used / <br /><span className="hi">ईंधन की मात्रा</span>
                 </div>
                 <input className="tjc-input" placeholder=""
-                  value={form.qty_fuel_used}
-                  onChange={e => set('qty_fuel_used', e.target.value)} />
+                  value={activeSummary.qty_fuel_used}
+                  onChange={e => setSummary('qty_fuel_used', e.target.value)} />
               </div>
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Date of Last Boiler Cleaning<br /><span className="hi">अंतिम बॉयलर सफाई तारीख</span>
+                  Date of Last Boiler Cleaning / <br /><span className="hi">अंतिम बॉयलर सफाई तारीख</span>
                 </div>
                 <input className="tjc-input" type="date"
-                  value={form.date_of_last_boiler_cleaning}
-                  onChange={e => set('date_of_last_boiler_cleaning', e.target.value)} />
+                  value={activeSummary.date_of_last_boiler_cleaning}
+                  onChange={e => setSummary('date_of_last_boiler_cleaning', e.target.value)} />
               </div>
 
             </div>
@@ -1255,34 +1231,34 @@ export default function ThermpackJobCard() {
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Total Running Hrs.<br /><span className="hi">कुल चलने के घंटे</span>
+                  Total Running Hrs. / <br /><span className="hi">कुल चलने के घंटे</span>
                 </div>
                 <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
-                  value={form.total_running_hrs}
-                  onChange={e => setNumeric('total_running_hrs', e.target.value)} />
+                  value={activeSummary.total_running_hrs}
+                  onChange={e => setSummaryNumeric('total_running_hrs', e.target.value)} />
               </div>
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Consumption Per Hrs.<br /><span className="hi">प्रति घंटा खपत</span>
+                  Consumption Per Hrs. / <br /><span className="hi">प्रति घंटा खपत</span>
                 </div>
                 <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
-                  value={form.consumption_per_hr}
-                  onChange={e => setNumeric('consumption_per_hr', e.target.value)} />
+                  value={activeSummary.consumption_per_hr}
+                  onChange={e => setSummaryNumeric('consumption_per_hr', e.target.value)} />
               </div>
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Total Consumption (kg)<br /><span className="hi">कुल खपत (किग्रा)</span>
+                  Total Consumption (kg) / <br /><span className="hi">कुल खपत (किग्रा)</span>
                 </div>
                 <input className="tjc-input" type="text" inputMode="decimal" placeholder="0"
-                  value={form.total_consumption}
-                  onChange={e => setNumeric('total_consumption', e.target.value)} />
+                  value={activeSummary.total_consumption}
+                  onChange={e => setSummaryNumeric('total_consumption', e.target.value)} />
               </div>
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Total Clinker Weight (kg)<br /><span className="hi">कुल क्लिंकर वजन (किग्रा)</span>
+                  Total Clinker Weight (kg) / <br /><span className="hi">कुल क्लिंकर वजन (किग्रा)</span>
                 </div>
                 <div className="clinker-auto-val">
                   <span className="clinker-auto-num">
@@ -1294,10 +1270,10 @@ export default function ThermpackJobCard() {
 
               <div className="common-field-row">
                 <div className="common-field-label">
-                  Dryer in Use<br /><span className="hi">ड्रायर उपयोग में</span>
+                  Dryer in Use / <br /><span className="hi">ड्रायर उपयोग में</span>
                 </div>
-                <select className="tjc-input" value={form.dryer_in_use}
-                  onChange={e => set('dryer_in_use', e.target.value)}>
+                <select className="tjc-input" value={activeSummary.dryer_in_use}
+                  onChange={e => setSummary('dryer_in_use', e.target.value)}>
                   <option value="">Select / चुनें</option>
                   <option value="Old">Old / पुराना</option>
                   <option value="New">New / नया</option>

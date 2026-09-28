@@ -104,3 +104,25 @@ create policy "anon_insert_slurry_motor"
 
 create policy "anon_select_slurry_motor"
   on slurry_motor_amp for select to anon using (true);
+
+
+-- ── TABLE: slurry_consumption ────────────────────────────────
+drop table if exists slurry_consumption cascade;
+
+create table slurry_consumption (
+  id         uuid default gen_random_uuid() primary key,
+  created_at timestamptz default now(),
+  -- Array of daily rows with auto-calculated fields stored
+  -- Each: { date, opening_bal, total_batches, closing_bal(auto),
+  --   slurry_consumed, production, diff(auto), cum_diff(auto),
+  --   prepared_by, qc_lab, store_dept, sanction_by, approved_by }
+  rows       jsonb
+);
+
+alter table slurry_consumption enable row level security;
+
+create policy "anon_insert_consumption"
+  on slurry_consumption for insert to anon with check (true);
+
+create policy "anon_select_consumption"
+  on slurry_consumption for select to anon using (true);

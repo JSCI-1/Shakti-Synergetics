@@ -10,12 +10,17 @@
   color: #2d2d2d;
 }
 
-/* ── Sub-tab bar ── */
+
+/* ════════════════════════════════════
+   SUB TAB BAR
+   ════════════════════════════════════ */
+
 .dr-tab-bar {
   display: flex;
   background: #1a1a1a;
   border-bottom: 2px solid #b85c2c;
 }
+
 .dr-tab-btn {
   flex: 1;
   background: transparent;
@@ -31,15 +36,25 @@
   transition: color 0.15s, border-color 0.15s;
   white-space: nowrap;
 }
-.dr-tab-btn:hover  { color: #f0c890; }
+
+.dr-tab-btn:hover {
+  color: #f0c890;
+}
+
 .dr-tab-active {
   color: #f0c890 !important;
   border-bottom-color: #b85c2c !important;
 }
 
-.dr-content { width: 100%; }
+.dr-content {
+  width: 100%;
+}
 
-/* ── Form wrapper ── */
+
+/* ════════════════════════════════════
+   FORM WRAPPER
+   ════════════════════════════════════ */
+
 .dr-form-wrapper {
   background: #fff;
   border: 1px solid #d8d0c8;
@@ -48,22 +63,29 @@
   width: 100%;
 }
 
-/* ── Title bar ── */
+
+/* ════════════════════════════════════
+   TITLE BAR
+   ════════════════════════════════════ */
+
 .dr-title-bar {
   background: #1a1a1a;
   padding: 12px 20px 10px;
   text-align: center;
 }
+
 .dr-title-company {
   font-size: 16px;
   font-weight: 700;
   color: #f0c890;
 }
+
 .dr-title-address {
   font-size: 11px;
   color: #aaa;
   margin-top: 2px;
 }
+
 .dr-title-main {
   font-size: 13px;
   font-weight: 700;
@@ -72,7 +94,11 @@
   letter-spacing: 0.5px;
 }
 
-/* ── Labels & inputs ── */
+
+/* ════════════════════════════════════
+   LABELS & INPUTS
+   ════════════════════════════════════ */
+
 .dr-label {
   font-size: 11px;
   font-weight: 600;
@@ -80,6 +106,7 @@
   display: block;
   margin-bottom: 4px;
 }
+
 .dr-input {
   width: 100%;
   border: 1px solid #ccc;
@@ -91,10 +118,22 @@
   box-sizing: border-box;
   transition: border-color 0.15s;
 }
-.dr-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
-.dr-input-sm { width: 70px; }
 
-/* ── Meta bar (Date + Shift) ── */
+.dr-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fff;
+}
+
+.dr-input-sm {
+  width: 70px;
+}
+
+
+/* ════════════════════════════════════
+   META BAR
+   ════════════════════════════════════ */
+
 .dr-meta-bar {
   display: flex;
   gap: 16px;
@@ -103,6 +142,7 @@
   background: #fafaf8;
   flex-wrap: wrap;
 }
+
 .dr-meta-field {
   flex: 1;
   min-width: 140px;
@@ -110,7 +150,11 @@
   flex-direction: column;
 }
 
-/* ── Blower cards bar ── */
+
+/* ════════════════════════════════════
+   BLOWER CARDS
+   ════════════════════════════════════ */
+
 .dr-blower-bar {
   display: flex;
   gap: 0;
@@ -118,6 +162,7 @@
   background: #fafaf8;
   flex-wrap: wrap;
 }
+
 .dr-blower-card {
   flex: 1;
   min-width: 120px;
@@ -127,18 +172,24 @@
   flex-direction: column;
   gap: 6px;
 }
-.dr-blower-card:last-child { border-right: none; }
+
+.dr-blower-card:last-child {
+  border-right: none;
+}
+
 .dr-blower-title {
   font-size: 11px;
   font-weight: 700;
   color: #b85c2c;
   margin-bottom: 2px;
 }
+
 .dr-blower-row {
   display: flex;
   align-items: center;
   gap: 6px;
 }
+
 .dr-blower-sub {
   font-size: 10px;
   font-weight: 700;
@@ -147,10 +198,17 @@
   flex-shrink: 0;
 }
 
-/* ── Log table ── */
-.dr-table-section { border-bottom: 1px solid #e0dbd4; }
+
+/* ════════════════════════════════════
+   LOG TABLE
+   ════════════════════════════════════ */
+
+.dr-table-section {
+  border-bottom: 1px solid #e0dbd4;
+}
 
 .dr-table-scroll {
+  width: 100%;
   overflow-x: auto;
   overflow-y: auto;
   max-height: 560px;
@@ -158,276 +216,1197 @@
   position: relative;
 }
 
+
+/* ════════════════════════════════════
+   MAIN TABLE
+   ════════════════════════════════════ */
+
 .dr-table {
-  border-collapse: separate;
-  border-spacing: 0;
-  width: 100%;
+  border-collapse: separate !important;
+  border-spacing: 0 !important;
+
+  width: max-content !important;
+  min-width: 100%;
+
+  table-layout: fixed;
+
   font-size: 11px;
 }
+
+
+/* ════════════════════════════════════
+   ALL TABLE CELLS
+   ════════════════════════════════════ */
+
 .dr-table th,
 .dr-table td {
   border-right: 1px solid #d8d0c8;
   border-bottom: 1px solid #d8d0c8;
+
   padding: 0;
+  margin: 0;
+
   text-align: center;
   vertical-align: middle;
-}
-.dr-table th:first-child,
-.dr-table td:first-child { border-left: 1px solid #d8d0c8; }
-.dr-table thead tr:first-child th { border-top: 1px solid #d8d0c8; }
 
-/* Sticky header row 1 */
-.dr-thead-r1 th {
+  box-sizing: border-box;
+}
+
+
+/* First vertical border */
+
+.dr-table th:first-child,
+.dr-table td:first-child {
+  border-left: 1px solid #d8d0c8;
+}
+
+
+/* Top border */
+
+.dr-table thead tr:first-child th {
+  border-top: 1px solid #d8d0c8;
+}
+
+
+/* ════════════════════════════════════
+   COLUMN WIDTHS
+   ════════════════════════════════════ */
+
+
+/* TIME COLUMN */
+
+.dr-col-time {
+  width: 105px !important;
+  min-width: 105px !important;
+  max-width: 105px !important;
+}
+
+
+/* TEMPERATURE COLUMNS */
+
+.dr-col-temp {
+  width: 125px !important;
+  min-width: 125px !important;
+  max-width: 125px !important;
+}
+
+
+/* NORMAL COLUMNS */
+
+.dr-col-normal {
+  width: 90px !important;
+  min-width: 90px !important;
+  max-width: 90px !important;
+}
+
+
+/* TEXT COLUMNS */
+
+.dr-col-text {
+  width: 105px !important;
+  min-width: 105px !important;
+  max-width: 105px !important;
+}
+
+
+/* REMARKS */
+
+.dr-col-remarks {
+  width: 140px !important;
+  min-width: 140px !important;
+  max-width: 140px !important;
+}
+
+
+/* TIMESTAMP */
+
+.dr-col-timestamp {
+  width: 105px !important;
+  min-width: 105px !important;
+  max-width: 105px !important;
+}
+
+
+/* SAVE */
+
+.dr-col-save {
+  width: 55px !important;
+  min-width: 55px !important;
+  max-width: 55px !important;
+}
+
+
+/* ════════════════════════════════════
+   STICKY HEADER
+   ════════════════════════════════════
+
+   IMPORTANT:
+   The complete THEAD is sticky.
+
+   Row 1 and Row 2 are NOT separately
+   sticky. This prevents the gap between
+   the two header rows while scrolling.
+   ════════════════════════════════════ */
+
+.dr-table thead {
+  position: sticky !important;
+  top: 0 !important;
+
+  z-index: 20;
+
   background: #f5f0ea;
+}
+
+
+/* ════════════════════════════════════
+   HEADER ROW 1
+   ════════════════════════════════════ */
+
+.dr-thead-r1 th {
+  position: static !important;
+
+  top: auto !important;
+
+  z-index: auto;
+
+  background: #f5f0ea;
+
   font-size: 11px;
   font-weight: 700;
+
   color: #333;
-  line-height: 1.4;
+
+  line-height: 1.3;
+
   white-space: nowrap;
-  padding: 5px 6px;
-  position: sticky;
-  top: 0;
-  z-index: 3;
-}
-/* Sticky header row 2 */
-.dr-thead-r2 th {
-  background: #faf7f3;
-  font-size: 10px;
-  font-weight: 600;
-  color: #555;
-  white-space: nowrap;
-  padding: 4px 5px;
-  position: sticky;
-  top: 30px;
-  z-index: 3;
+
+  padding: 6px 4px !important;
+
+  text-align: center;
+
+  vertical-align: middle;
+
+  box-sizing: border-box;
+
+  border-top: 1px solid #d8d0c8 !important;
+
+  border-right: 1px solid #d8d0c8 !important;
+
+  border-bottom: 1px solid #d8d0c8 !important;
 }
 
-/* Sticky Time column */
+
+/* ════════════════════════════════════
+   HEADER ROW 2
+   ════════════════════════════════════ */
+
+.dr-thead-r2 th {
+  position: static !important;
+
+  top: auto !important;
+
+  z-index: auto;
+
+  background: #faf7f3;
+
+  font-size: 10px;
+
+  font-weight: 600;
+
+  color: #555;
+
+  white-space: nowrap;
+
+  padding: 5px 2px !important;
+
+  text-align: center;
+
+  vertical-align: middle;
+
+  box-sizing: border-box;
+
+  border-right: 1px solid #d8d0c8 !important;
+
+  border-bottom: 1px solid #d8d0c8 !important;
+}
+
+
+/* ════════════════════════════════════
+   TIME COLUMN — STICKY BOTH WAYS
+   ════════════════════════════════════
+
+   This is the important fix for the
+   Time header.
+
+   It remains visible when:
+   - scrolling vertically
+   - scrolling horizontally
+   ════════════════════════════════════ */
+
 .dr-th-time,
 .dr-td-time {
-  position: sticky;
-  left: 0;
-  z-index: 4;
+  position: sticky !important;
+
+  left: 0 !important;
+
   background: #f5f0ea;
+
   white-space: nowrap;
-  min-width: 58px;
-  width: 58px;
-  box-shadow: 2px 0 3px rgba(0,0,0,0.07);
+
+  width: 105px !important;
+
+  min-width: 105px !important;
+
+  max-width: 105px !important;
+
+  box-shadow: 2px 0 3px rgba(0, 0, 0, 0.07);
 }
-.dr-thead-r1 .dr-th-time { z-index: 6; }
+
+
+/* TIME HEADER */
+
+.dr-thead-r1 .dr-th-time {
+  position: sticky !important;
+
+  left: 0 !important;
+
+  top: 0 !important;
+
+  z-index: 50 !important;
+
+  background: #f5f0ea !important;
+
+  border-top: 1px solid #d8d0c8 !important;
+
+  border-right: 1px solid #d8d0c8 !important;
+
+  border-bottom: 1px solid #d8d0c8 !important;
+}
+
+
+/* TIME BODY */
+
+.dr-table tbody .dr-td-time {
+  position: sticky !important;
+
+  left: 0 !important;
+
+  z-index: 10;
+
+  background: #fdf8f4;
+}
+
+
+/* ════════════════════════════════════
+   TEMPERATURE GROUP HEADERS
+   ════════════════════════════════════
+
+   3 columns × 125px = 375px
+
+   Group 1:
+   Inlet
+   Outlet
+   Actual
+
+   Group 2:
+   IFBD
+   FBD
+   Chamber
+   ════════════════════════════════════ */
+
+.dr-temperature-group {
+  width: 375px !important;
+
+  min-width: 375px !important;
+
+  max-width: 375px !important;
+
+  padding: 6px 0 !important;
+
+  margin: 0 !important;
+
+  text-align: center;
+
+  vertical-align: middle;
+
+  background: #f5f0ea;
+
+  white-space: nowrap;
+
+  box-sizing: border-box;
+
+  border-top: 1px solid #d8d0c8 !important;
+
+  border-right: 1px solid #d8d0c8 !important;
+
+  border-bottom: 1px solid #d8d0c8 !important;
+}
+
+
+/*
+   IMPORTANT:
+
+   Use the SAME light border as every other
+   column.
+
+   Previously this was 2px and darker.
+*/
+
+.dr-temperature-group + .dr-temperature-group {
+  border-left: 1px solid #d8d0c8 !important;
+
+  margin-left: 0 !important;
+
+  padding-left: 0 !important;
+}
+
+
+/* ════════════════════════════════════
+   TEMPERATURE SUB HEADERS
+   ════════════════════════════════════ */
+
+.dr-temp-subheader {
+  width: 125px !important;
+
+  min-width: 125px !important;
+
+  max-width: 125px !important;
+
+  padding: 5px 2px !important;
+
+  margin: 0 !important;
+
+  text-align: center;
+
+  vertical-align: middle;
+
+  box-sizing: border-box;
+
+  border-left: 1px solid #d8d0c8 !important;
+
+  border-right: 1px solid #d8d0c8 !important;
+
+  border-bottom: 1px solid #d8d0c8 !important;
+}
+
+
+/*
+   IMPORTANT:
+
+   The divider between:
+
+   Actual | IFBD
+
+   is now EXACTLY the same light
+   1px border as the other columns.
+*/
+
+.dr-thead-r2 .dr-temp-subheader:nth-child(3) {
+  border-right: 1px solid #d8d0c8 !important;
+}
+
+.dr-thead-r2 .dr-temp-subheader:nth-child(4) {
+  border-left: 0 !important;
+}
+
+
+/* ════════════════════════════════════
+   HEADER BOTTOM BORDER
+   ════════════════════════════════════ */
+
+.dr-table thead tr:last-child th {
+  border-bottom: 1px solid #d8d0c8 !important;
+}
+
+
+/* ════════════════════════════════════
+   BODY TEMPERATURE COLUMNS
+   ════════════════════════════════════
+
+   1 = Time
+   2 = Inlet
+   3 = Outlet
+   4 = Actual
+   5 = IFBD
+   6 = FBD
+   7 = Chamber
+   ════════════════════════════════════ */
+
+.dr-table tbody td:nth-child(2),
+.dr-table tbody td:nth-child(3),
+.dr-table tbody td:nth-child(4),
+.dr-table tbody td:nth-child(5),
+.dr-table tbody td:nth-child(6),
+.dr-table tbody td:nth-child(7) {
+  width: 125px !important;
+
+  min-width: 125px !important;
+
+  max-width: 125px !important;
+
+  box-sizing: border-box;
+}
+
+
+/*
+   Same light border between
+   Actual and IFBD.
+*/
+
+.dr-table tbody td:nth-child(4) {
+  border-right: 1px solid #d8d0c8 !important;
+}
+
+
+/* ════════════════════════════════════
+   TEMPERATURE CELL
+   ════════════════════════════════════ */
+
+.dr-temp-cell {
+  width: 125px !important;
+
+  min-width: 125px !important;
+
+  max-width: 125px !important;
+
+  height: 34px !important;
+
+  padding: 0 !important;
+
+  margin: 0 !important;
+
+  overflow: hidden;
+
+  box-sizing: border-box;
+}
+
+
+/* ════════════════════════════════════
+   TEMPERATURE INPUT
+   ════════════════════════════════════
+
+   Allows:
+
+   1
+   10
+   100
+   105
+   120
+   250
+   999
+
+   without the cursor disappearing.
+   ════════════════════════════════════ */
+
+.dr-temp-input {
+  display: block !important;
+
+  width: 100% !important;
+
+  min-width: 0 !important;
+
+  max-width: 100% !important;
+
+  height: 34px !important;
+
+  border: none !important;
+
+  outline: none !important;
+
+  margin: 0 !important;
+
+  padding: 5px 4px !important;
+
+  font-size: 13px !important;
+
+  font-weight: 500;
+
+  text-align: center;
+
+  background: transparent;
+
+  color: #2d2d2d;
+
+  box-sizing: border-box !important;
+
+  -moz-appearance: textfield;
+}
+
+
+/* Remove Chrome number arrows */
+
+.dr-temp-input::-webkit-outer-spin-button,
+.dr-temp-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+
+  margin: 0;
+}
+
+
+/* Temperature input focus */
+
+.dr-temp-input:focus {
+  outline: none !important;
+
+  background: rgba(184, 92, 44, 0.08);
+}
+
+
+/* ════════════════════════════════════
+   NORMAL CELL INPUT
+   ════════════════════════════════════ */
+
+.dr-cell-input {
+  display: block;
+
+  width: 100% !important;
+
+  min-width: 0 !important;
+
+  max-width: 100% !important;
+
+  height: 34px !important;
+
+  border: none !important;
+
+  outline: none !important;
+
+  margin: 0 !important;
+
+  padding: 5px 4px !important;
+
+  font-size: 11px;
+
+  text-align: center;
+
+  background: transparent;
+
+  color: #2d2d2d;
+
+  box-sizing: border-box;
+
+  -moz-appearance: textfield;
+}
+
+
+/* Remove number arrows */
+
+.dr-cell-input::-webkit-outer-spin-button,
+.dr-cell-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+
+  margin: 0;
+}
+
+
+/* Cell input focus */
+
+.dr-cell-input:focus {
+  outline: none !important;
+
+  background: rgba(184, 92, 44, 0.06);
+}
+
+
+/* ════════════════════════════════════
+   BODY ROWS
+   ════════════════════════════════════ */
+
+.dr-table tbody tr {
+  height: 34px;
+}
+
+.dr-table tbody td {
+  height: 34px;
+
+  padding: 0 !important;
+
+  margin: 0 !important;
+}
+
+
+/* ════════════════════════════════════
+   TIME BODY
+   ════════════════════════════════════ */
 
 .dr-td-time {
   background: #fdf8f4;
+
   font-weight: 700;
+
   color: #b85c2c;
+
   font-size: 12px;
-  padding: 6px 4px;
+
+  padding: 6px 4px !important;
 }
 
-.dr-tr-alt td { background: #fafaf8; }
-.dr-tr-alt .dr-td-time { background: #fdf5f0; }
-.dr-table tbody tr:hover td { background: #fdf3ee; }
-.dr-table tbody tr:hover .dr-td-time { background: #fdf0e8; }
 
-/* Cell inputs */
-.dr-cell-input {
-  width: 100%;
-  min-width: 52px;
-  border: none;
-  padding: 6px 4px;
-  font-size: 11px;
-  text-align: center;
-  background: transparent;
-  color: #2d2d2d;
-  -moz-appearance: textfield;
-  box-sizing: border-box;
+/* ════════════════════════════════════
+   ALTERNATING ROWS
+   ════════════════════════════════════ */
+
+.dr-tr-alt td {
+  background: #fafaf8;
 }
-.dr-cell-input::-webkit-outer-spin-button,
-.dr-cell-input::-webkit-inner-spin-button { -webkit-appearance: none; }
-.dr-cell-input:focus { outline: none; background: rgba(184,92,44,0.06); }
 
-/* Wider columns for text cells */
-.dr-table td:nth-child(12),   /* Batch No */
-.dr-table td:nth-child(16),   /* Colour */
-.dr-table td:nth-child(17) {  /* Remarks */
-  min-width: 80px;
+.dr-tr-alt .dr-td-time {
+  background: #fdf5f0;
 }
-.dr-table td:nth-child(17) .dr-cell-input { min-width: 100px; }
 
-/* ── Footer bar ── */
+
+/* ════════════════════════════════════
+   HOVER
+   ════════════════════════════════════ */
+
+.dr-table tbody tr:hover td {
+  background: #fdf3ee;
+}
+
+.dr-table tbody tr:hover .dr-td-time {
+  background: #fdf0e8;
+}
+
+
+/* ════════════════════════════════════
+   FOOTER BAR
+   ════════════════════════════════════ */
+
 .dr-footer-bar {
   display: flex;
+
   gap: 0;
+
   flex-wrap: wrap;
+
   border-bottom: 1px solid #e0dbd4;
+
   background: #fafaf8;
 }
+
 .dr-footer-field {
   flex: 1;
+
   min-width: 160px;
+
   padding: 12px 14px;
+
   border-right: 1px solid #d8d0c8;
+
   display: flex;
+
   flex-direction: column;
+
   gap: 5px;
 }
-.dr-footer-field:last-child { border-right: none; }
 
-/* ── Actions ── */
+.dr-footer-field:last-child {
+  border-right: none;
+}
+
+
+/* ════════════════════════════════════
+   ACTIONS
+   ════════════════════════════════════ */
+
 .dr-actions {
   padding: 14px 16px;
+
   display: flex;
+
   flex-wrap: wrap;
+
   align-items: center;
+
   gap: 10px;
+
   background: #fafaf8;
 }
+
 .dr-save-btn {
   background: #b85c2c;
+
   color: #fff;
+
   border: none;
+
   padding: 10px 28px;
+
   border-radius: 6px;
+
   font-size: 13px;
+
   font-weight: 700;
+
   cursor: pointer;
+
   transition: background 0.2s;
 }
-.dr-save-btn:hover:not(:disabled) { background: #9e4c22; }
-.dr-save-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.dr-save-btn:hover:not(:disabled) {
+  background: #9e4c22;
+}
+
+.dr-save-btn:disabled {
+  opacity: 0.6;
+
+  cursor: not-allowed;
+}
+
 .dr-reset-btn {
   background: transparent;
+
   color: #888;
+
   border: 1px solid #ccc;
+
   padding: 10px 18px;
+
   border-radius: 6px;
+
   font-size: 13px;
+
   cursor: pointer;
 }
-.dr-reset-btn:hover { border-color: #b85c2c; color: #b85c2c; }
 
-.dr-error   { color: #c0392b; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
-.dr-success { color: #27ae60; font-size: 13px; font-weight: 600; flex: 1 1 100%; }
+.dr-reset-btn:hover {
+  border-color: #b85c2c;
 
-/* ════════════════════
-   MOBILE (≤ 640px)
-   ════════════════════ */
-@media (max-width: 640px) {
-  .dr-tab-btn     { padding: 10px 8px; font-size: 12px; }
-  .dr-title-company { font-size: 13px; }
-  .dr-title-main    { font-size: 12px; }
-
-  .dr-meta-bar    { flex-direction: column; padding: 10px; gap: 8px; }
-  .dr-meta-field  { min-width: 100%; }
-
-  .dr-blower-bar  { flex-direction: column; }
-  .dr-blower-card { border-right: none; border-bottom: 1px solid #d8d0c8; flex-direction: row; align-items: center; flex-wrap: wrap; gap: 10px; }
-  .dr-blower-card:last-child { border-bottom: none; }
-  .dr-blower-title { width: 70px; flex-shrink: 0; margin-bottom: 0; }
-  .dr-blower-row   { flex: 1; }
-
-  .dr-footer-bar  { flex-direction: column; }
-  .dr-footer-field { border-right: none; border-bottom: 1px solid #d8d0c8; min-width: 100%; }
-  .dr-footer-field:last-child { border-bottom: none; }
-
-  .dr-actions { padding: 12px 10px; }
-  .dr-save-btn, .dr-reset-btn { flex: 1; text-align: center; }
+  color: #b85c2c;
 }
 
-/* ── Bilingual helpers ── */
-.dr-hi        { font-size: 9px;  color: #aaa; font-weight: 400; display: block; }
-.dr-title-hi  { font-size: 12px; color: #f0c890; font-weight: 400; }
-.dr-label-hi  { font-size: 10px; color: #999; font-weight: 400; }
-.dr-blower-hi { font-size: 10px; color: #999; font-weight: 400; }
+.dr-error {
+  color: #c0392b;
 
-/* ── Calibration table inside footer ── */
+  font-size: 13px;
+
+  font-weight: 600;
+
+  flex: 1 1 100%;
+}
+
+.dr-success {
+  color: #27ae60;
+
+  font-size: 13px;
+
+  font-weight: 600;
+
+  flex: 1 1 100%;
+}
+
+
+/* ════════════════════════════════════
+   MOBILE
+   ════════════════════════════════════ */
+
+@media (max-width: 640px) {
+
+  .dr-tab-btn {
+    padding: 10px 8px;
+
+    font-size: 12px;
+  }
+
+  .dr-title-company {
+    font-size: 13px;
+  }
+
+  .dr-title-main {
+    font-size: 12px;
+  }
+
+
+  .dr-meta-bar {
+    flex-direction: column;
+
+    padding: 10px;
+
+    gap: 8px;
+  }
+
+  .dr-meta-field {
+    min-width: 100%;
+  }
+
+
+  .dr-blower-bar {
+    flex-direction: column;
+  }
+
+  .dr-blower-card {
+    border-right: none;
+
+    border-bottom: 1px solid #d8d0c8;
+
+    flex-direction: row;
+
+    align-items: center;
+
+    flex-wrap: wrap;
+
+    gap: 10px;
+  }
+
+  .dr-blower-card:last-child {
+    border-bottom: none;
+  }
+
+  .dr-blower-title {
+    width: 70px;
+
+    flex-shrink: 0;
+
+    margin-bottom: 0;
+  }
+
+  .dr-blower-row {
+    flex: 1;
+  }
+
+
+  .dr-footer-bar {
+    flex-direction: column;
+  }
+
+  .dr-footer-field {
+    border-right: none;
+
+    border-bottom: 1px solid #d8d0c8;
+
+    min-width: 100%;
+  }
+
+  .dr-footer-field:last-child {
+    border-bottom: none;
+  }
+
+
+  .dr-actions {
+    padding: 12px 10px;
+  }
+
+  .dr-save-btn,
+  .dr-reset-btn {
+    flex: 1;
+
+    text-align: center;
+  }
+}
+
+
+/* ════════════════════════════════════
+   BILINGUAL HELPERS
+   ════════════════════════════════════ */
+
+.dr-hi {
+  font-size: 9px;
+
+  color: #aaa;
+
+  font-weight: 400;
+
+  display: block;
+}
+
+.dr-title-hi {
+  font-size: 12px;
+
+  color: #f0c890;
+
+  font-weight: 400;
+}
+
+.dr-label-hi {
+  font-size: 10px;
+
+  color: #999;
+
+  font-weight: 400;
+}
+
+.dr-blower-hi {
+  font-size: 10px;
+
+  color: #999;
+
+  font-weight: 400;
+}
+
+
+/* ════════════════════════════════════
+   CALIBRATION TABLE
+   ════════════════════════════════════ */
+
 .dr-footer-cal {
-  flex: 1.5;       /* slightly wider than other footer fields */
+  flex: 1.5;
+
   min-width: 200px;
 }
 
 .dr-cal-table {
   border-collapse: collapse;
+
   width: 100%;
+
   margin-top: 10px;
+
   font-size: 12px;
 }
+
 .dr-cal-table th,
 .dr-cal-table td {
   border: 1px solid #d8d0c8;
+
   padding: 4px 8px;
+
   vertical-align: middle;
 }
+
 .dr-cal-table thead th {
   background: #f5f0ea;
+
   font-size: 11px;
+
   font-weight: 700;
+
   color: #444;
+
   text-align: center;
+
   line-height: 1.4;
 }
-.dr-cal-table tbody tr:nth-child(even) { background: #fafaf8; }
+
+.dr-cal-table tbody tr:nth-child(even) {
+  background: #fafaf8;
+}
+
 .dr-cal-label {
   font-weight: 600;
+
   font-size: 11px;
+
   color: #555;
+
   background: #faf7f3;
+
   white-space: nowrap;
 }
+
 .dr-cal-input {
   border: none !important;
+
   background: transparent !important;
+
   padding: 4px 6px !important;
+
   font-size: 12px;
+
   width: 100%;
+
   box-sizing: border-box;
 }
-.dr-cal-input:focus { outline: none; background: rgba(184,92,44,0.06) !important; }
 
-@media (max-width: 640px) {
-  .dr-footer-cal { flex: 0 0 100%; }
+.dr-cal-input:focus {
+  outline: none;
+
+  background: rgba(184, 92, 44, 0.06) !important;
 }
 
-/* ── Log table timestamp + save ── */
-.dr-td-ts   { text-align: center; padding: 2px 4px; white-space: nowrap; min-width: 80px; }
-.dr-td-save { text-align: center; padding: 2px; width: 36px; }
+
+@media (max-width: 640px) {
+
+  .dr-footer-cal {
+    flex: 0 0 100%;
+  }
+
+}
+
+
+/* ════════════════════════════════════
+   TIMESTAMP
+   ════════════════════════════════════ */
+
+.dr-td-ts {
+  text-align: center;
+
+  padding: 2px 4px;
+
+  white-space: nowrap;
+
+  width: 105px !important;
+
+  min-width: 105px !important;
+
+  max-width: 105px !important;
+}
 
 .dr-ts-badge {
   display: inline-block;
+
   background: #e8f5e9;
+
   color: #2e7d32;
+
   font-size: 10px;
+
   font-weight: 600;
+
   padding: 2px 5px;
+
   border-radius: 4px;
+
   border: 1px solid #a5d6a7;
+
   white-space: nowrap;
 }
-.dr-ts-empty { color: #ccc; font-size: 11px; }
+
+.dr-ts-empty {
+  color: #ccc;
+
+  font-size: 11px;
+}
+
+
+/* ════════════════════════════════════
+   SAVE BUTTON INSIDE TABLE
+   ════════════════════════════════════ */
+
+.dr-td-save {
+  text-align: center;
+
+  padding: 2px;
+
+  width: 55px !important;
+
+  min-width: 55px !important;
+
+  max-width: 55px !important;
+}
 
 .dr-row-save-btn {
   background: transparent;
+
   border: 1px solid #ccc;
+
   border-radius: 4px;
+
   padding: 3px 7px;
+
   font-size: 12px;
+
   cursor: pointer;
+
   line-height: 1;
-  transition: background 0.15s, border-color 0.15s;
+
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
-.dr-row-save-btn:hover { background: #fdf3ee; border-color: #b85c2c; }
 
-.dr-row-saved td            { background: #f6fff6 !important; }
-.dr-row-saved .dr-td-time   { background: #edfaed !important; }
-.dr-row-saved .dr-row-save-btn { border-color: #4caf50; color: #2e7d32; font-weight: 700; }
+.dr-row-save-btn:hover {
+  background: #fdf3ee;
 
-/* ── 3-column calibration table ── */
+  border-color: #b85c2c;
+}
+
+
+/* ════════════════════════════════════
+   SAVED ROW
+   ════════════════════════════════════ */
+
+.dr-row-saved td {
+  background: #f6fff6 !important;
+}
+
+.dr-row-saved .dr-td-time {
+  background: #edfaed !important;
+}
+
+.dr-row-saved .dr-row-save-btn {
+  border-color: #4caf50;
+
+  color: #2e7d32;
+
+  font-weight: 700;
+}
+
+
+/* ════════════════════════════════════
+   CALIBRATION HEADER
+   ════════════════════════════════════ */
+
 .dr-cal-table thead th {
   background: #f5f0ea;
+
   font-size: 10px;
+
   font-weight: 700;
+
   color: #444;
+
   text-align: center;
+
   padding: 4px 6px;
+
   line-height: 1.4;
+}
+
+
+/* ════════════════════════════════════
+   CALIBRATION COLLAPSIBLE DROPDOWN
+   ════════════════════════════════════ */
+
+.dr-cal-details {
+  margin-top: 8px;
+
+  border: 1px solid #d8d0c8;
+
+  border-radius: 4px;
+
+  overflow: hidden;
+}
+
+.dr-cal-summary {
+  padding: 7px 12px;
+
+  font-size: 12px;
+
+  font-weight: 600;
+
+  color: #b85c2c;
+
+  background: #fdf8f4;
+
+  cursor: pointer;
+
+  list-style: none;
+
+  display: flex;
+
+  align-items: center;
+
+  justify-content: space-between;
+
+  user-select: none;
+}
+
+.dr-cal-summary::-webkit-details-marker {
+  display: none;
+}
+
+.dr-cal-summary::after {
+  content: '▼';
+
+  font-size: 10px;
+
+  color: #b85c2c;
+}
+
+details[open] .dr-cal-summary::after {
+  content: '▲';
+}
+
+.dr-cal-details[open] .dr-cal-table {
+  border-top: 1px solid #d8d0c8;
 }
