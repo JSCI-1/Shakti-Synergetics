@@ -2,26 +2,29 @@ import React, { useState, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './BatchTraceability.css'
 
-// Tank options — matches Process Job Card BATCH_OPTIONS exactly so tank selection syncs
-const CHARGE_TANKS = [
+// Unified tank options — includes ALL tanks from Process Job Card + HS tanks + FST tanks
+// So user can select any tank in any column, and Process Job Card selection auto-fills
+const ALL_TANKS = [
+  // From Process Job Card
   { value: 'Attrition-1st-1.6MT', label: '1st Attrition Mill — 1.6 MT' },
   { value: 'Attrition-2nd-1.2MT', label: '2nd Attrition Mill — 1.2 MT' },
   { value: 'HST-1st-8MT',         label: 'HST 1st — 8 MT'              },
   { value: 'HST-2nd-6MT',         label: 'HST 2nd — 6 MT'              },
-]
-
-const HS_TANKS = [
+  // High Speed Tanks
   { value: 'HS-1(6000)', label: 'HS-1 (6000)' },
   { value: 'HS-2(4000)', label: 'HS-2 (4000)' },
   { value: 'HS-3(6000)', label: 'HS-3 (6000)' },
   { value: 'NM(2000)',   label: 'NM (2000)'   },
-]
-
-const FST_TANKS = [
+  // Feed Storage Tanks
   { value: 'FST 1/2', label: 'FST 1/2' },
   { value: 'FST 1',   label: 'FST 1'   },
   { value: 'FST 2',   label: 'FST 2'   },
 ]
+
+// Keep these as aliases so SC components work
+const CHARGE_TANKS = ALL_TANKS
+const HS_TANKS     = ALL_TANKS
+const FST_TANKS    = ALL_TANKS
 
 const TOTAL_RUNNING_TANKS = [
   { key: 'hs1', label: 'HS-1 (6000 Lt.)' },
@@ -34,13 +37,15 @@ function emptyRow(batch_no = '', charge_tank = '') {
   return {
     id: Date.now() + Math.random(),
     batch_no,
-    charge_tank,   // pre-filled from Process Job Card tank selection
+    charge_tank,
     charge_start: '', charge_stop: '',
-    hs_tank: '',     hs_start: '',     hs_stop: '',
-    lst_start: '',   lst_stop: '',
-    s1_start: '',    s1_stop: '',
-    s2_start: '',    s2_stop: '',
-    finish_tank: '', finish_start: '', finish_stop: '',
+    hs_tank:     charge_tank,   // same tank pre-filled
+    hs_start: '', hs_stop: '',
+    lst_start: '', lst_stop: '',
+    s1_start: '', s1_stop: '',
+    s2_start: '', s2_stop: '',
+    finish_tank: charge_tank,   // same tank pre-filled
+    finish_start: '', finish_stop: '',
   }
 }
 
@@ -62,16 +67,19 @@ export default function BatchTraceability({ sharedBatches = [] }) {
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
 
-  // Sync rows when sharedBatches changes (new batch added in Process Job Card)
+  // Sync rows when sharedBatches changes — tank_type fills ALL tank columns
   useEffect(() => {
     setForm(prev => {
       const newRows = sharedBatches.map((b, i) => {
         const existing = prev.rows[i]
+        const tank = b.tank_type || ''
         return existing
           ? {
               ...existing,
-              batch_no:    b.batch_no    || existing.batch_no,
-              charge_tank: b.tank_type   || existing.charge_tank,  // sync tank selection
+              batch_no:    b.batch_no  || existing.batch_no,
+              charge_tank: tank        || existing.charge_tank,
+              hs_tank:     tank        || existing.hs_tank,
+              finish_tank: tank        || existing.finish_tank,
             }
           : emptyRow(b.batch_no, b.tank_type)
       })
