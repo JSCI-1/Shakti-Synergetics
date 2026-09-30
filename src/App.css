@@ -49,3 +49,34 @@
     padding: 5px 10px;
   }
 }
+
+/* ── User info bar ── */
+.user-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1a1a1a;
+  padding: 6px 16px;
+  border-bottom: 1px solid #333;
+}
+.user-bar-name {
+  font-size: 13px;
+  color: #f0c890;
+  font-weight: 600;
+}
+.user-bar-admin {
+  font-size: 11px;
+  color: #b85c2c;
+  font-weight: 400;
+}
+.user-bar-logout {
+  background: transparent;
+  border: 1px solid #555;
+  color: #aaa;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.user-bar-logout:hover { border-color: #b85c2c; color: #f0c890; }

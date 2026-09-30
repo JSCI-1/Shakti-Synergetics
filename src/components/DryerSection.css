@@ -1410,3 +1410,7 @@ details[open] .dr-cal-summary::after {
 .dr-cal-details[open] .dr-cal-table {
   border-top: 1px solid #d8d0c8;
 }
+
+/* ── Save button locked after first stamp ── */
+.dr-row-save-btn:disabled       { opacity: 1; cursor: not-allowed; }
+.dr-row-save-btn:disabled:hover { background: transparent; border-color: #4caf50; }

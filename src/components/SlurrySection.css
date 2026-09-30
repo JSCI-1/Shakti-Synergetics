@@ -1345,3 +1345,8 @@
 .sl-flow-add-btn:hover {
   background: #fdf3ee;
 }
+
+/* ── Save buttons locked after first stamp ── */
+.sl-row-save-btn:disabled       { opacity: 1; cursor: not-allowed; }
+.sl-row-save-btn:disabled:hover { background: transparent; border-color: #4caf50; }
+.sl-flow-stamp-btn:disabled     { opacity: 1; cursor: not-allowed; }

@@ -188,18 +188,22 @@ function DryerForm({
 
 
   function saveRow(i) {
-    setForm(p => ({
-      ...p,
-      rows: p.rows.map((r, idx) =>
-        idx === i
-          ? {
-              ...r,
-              timestamp: stamp12hr(),
-              saved: true,
-            }
-          : r
-      ),
-    }))
+    setForm(p => {
+      if (p.rows[i].saved) return p
+
+      return {
+        ...p,
+        rows: p.rows.map((r, idx) =>
+          idx === i
+            ? {
+                ...r,
+                timestamp: stamp12hr(),
+                saved: true,
+              }
+            : r
+        ),
+      }
+    })
   }
 
 
@@ -469,11 +473,6 @@ function DryerForm({
 
               {/* ==================================================
                   FIXED COLUMN STRUCTURE
-
-                  This is important.
-
-                  The two temperature group headers each span
-                  exactly three 100px columns.
                   ================================================== */}
 
               <colgroup>
@@ -736,7 +735,7 @@ function DryerForm({
 
                   <th rowSpan={2}>
 
-                    Colour/Normal
+                    Colour/Normal/OMRI
 
                     <br />
 
@@ -899,13 +898,6 @@ function DryerForm({
 
                     {/* ==================================================
                         TEMPERATURE COLUMNS
-
-                        1. Inlet
-                        2. Outlet
-                        3. Actual
-                        4. IFBD
-                        5. FBD
-                        6. Chamber
                         ================================================== */}
 
                     {renderNC(
@@ -1028,15 +1020,10 @@ function DryerForm({
                       <button
                         type="button"
                         className="dr-row-save-btn"
-                        onClick={() =>
-                          saveRow(i)
-                        }
+                        disabled={form.rows[i].saved}
+                        onClick={() => saveRow(i)}
                       >
-
-                        {form.rows[i].saved
-                          ? '✓'
-                          : '💾'}
-
+                        {form.rows[i].saved ? '✓' : '💾'}
                       </button>
 
                     </td>
@@ -1085,15 +1072,11 @@ function DryerForm({
                 </span>
 
                 <input
+                  type="number"
                   className="dr-input dr-input-sm"
                   placeholder="—"
                   value={form[b.dp]}
-                  onChange={e =>
-                    set(
-                      b.dp,
-                      e.target.value
-                    )
-                  }
+                  onChange={e => set(b.dp, e.target.value)}
                 />
 
               </div>
@@ -1106,15 +1089,11 @@ function DryerForm({
                 </span>
 
                 <input
+                  type="number"
                   className="dr-input dr-input-sm"
                   placeholder="—"
                   value={form[b.mr]}
-                  onChange={e =>
-                    set(
-                      b.mr,
-                      e.target.value
-                    )
-                  }
+                  onChange={e => set(b.mr, e.target.value)}
                 />
 
               </div>
@@ -1261,7 +1240,11 @@ function DryerForm({
 
                       <td>
 
+                        {/* Temperature - NUMERIC ONLY */}
+
                         <input
+                          type="text"
+                          inputMode="decimal"
                           className="dr-input dr-cal-input"
                           placeholder="—"
                           value={
@@ -1269,12 +1252,17 @@ function DryerForm({
                               `cal_${s.key}_temp`
                             ]
                           }
-                          onChange={e =>
-                            set(
-                              `cal_${s.key}_temp`,
-                              e.target.value
-                            )
-                          }
+                          onChange={e => {
+                            const value = e.target.value
+
+                            // Allow only numbers and one decimal point
+                            if (/^\d*\.?\d*$/.test(value)) {
+                              set(
+                                `cal_${s.key}_temp`,
+                                value
+                              )
+                            }
+                          }}
                         />
 
                       </td>
@@ -1282,7 +1270,11 @@ function DryerForm({
 
                       <td>
 
+                        {/* Sensor Value - NUMERIC ONLY */}
+
                         <input
+                          type="text"
+                          inputMode="decimal"
                           className="dr-input dr-cal-input"
                           placeholder="—"
                           value={
@@ -1290,12 +1282,17 @@ function DryerForm({
                               `cal_${s.key}_sensor`
                             ]
                           }
-                          onChange={e =>
-                            set(
-                              `cal_${s.key}_sensor`,
-                              e.target.value
-                            )
-                          }
+                          onChange={e => {
+                            const value = e.target.value
+
+                            // Allow only numbers and one decimal point
+                            if (/^\d*\.?\d*$/.test(value)) {
+                              set(
+                                `cal_${s.key}_sensor`,
+                                value
+                              )
+                            }
+                          }}
                         />
 
                       </td>

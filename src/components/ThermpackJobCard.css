@@ -1918,3 +1918,7 @@
   color: #b85c2c;
   opacity: 0.7;
 }
+
+/* ── Save button locked after first stamp ── */
+.row-save-btn:disabled { opacity: 1; cursor: not-allowed; }
+.row-save-btn:disabled:hover { background: transparent; border-color: #ccc; }

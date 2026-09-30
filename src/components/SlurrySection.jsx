@@ -239,18 +239,15 @@ export default function SlurrySection({
     }))
 
   function saveInputRow(idx) {
-    setForm(p => ({
-      ...p,
-      input_rows: p.input_rows.map((r, i) =>
-        i === idx
-          ? {
-              ...r,
-              timestamp: stamp12hr(),
-              saved: true,
-            }
-          : r
-      ),
-    }))
+    setForm(p => {
+      if (p.input_rows[idx].saved) return p   // already stamped
+      return {
+        ...p,
+        input_rows: p.input_rows.map((r, i) =>
+          i === idx ? { ...r, timestamp: stamp12hr(), saved: true } : r
+        ),
+      }
+    })
   }
 
   function addInputRow() {
@@ -335,25 +332,22 @@ export default function SlurrySection({
 
   // Stamp timestamp on a flow rate entry
   function stampFlowRate(mi, fi) {
-    setForm(p => ({
-      ...p,
-      mills: p.mills.map((m, i) =>
-        i === mi
-          ? {
-              ...m,
-              flow_rates: m.flow_rates.map(
-                (f, j) =>
-                  j === fi
-                    ? {
-                        ...f,
-                        timestamp: stamp12hr(),
-                      }
-                    : f
-              ),
-            }
-          : m
-      ),
-    }))
+    setForm(p => {
+      if (p.mills[mi].flow_rates[fi].timestamp) return p   // already stamped
+      return {
+        ...p,
+        mills: p.mills.map((m, i) =>
+          i === mi
+            ? {
+                ...m,
+                flow_rates: m.flow_rates.map(
+                  (f, j) => j === fi ? { ...f, timestamp: stamp12hr() } : f
+                ),
+              }
+            : m
+        ),
+      }
+    })
   }
 
   // Remove a flow rate entry (keep at least one)
@@ -454,18 +448,15 @@ export default function SlurrySection({
     }))
 
   function saveMotorRow(mi) {
-    setMotorForm(p => ({
-      ...p,
-      motors: p.motors.map((m, idx) =>
-        idx === mi
-          ? {
-              ...m,
-              timestamp: stamp12hr(),
-              saved: true,
-            }
-          : m
-      ),
-    }))
+    setMotorForm(p => {
+      if (p.motors[mi].saved) return p   // already stamped
+      return {
+        ...p,
+        motors: p.motors.map((m, idx) =>
+          idx === mi ? { ...m, timestamp: stamp12hr(), saved: true } : m
+        ),
+      }
+    })
   }
 
   async function handleMotorSubmit(e) {
@@ -911,15 +902,10 @@ export default function SlurrySection({
                       <button
                         type="button"
                         className="sl-row-save-btn"
-                        onClick={() =>
-                          saveInputRow(
-                            ri
-                          )
-                        }
+                        disabled={row.saved}
+                        onClick={() => saveInputRow(ri)}
                       >
-                        {row.saved
-                          ? '✓'
-                          : '💾'}
+                        {row.saved ? '✓' : '💾'}
                       </button>
 
                     </td>
@@ -1154,23 +1140,13 @@ export default function SlurrySection({
                             <button
                               type="button"
                               className="sl-flow-stamp-btn"
-                              onClick={() =>
-                                stampFlowRate(
-                                  mi,
-                                  fi
-                                )
-                              }
+                              disabled={!!fr.timestamp}
+                              onClick={() => stampFlowRate(mi, fi)}
                               title="Stamp time / समय"
                             >
-                              {fr.timestamp ? (
-                                <span className="sl-flow-ts">
-                                  {
-                                    fr.timestamp
-                                  }
-                                </span>
-                              ) : (
-                                '🕐'
-                              )}
+                              {fr.timestamp
+                                ? <span className="sl-flow-ts">{fr.timestamp}</span>
+                                : '🕐'}
                             </button>
 
                             {mill.flow_rates
@@ -1692,17 +1668,10 @@ export default function SlurrySection({
                           <button
                             type="button"
                             className="sl-row-save-btn"
-                            onClick={() =>
-                              saveMotorRow(
-                                mi
-                              )
-                            }
+                            disabled={motorForm.motors[mi].saved}
+                            onClick={() => saveMotorRow(mi)}
                           >
-                            {motorForm
-                              .motors[mi]
-                              .saved
-                              ? '✓'
-                              : '💾'}
+                            {motorForm.motors[mi].saved ? '✓' : '💾'}
                           </button>
 
                         </td>

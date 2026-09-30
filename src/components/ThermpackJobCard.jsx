@@ -207,18 +207,12 @@ export default function ThermpackJobCard() {
 
   // stamp time on active variant
   function saveRow(i) {
-    const now = new Date()
+    const key = form.log_variant === '10L' ? 'rows_10l' : 'rows_6l'
+    if (form[key][i].saved) return   // already stamped — no re-stamp
 
-    const ts = now.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
+    const ts = new Date().toLocaleTimeString('en-IN', {
+      hour: '2-digit', minute: '2-digit', hour12: true,
     })
-
-    const key = form.log_variant === '10L'
-      ? 'rows_10l'
-      : 'rows_6l'
 
     setForm(prev => ({
       ...prev,
@@ -276,6 +270,7 @@ export default function ThermpackJobCard() {
   function saveMotorRow(mi) {
     setMotorForm(prev => {
       const varKey = prev.motor_variant === '10L' ? 'motors_10l' : 'motors_6l'
+      if (prev[varKey][mi].saved) return prev   // already stamped
       return {
         ...prev,
         [varKey]: prev[varKey].map((m, idx) =>
@@ -1137,13 +1132,10 @@ export default function ThermpackJobCard() {
                       <button
                         type="button"
                         className="row-save-btn"
-                        onClick={() =>
-                          saveRow(i)
-                        }
+                        disabled={activeRows[i].saved}
+                        onClick={() => saveRow(i)}
                       >
-                        {activeRows[i].saved
-                          ? '✓'
-                          : '💾'}
+                        {activeRows[i].saved ? '✓' : '💾'}
                       </button>
 
                     </td>
@@ -1445,6 +1437,7 @@ export default function ThermpackJobCard() {
                       </td>
                       <td className="ts-save-cell">
                         <button type="button" className="row-save-btn"
+                          disabled={activeMotors[mi].saved}
                           onClick={() => saveMotorRow(mi)}>
                           {activeMotors[mi].saved ? '✓' : '💾'}
                         </button>
