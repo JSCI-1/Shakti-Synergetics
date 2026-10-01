@@ -5,16 +5,17 @@ import ThermpackJobCard from './components/ThermpackJobCard.jsx'
 import SlurryWrapper from './components/SlurryWrapper.jsx'
 import DryerSection from './components/DryerSection.jsx'
 import SlurryOperator from './components/SlurryOperator.jsx'
+import QualityCheck from './components/QualityCheck/QualityCheck.jsx'
 import './App.css'
 
 const TOP_NAV_TABS = [
   'Production',
-  'Quality Check',
-  'Thermopack Operator',
+  'Quality Control',
+  'Batch Operator',
   'Slurry Operator',
+  'Thermopack Operator',
   'Dryer Operator',
   'Store',
-  'Batch Operator',
 ]
 
 export default function App() {
@@ -25,6 +26,8 @@ export default function App() {
     if (activeNav === 'Batch Operator')      return <SlurryWrapper />
     if (activeNav === 'Dryer Operator')      return <DryerSection />
     if (activeNav === 'Slurry Operator')     return <SlurryOperator />
+    if (activeNav === 'Quality Control')     return <QualityCheck />
+    return null
   }
 
   return (
@@ -36,6 +39,7 @@ export default function App() {
       </main>
       <footer className="app-footer">
         <span>Online</span>
+        <span>SHAKTI/PROD/02 · Rev 02</span>
       </footer>
     </div>
   )

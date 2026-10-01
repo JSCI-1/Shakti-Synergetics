@@ -1,0 +1,453 @@
+/* ════════════════════════════════════
+   QUALITY CONTROL
+   ════════════════════════════════════ */
+
+.qc-wrapper {
+  background: #fff;
+  border: 1px solid #d8d0c8;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 13px;
+  color: #2d2d2d;
+  width: 100%;
+}
+
+/* ── Header ── */
+.qc-header-bar {
+  background: #1a1a1a;
+  padding: 12px 20px 10px;
+  text-align: center;
+}
+.qc-company      { font-size: 11px; color: #aaa; margin-bottom: 2px; }
+.qc-company-addr { font-size: 10px; color: #888; margin-top: 2px; }
+.qc-title-main   { font-size: 17px; font-weight: 700; color: #f0c890; }
+.qc-title-hi     { font-size: 14px; font-weight: 400; color: #f0c890; }
+
+/* ── Tab bar ── */
+.qc-tab-bar {
+  display: flex;
+  background: #1a1a1a;
+  border-bottom: 2px solid #b85c2c;
+}
+.qc-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: #aaa;
+  padding: 11px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: color 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.qc-tab-btn:hover { color: #f0c890; }
+.qc-tab-active { color: #f0c890 !important; border-bottom-color: #b85c2c !important; }
+.qc-tab-hi { font-size: 10px; font-weight: 400; color: inherit; opacity: 0.7; }
+
+/* ── Batch header ── */
+.qc-batch-bar {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #e0dbd4;
+  background: #fafaf8;
+  flex-wrap: wrap;
+}
+.qc-batch-field {
+  flex: 1;
+  min-width: 150px;
+  padding: 10px 14px;
+  border-right: 1px solid #d8d0c8;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.qc-batch-field:last-child { border-right: none; }
+.qc-batch-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+}
+.qc-batch-input {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px 8px;
+  font-size: 12px;
+  color: #2d2d2d;
+  background: #fff;
+  width: 100%;
+  box-sizing: border-box;
+}
+.qc-batch-input:focus { outline: none; border-color: #b85c2c; }
+
+/* ── Dropdown bar ── */
+.qc-dropdown-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0dbd4;
+  background: #fafaf8;
+  flex-wrap: wrap;
+}
+.qc-dropdown-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #555;
+  white-space: nowrap;
+}
+.qc-dropdown {
+  flex: 1;
+  max-width: 420px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 7px 10px;
+  font-size: 13px;
+  color: #2d2d2d;
+  background: #fff;
+  cursor: pointer;
+}
+.qc-dropdown:focus { outline: none; border-color: #b85c2c; }
+
+/* ── Material / Test title ── */
+.qc-mat-title {
+  background: #f5f0ea;
+  border-bottom: 1px solid #d8d0c8;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #b85c2c;
+}
+
+/* ── Spec table ── */
+.qc-content { padding: 0; }
+
+.qc-table-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-bottom: 1px solid #e0dbd4;
+}
+.qc-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+}
+.qc-table th,
+.qc-table td {
+  border: 1px solid #d8d0c8;
+  padding: 8px 10px;
+  vertical-align: middle;
+}
+.qc-table thead th {
+  background: #f5f0ea;
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  text-align: left;
+  white-space: nowrap;
+}
+.qc-table tbody tr:nth-child(even) { background: #fafaf8; }
+.qc-table tbody tr:hover { background: #fdf3ee; }
+.qc-row-fail { background: #fff5f5 !important; }
+
+.qc-param-name { font-weight: 600; min-width: 160px; }
+.qc-method     { font-size: 10px; color: #999; margin-top: 2px; font-style: italic; }
+.qc-spec       { color: #555; min-width: 120px; }
+.qc-obs        { min-width: 140px; }
+.qc-result     { text-align: center; min-width: 80px; }
+
+/* ── Inputs ── */
+.qc-input-unit {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.qc-input {
+  width: 90px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 7px;
+  font-size: 12px;
+  background: #fafaf8;
+  -moz-appearance: textfield;
+}
+.qc-input::-webkit-outer-spin-button,
+.qc-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.qc-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+.qc-select {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #fafaf8;
+  cursor: pointer;
+  min-width: 160px;
+}
+.qc-select:focus { outline: none; border-color: #b85c2c; }
+
+.qc-unit { font-size: 11px; color: #888; white-space: nowrap; }
+
+/* ── PASS / FAIL badges ── */
+.qc-badge-pass {
+  display: inline-block;
+  background: #e8f5e9;
+  color: #2e7d32;
+  border: 1px solid #a5d6a7;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.qc-badge-fail {
+  display: inline-block;
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.qc-badge-lg { font-size: 14px; padding: 5px 18px; }
+
+/* ── Overall result ── */
+.qc-overall {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 16px;
+  background: #fafaf8;
+  border-top: 2px solid #b85c2c;
+}
+.qc-overall-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: #444;
+}
+
+/* ── Formula card ── */
+.qc-formula-card {
+  border: 1px solid #e0dbd4;
+  border-radius: 6px;
+  margin: 12px 16px;
+  padding: 14px 16px;
+  background: #fafaf8;
+}
+.qc-formula-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b85c2c;
+  margin-bottom: 10px;
+}
+.qc-formula-display {
+  font-size: 16px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  background: #fff;
+  border: 1px solid #e0dbd4;
+  border-radius: 4px;
+  display: inline-block;
+}
+.qc-formula-unit { font-size: 12px; color: #888; margin-left: 6px; }
+
+/* Fraction rendering */
+.qc-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  font-size: 13px;
+  margin: 0 3px;
+}
+.qc-num {
+  border-bottom: 1.5px solid #333;
+  padding: 0 4px 1px;
+  text-align: center;
+}
+.qc-den { padding: 1px 4px 0; text-align: center; }
+
+/* Variables */
+.qc-vars { margin-bottom: 10px; }
+.qc-var-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.qc-var-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 200px;
+}
+.qc-var-sym  { font-weight: 700; color: #b85c2c; min-width: 28px; font-size: 14px; }
+.qc-var-desc { font-size: 11px; color: #666; }
+
+/* Intermediates */
+.qc-intermediates {
+  background: #f5f0ea;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 12px;
+}
+.qc-inter-title { font-weight: 700; color: #555; margin-bottom: 4px; font-size: 11px; }
+.qc-inter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+.qc-inter-key    { font-weight: 700; color: #b85c2c; min-width: 20px; }
+.qc-inter-eq     { color: #888; }
+.qc-inter-val    { font-weight: 600; color: #333; }
+.qc-inter-formula{ font-size: 10px; color: #999; }
+
+/* Calculated result */
+.qc-calc-result {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0 8px;
+  border-top: 1px solid #e0dbd4;
+  margin-top: 6px;
+}
+.qc-calc-label { font-size: 12px; font-weight: 600; color: #555; }
+.qc-calc-value { font-size: 16px; font-weight: 700; color: #b85c2c; }
+
+/* Where list */
+.qc-formula-where {
+  margin-top: 10px;
+  font-size: 11px;
+  color: #777;
+  border-top: 1px dashed #e0dbd4;
+  padding-top: 8px;
+}
+.qc-where-title { font-weight: 700; margin-bottom: 4px; color: #555; }
+.qc-where-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+.qc-where-key  { font-weight: 700; color: #b85c2c; min-width: 28px; }
+.qc-where-desc { color: #777; }
+.qc-constants  { border-top: none; padding-top: 0; margin-top: 0; margin-bottom: 10px; }
+
+/* Single spec (FG pH, Wettability) */
+.qc-single-spec {
+  margin: 12px 16px;
+  padding: 12px 14px;
+  border: 1px solid #e0dbd4;
+  border-radius: 6px;
+  background: #fafaf8;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.qc-single-name { font-weight: 700; font-size: 13px; color: #b85c2c; }
+
+/* Group spec */
+.qc-group-title {
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #555;
+  background: #f5f0ea;
+  border-top: 1px solid #e0dbd4;
+  border-bottom: 1px solid #e0dbd4;
+}
+
+/* Reset button */
+.qc-reset-btn {
+  background: transparent;
+  border: 1px dashed #ccc;
+  color: #888;
+  border-radius: 4px;
+  padding: 5px 14px;
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 8px;
+  transition: border-color 0.15s, color 0.15s;
+}
+.qc-reset-btn:hover { border-color: #b85c2c; color: #b85c2c; }
+
+/* ── Bottom actions ── */
+.qc-actions {
+  display: flex;
+  gap: 10px;
+  padding: 14px 16px;
+  border-top: 1px solid #e0dbd4;
+  background: #fafaf8;
+  flex-wrap: wrap;
+}
+.qc-print-btn {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 10px 22px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.qc-print-btn:hover { background: #9e4c22; }
+.qc-clear-btn {
+  background: transparent;
+  color: #888;
+  border: 1px solid #ccc;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.qc-clear-btn:hover { border-color: #b85c2c; color: #b85c2c; }
+
+/* ── Print styles ── */
+@media print {
+  body > *:not(.app)       { display: none !important; }
+  .app > *:not(.main-content) { display: none !important; }
+  .qc-tab-bar,
+  .qc-actions,
+  .qc-dropdown-bar select,
+  .qc-reset-btn            { display: none !important; }
+  .qc-wrapper { border: none; box-shadow: none; }
+  .qc-input   { border: none; background: transparent; }
+  .qc-select  { border: none; background: transparent; }
+}
+
+/* ── Mobile ── */
+@media (max-width: 640px) {
+  .qc-title-main  { font-size: 14px; }
+  .qc-tab-btn     { padding: 9px 4px; font-size: 11px; }
+  .qc-tab-hi      { display: none; }
+  .qc-batch-bar   { flex-direction: column; }
+  .qc-batch-field { border-right: none; border-bottom: 1px solid #d8d0c8; }
+  .qc-batch-field:last-child { border-bottom: none; }
+  .qc-formula-card { margin: 8px 10px; padding: 12px 10px; }
+  .qc-input { width: 80px; }
+  .qc-dropdown { max-width: 100%; }
+  .qc-actions { flex-direction: column; }
+  .qc-print-btn, .qc-clear-btn { width: 100%; text-align: center; }
+}
+
+/* ── Save message ── */
+.qc-save-msg {
+  flex: 1 1 100%;
+  font-size: 13px;
+  font-weight: 600;
+  color: #27ae60;
+  padding: 4px 0;
+}
+.qc-save-msg:not(:empty) { display: block; }
