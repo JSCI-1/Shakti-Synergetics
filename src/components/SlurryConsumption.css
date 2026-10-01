@@ -202,8 +202,33 @@
 /* Mobile */
 @media (max-width: 640px) {
   .sc-title-main { font-size: 13px; }
+  .sc-title-addr { font-size: 10px; }
+
+  /* Section titles */
+  .sc-section-title { padding: 7px 10px; font-size: 11px; flex-wrap: wrap; }
+  .sc-today-badge   { font-size: 11px; padding: 2px 8px; margin-left: 0; margin-top: 4px; }
+
+  /* Date bar */
+  .sc-date-bar { flex-direction: column; align-items: flex-start; padding: 8px 10px; gap: 6px; }
+  .sc-date-input { width: 100%; font-size: 14px; padding: 8px 10px; }
+
+  /* Table — narrow cells on mobile */
+  .sc-input-num  { width: 60px; font-size: 11px; }
+  .sc-input-text { width: 60px; font-size: 10px; }
+  .sc-th-date, .sc-td-date { min-width: 80px; width: 80px; }
+  .sc-table thead th { font-size: 10px; padding: 4px 4px; }
+  .sc-past-val   { font-size: 11px; padding: 4px 4px; }
+  .sc-calc-cell  { padding: 4px 4px !important; }
+  .sc-calc-val   { font-size: 11px; }
+  .sc-ts-cell    { min-width: 64px; padding: 2px 3px; }
+  .sc-ts-badge   { font-size: 9px; padding: 2px 4px; }
+
+  /* Actions */
   .sc-actions { padding: 12px 10px; }
   .sc-save-btn, .sc-reset-btn { flex: 1; text-align: center; }
+
+  /* Max height for scroll on mobile */
+  .sc-table-scroll { max-height: 320px; }
 }
 
 /* ── Date bar (today only) ── */

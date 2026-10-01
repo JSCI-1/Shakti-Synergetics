@@ -31,7 +31,6 @@ export default function SlurryWrapper() {
       </div>
 
       <div className="sw-content">
-        {/* All tabs always mounted — hidden via CSS so data is preserved */}
         <div style={{ display: activeTab === 'process' ? 'block' : 'none' }}>
           <SlurrySection
             sharedBatches={sharedBatches}

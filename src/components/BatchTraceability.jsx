@@ -2,29 +2,33 @@ import React, { useState, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './BatchTraceability.css'
 
-// Unified tank options — includes ALL tanks from Process Job Card + HS tanks + FST tanks
-// So user can select any tank in any column, and Process Job Card selection auto-fills
-const ALL_TANKS = [
-  // From Process Job Card
+// Batch Charge In tanks — Attrition Mills + HST only (no FST)
+const CHARGE_TANKS = [
   { value: 'Attrition-1st-1.6MT', label: '1st Attrition Mill — 1.6 MT' },
   { value: 'Attrition-2nd-1.2MT', label: '2nd Attrition Mill — 1.2 MT' },
   { value: 'HST-1st-8MT',         label: 'HST 1st — 8 MT'              },
   { value: 'HST-2nd-6MT',         label: 'HST 2nd — 6 MT'              },
-  // High Speed Tanks
   { value: 'HS-1(6000)', label: 'HS-1 (6000)' },
   { value: 'HS-2(4000)', label: 'HS-2 (4000)' },
   { value: 'HS-3(6000)', label: 'HS-3 (6000)' },
   { value: 'NM(2000)',   label: 'NM (2000)'   },
-  // Feed Storage Tanks
+]
+
+// High Speed Mixing tanks — same as Charge (no FST)
+const HS_TANKS = CHARGE_TANKS
+
+// LST tanks — LST1 or LST2 only
+const LST_TANKS = [
+  { value: 'LST1', label: 'LST 1' },
+  { value: 'LST2', label: 'LST 2' },
+]
+
+// Finish Slurry tanks — FST only
+const FST_TANKS = [
   { value: 'FST 1/2', label: 'FST 1/2' },
   { value: 'FST 1',   label: 'FST 1'   },
   { value: 'FST 2',   label: 'FST 2'   },
 ]
-
-// Keep these as aliases so SC components work
-const CHARGE_TANKS = ALL_TANKS
-const HS_TANKS     = ALL_TANKS
-const FST_TANKS    = ALL_TANKS
 
 const TOTAL_RUNNING_TANKS = [
   { key: 'hs1', label: 'HS-1 (6000 Lt.)' },
@@ -39,12 +43,12 @@ function emptyRow(batch_no = '', charge_tank = '') {
     batch_no,
     charge_tank,
     charge_start: '', charge_stop: '',
-    hs_tank:     charge_tank,   // same tank pre-filled
+    hs_tank:     charge_tank,
     hs_start: '', hs_stop: '',
-    lst_start: '', lst_stop: '',
+    lst_tank: '', lst_start: '', lst_stop: '',
     s1_start: '', s1_stop: '',
     s2_start: '', s2_stop: '',
-    finish_tank: charge_tank,   // same tank pre-filled
+    finish_tank: charge_tank,
     finish_start: '', finish_stop: '',
   }
 }
@@ -167,7 +171,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
                 <th colSpan={3} className="bt-th-group">
                   High Speed Mixing<br /><span className="bt-hi">हाई स्पीड मिक्सिंग</span>
                 </th>
-                <th colSpan={2} className="bt-th-group">
+                <th colSpan={3} className="bt-th-group">
                   Transfer HS to LS (LST 1/2)<br /><span className="bt-hi">HS से LS ट्रांसफर</span>
                 </th>
                 <th colSpan={2} className="bt-th-group">
@@ -188,6 +192,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
                 <th>Tank<br /><span className="bt-hi">टैंक</span></th>
                 <th>Start<br /><span className="bt-hi">शुरू</span></th>
                 <th>Stop<br /><span className="bt-hi">बंद</span></th>
+                <th>Tank<br /><span className="bt-hi">टैंक</span></th>
                 <th>Start<br /><span className="bt-hi">शुरू</span></th>
                 <th>Stop<br /><span className="bt-hi">बंद</span></th>
                 <th>Start<br /><span className="bt-hi">शुरू</span></th>
@@ -214,6 +219,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
                   <SC row={row} field="hs_tank"  ri={ri} options={HS_TANKS} />
                   <TC row={row} field="hs_start"  ri={ri} />
                   <TC row={row} field="hs_stop"   ri={ri} />
+                  <SC row={row} field="lst_tank"  ri={ri} options={LST_TANKS} />
                   <TC row={row} field="lst_start" ri={ri} />
                   <TC row={row} field="lst_stop"  ri={ri} />
                   <TC row={row} field="s1_start"  ri={ri} />
