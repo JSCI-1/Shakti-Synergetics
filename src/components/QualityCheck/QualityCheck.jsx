@@ -68,9 +68,6 @@ function collectFGResults(product, values) {
   return out
 }
 
-// ── Print / Download ─────────────────────────────────────────
-function handlePrint() { window.print() }
-
 // ═══════════════════════════════════════════════════════════
 // Main component
 // ═══════════════════════════════════════════════════════════

@@ -451,3 +451,16 @@
   padding: 4px 0;
 }
 .qc-save-msg:not(:empty) { display: block; }
+
+/* ── Incomplete badge ── */
+.qc-badge-incomplete {
+  display: inline-block;
+  background: #fff8e1;
+  color: #f57f17;
+  border: 1px solid #ffe082;
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}

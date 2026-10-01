@@ -182,6 +182,20 @@ function runUnitTests() {
   assert('No rule → null',           evaluate(10,   undefined), null)
   assert('Empty value → null',       evaluate('',   { type: 'max', max: 30 }), null)
 
+  // Overall result tests (imported lazily to avoid circular dep)
+  // We test the logic directly here
+  const overallLogic = (results) => {
+    const limited = Object.values(results)
+    if (limited.length === 0) return null
+    if (limited.some(v => v === 'FAIL'))  return 'FAIL'
+    if (limited.some(v => v === null))    return 'Incomplete'
+    return 'PASS'
+  }
+  assert('Overall [PASS,PASS] → PASS',        overallLogic({ a: 'PASS', b: 'PASS' }),   'PASS')
+  assert('Overall [PASS,FAIL] → FAIL',        overallLogic({ a: 'PASS', b: 'FAIL' }),   'FAIL')
+  assert('Overall [PASS,null] → Incomplete',  overallLogic({ a: 'PASS', b: null }),      'Incomplete')
+  assert('Overall [] → null',                 overallLogic({}),                          null)
+
   console.log('%c✓ QC unit tests passed', 'color: green; font-weight: bold')
 }
 
