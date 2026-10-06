@@ -2,16 +2,12 @@ import React, { useState, useMemo, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './SlurrySection.css'
 
-const DEFAULT_INPUTS = [
-  'SULPHUR',
-  'LIGNO-A',
-  'LIGNO-B',
-  'FBPP',
-  'DN Powder',
-  'FZ 1',
-  'DEFOMER',
-  'CHINA CLAY',
-  'WATER',
+const DEFAULT_INPUT_OPTIONS = [
+  'LIGNO-A', 'LIGNO-B', 'WATER', 'Crude Sulphur', 'Sulphur powder',
+  'Papdi', 'Fine powder', 'Gujmol DN Liquid', 'Gujmol DN Powder',
+  'Tamol DN Powder', 'FBPP', 'FZ1', 'Defoamer', 'China Clay',
+  'Domsjo DS-10', 'Domsjo DA-30', 'Borresperse-NA', 'Borresperse-Ca',
+  'Greensperse-Ca',
 ]
 
 const MILLS = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'H1']
@@ -108,7 +104,7 @@ function emptyForm() {
     date: '',
     shift1_operator: '',
     shift2_operator: '',
-    input_rows: DEFAULT_INPUTS.map(n => emptyInputRow(n)),
+    input_rows: [emptyInputRow()],
     mills: MILLS.map(m => emptyMillRow(m)),
     operator: '',
     supervisor: '',
@@ -116,12 +112,94 @@ function emptyForm() {
   }
 }
 
+// ─────────────────────────────────────────────────────────────
+// InputDropdown — searchable native select with add-new
+// ─────────────────────────────────────────────────────────────
+function InputDropdown({ value, onChange, allOptions, recentlyUsed, usedInForm, onAddNew }) {
+  const [addingNew, setAddingNew] = useState(false)
+  const [newName, setNewName] = useState('')
+  const inputRef = useRef(null)
+
+  function handleSelect(e) {
+    const v = e.target.value
+    if (v === '__add_new__') {
+      setAddingNew(true)
+      setNewName('')
+      setTimeout(() => inputRef.current?.focus(), 50)
+    } else {
+      onChange(v)
+    }
+  }
+
+  function confirmNew() {
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    const lower = trimmed.toLowerCase()
+    const isDupe = allOptions.some(o => o.toLowerCase() === lower)
+    if (!isDupe) onAddNew(trimmed)
+    else onChange(allOptions.find(o => o.toLowerCase() === lower) || trimmed)
+    setAddingNew(false)
+    setNewName('')
+  }
+
+  const recentSet = new Set(recentlyUsed)
+  const otherOptions = allOptions.filter(o => !recentSet.has(o))
+
+  return (
+    <div className="sl-input-dropdown-wrap">
+      <select
+        className="sl-input-dropdown"
+        value={value || ''}
+        onChange={handleSelect}
+      >
+        <option value="">— Select / चुनें —</option>
+        {recentlyUsed.length > 0 && (
+          <optgroup label="Recently used / हाल ही में उपयोग">
+            {recentlyUsed.map(o => (
+              <option key={o} value={o} disabled={usedInForm.includes(o) && o !== value}>
+                {o}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        <optgroup label="All inputs / सभी इनपुट">
+          {otherOptions.map(o => (
+            <option key={o} value={o} disabled={usedInForm.includes(o) && o !== value}>
+              {o}
+            </option>
+          ))}
+        </optgroup>
+        <option value="__add_new__">＋ Add new / नया जोड़ें</option>
+      </select>
+
+      {addingNew && (
+        <div className="sl-add-new-inline">
+          <input
+            ref={inputRef}
+            className="sl-add-new-input"
+            placeholder="New input name…"
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') confirmNew() ; if (e.key === 'Escape') setAddingNew(false) }}
+          />
+          <button type="button" className="sl-add-new-btn" onClick={confirmNew}>OK</button>
+          <button type="button" className="sl-add-new-cancel" onClick={() => setAddingNew(false)}>✕</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function stamp12hr() {
-  return new Date().toLocaleTimeString('en-IN', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: true,
-  })
+  const now = new Date()
+  const opts = {
+    timeZone: 'Asia/Kolkata',
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }
+  const parts = new Intl.DateTimeFormat('en-IN', opts).formatToParts(now)
+  const get = t => parts.find(p => p.type === t)?.value ?? ''
+  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`
 }
 
 export default function SlurrySection({
@@ -144,6 +222,13 @@ export default function SlurrySection({
   // rowSaveState: { [rowId_batchIdx]: 'saving' | 'saved' | 'error' }
   const [rowSaveState, setRowSaveState] = useState({})
   const setRSS = (key, val) => setRowSaveState(p => ({ ...p, [key]: val }))
+
+  // Custom inputs added by the user (persisted in session memory)
+  const [customInputs, setCustomInputs] = useState([])
+  const allInputOptions = [...DEFAULT_INPUT_OPTIONS, ...customInputs]
+
+  // Recently used — updated after each successful auto-save
+  const recentlyUsed = useRef([])
 
   const set = (k, v) =>
     setForm(p => ({
@@ -176,6 +261,17 @@ export default function SlurrySection({
         tank_type: '',
       },
     ])
+    // Pre-fill input rows from recently used names if current rows are all unnamed
+    setForm(p => {
+      const namedRows = p.input_rows.filter(r => r.input_name)
+      if (namedRows.length === 0 && recentlyUsed.current.length > 0) {
+        return {
+          ...p,
+          input_rows: recentlyUsed.current.map(name => emptyInputRow(name)),
+        }
+      }
+      return p
+    })
   }
 
   function removeBatch(bi) {
@@ -310,6 +406,10 @@ export default function SlurrySection({
     }))
 
     setRSS(key, 'saved')
+    // Update recently-used list
+    recentlyUsed.current = [...new Set(
+      form.input_rows.filter(r => r.input_name).map(r => r.input_name)
+    )]
     // Clear the 'saved' indicator after 2 s
     setTimeout(() => setRSS(key, null), 2000)
   }, [form.input_rows, sessionId])
@@ -853,19 +953,22 @@ export default function SlurrySection({
                     {/* INPUT NAME */}
                     <td className="sl-td-sticky sl-td-input">
 
-                      <input
-                        className="sl-input-cell"
-                        placeholder="Input name / इनपुट नाम"
-                        value={
-                          row.input_name
-                        }
-                        onChange={e =>
-                          setInputRow(
-                            ri,
-                            'input_name',
-                            e.target.value
-                          )
-                        }
+                      <InputDropdown
+                        value={row.input_name}
+                        onChange={name => setInputRow(ri, 'input_name', name)}
+                        allOptions={allInputOptions}
+                        recentlyUsed={recentlyUsed.current}
+                        usedInForm={form.input_rows
+                          .filter((_, i) => i !== ri)
+                          .map(r => r.input_name)
+                          .filter(Boolean)}
+                        onAddNew={name => {
+                          const lower = name.toLowerCase()
+                          if (!allInputOptions.some(o => o.toLowerCase() === lower)) {
+                            setCustomInputs(prev => [...prev, name])
+                          }
+                          setInputRow(ri, 'input_name', name)
+                        }}
                       />
 
                     </td>
