@@ -414,17 +414,47 @@
 }
 .qc-clear-btn:hover { border-color: #b85c2c; color: #b85c2c; }
 
-/* ── Print styles ── */
+/* ── Print styles — #print-area approach ── */
+
+/* Hide on screen */
+#print-area { display: none; }
+
 @media print {
-  body > *:not(.app)       { display: none !important; }
-  .app > *:not(.main-content) { display: none !important; }
-  .qc-tab-bar,
-  .qc-actions,
-  .qc-dropdown-bar select,
-  .qc-reset-btn            { display: none !important; }
-  .qc-wrapper { border: none; box-shadow: none; }
-  .qc-input   { border: none; background: transparent; }
-  .qc-select  { border: none; background: transparent; }
+  /* Hide everything except #print-area */
+  body > *:not(#print-area) { display: none !important; }
+
+  #print-area {
+    display: block !important;
+    width: 100%;
+    font-family: Arial, sans-serif;
+    font-size: 12px;
+    color: #000;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  /* Tables */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    table-layout: fixed !important;
+    word-break: break-word !important;
+  }
+  th, td { border: 1px solid #999 !important; }
+
+  /* Keep each test block on one page if possible */
+  div[style*="page-break-inside:avoid"] {
+    page-break-inside: avoid !important;
+  }
+
+  /* Print colours for PASS/FAIL and highlighted rows */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
 }
 
 /* ── Mobile ── */
@@ -464,3 +494,319 @@
   font-weight: 700;
   letter-spacing: 0.5px;
 }
+
+/* ══ Brand / Type — popup panel + badge ══ */
+
+/* Wrapper that positions the popup */
+.qc-dropdown-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  max-width: 420px;
+}
+.qc-dropdown-wrap .qc-dropdown {
+  flex: 1;
+  max-width: 100%;
+}
+
+/* Edit icon next to the dropdown */
+.qc-brand-edit-icon {
+  background: transparent;
+  border: 1px solid #e0d0c0;
+  border-radius: 4px;
+  color: #b85c2c;
+  font-size: 14px;
+  cursor: pointer;
+  padding: 4px 7px;
+  line-height: 1;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.qc-brand-edit-icon:hover { background: #fdf3ee; }
+
+/* Brand badge shown inline in the dropdown bar */
+.qc-brand-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #b85c2c;
+  background: #fdf3ee;
+  border: 1px solid #f0c5a0;
+  border-radius: 12px;
+  padding: 3px 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Popup panel */
+.qc-brand-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 200;
+  background: #fff;
+  border: 1px solid #d0c5b8;
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0,0,0,0.13), 0 2px 6px rgba(0,0,0,0.07);
+  padding: 14px 16px 12px;
+  min-width: 280px;
+  max-width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  animation: qc-popup-in 0.14s ease;
+}
+
+@keyframes qc-popup-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.qc-brand-popup-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #444;
+  line-height: 1.4;
+}
+.qc-brand-popup-opt {
+  font-weight: 400;
+  color: #aaa;
+  margin-left: 4px;
+}
+
+.qc-brand-popup-input {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #2d2d2d;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.qc-brand-popup-input:focus {
+  outline: none;
+  border-color: #b85c2c;
+  background: #fffdf9;
+}
+
+.qc-brand-popup-actions {
+  display: flex;
+  gap: 8px;
+}
+.qc-brand-popup-confirm {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 7px 18px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  flex: 1;
+}
+.qc-brand-popup-confirm:hover { background: #9e4c22; }
+.qc-brand-popup-skip {
+  background: transparent;
+  color: #888;
+  border: 1px solid #ccc;
+  padding: 7px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex: 1;
+}
+.qc-brand-popup-skip:hover { border-color: #b85c2c; color: #b85c2c; }
+
+/* Pass column — free text input */
+.qc-ip-mill-pass {
+  text-align: left;
+  font-weight: 600;
+  -moz-appearance: auto;
+}
+.qc-ip-mill-pass::placeholder { font-weight: 400; color: #bbb; }
+
+
+/* ══ In-Process — Mill-wise Suspensibility table ══ */
+
+.qc-mill-table-title {
+  border-top: 2px solid #e0dbd4;
+  margin-top: 4px;
+}
+
+.qc-ip-mill-wrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 16px 16px;
+  background: #fff;
+  border-bottom: 1px solid #e0dbd4;
+}
+
+.qc-ip-mill-table {
+  border-collapse: collapse;
+  width: 100%;
+  min-width: 480px;
+  font-size: 12px;
+}
+
+.qc-ip-mill-table th,
+.qc-ip-mill-table td {
+  border: 1px solid #ccc;
+  padding: 6px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.qc-ip-mill-table thead th {
+  background: #f5f0ea;
+  color: #333;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.qc-ip-mill-table tbody tr:hover { background: #fdf3ee; }
+
+.qc-ip-mill-name {
+  font-weight: 700;
+  font-size: 12px;
+  color: #b85c2c;
+  text-align: left;
+  padding-left: 14px !important;
+  white-space: nowrap;
+  background: #fdf8f4;
+  min-width: 48px;
+}
+
+.qc-ip-mill-susp {
+  font-weight: 700;
+  color: #2e7d32;
+  background: #f6fff6;
+  font-size: 12px;
+  min-width: 100px;
+}
+
+.qc-ip-mill-td {
+  padding: 4px 6px;
+}
+
+.qc-ip-mill-input {
+  width: 100%;
+  min-width: 60px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 5px 6px;
+  font-size: 12px;
+  text-align: center;
+  background: transparent;
+  -moz-appearance: textfield;
+  box-sizing: border-box;
+}
+.qc-ip-mill-input::-webkit-outer-spin-button,
+.qc-ip-mill-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.qc-ip-mill-input:focus { outline: none; border-color: #b85c2c; background: #fff; }
+
+/* ── Copy-to-mill bar ── */
+.qc-susp-copy-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  background: #fffdf9;
+  border-bottom: 1px solid #e0dbd4;
+  flex-wrap: wrap;
+}
+.qc-susp-copy-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+.qc-susp-copy-select {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #fff;
+  cursor: pointer;
+  min-width: 70px;
+}
+.qc-susp-copy-select:focus { outline: none; border-color: #b85c2c; }
+.qc-susp-copy-btn {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.qc-susp-copy-btn:hover:not(:disabled) { background: #9e4c22; }
+.qc-susp-copy-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .qc-susp-copy-bar { flex-direction: column; align-items: stretch; }
+  .qc-susp-copy-btn { text-align: center; }
+  .qc-brand-popup { min-width: 240px; max-width: calc(100vw - 32px); }
+}
+
+/* ══ Production Balance box (Finished Goods) ══ */
+.qc-prod-bal {
+  margin: 12px 16px;
+  padding: 14px 16px;
+  border: 2px solid #b85c2c;
+  border-radius: 6px;
+  background: #fffdf9;
+}
+.qc-prod-bal-loading { color: #aaa; font-size: 12px; font-style: italic; }
+.qc-prod-bal-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b85c2c;
+  margin-bottom: 10px;
+}
+.qc-prod-bal-rows { display: flex; flex-direction: column; gap: 8px; }
+.qc-prod-bal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.qc-prod-bal-label { color: #555; min-width: 200px; font-weight: 500; }
+.qc-prod-bal-value { font-weight: 700; color: #2d2d2d; }
+.qc-prod-bal-edit-row { display: flex; align-items: center; gap: 8px; }
+.qc-prod-bal-input {
+  width: 80px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 7px;
+  font-size: 12px;
+  -moz-appearance: textfield;
+}
+.qc-prod-bal-input::-webkit-outer-spin-button,
+.qc-prod-bal-input::-webkit-inner-spin-button { -webkit-appearance: none; }
+.qc-prod-bal-input:focus { outline: none; border-color: #b85c2c; }
+.qc-prod-bal-save-btn {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 5px 12px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.qc-prod-bal-save-btn:hover:not(:disabled) { background: #9e4c22; }
+.qc-prod-bal-save-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.qc-prod-bal-remaining .qc-prod-bal-value { color: #2e7d32; }
+.qc-prod-bal-negative .qc-prod-bal-value { color: #c62828 !important; }
+.qc-prod-bal-warn { font-size: 11px; font-weight: 600; margin-left: 6px; }

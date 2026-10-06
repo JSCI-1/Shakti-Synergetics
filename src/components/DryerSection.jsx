@@ -158,6 +158,7 @@ function DryerForm({
   labelHi,
   form,
   setForm,
+  userName,
 }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -274,6 +275,19 @@ function DryerForm({
     } else {
       setSaved(true)
       setForm(emptyForm(dryerType))
+      const today = new Date().toISOString().slice(0, 10)
+      const totalKg = parseFloat(form.total_production) || 0
+      await supabase
+        .from('daily_production')
+        .upsert(
+          {
+            production_date: form.date || today,
+            total_kg: totalKg,
+            entered_by: userName || form.operator || '',
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'production_date' }
+        )
     }
   }
 
@@ -657,12 +671,12 @@ function DryerForm({
 
                   <th rowSpan={2}>
 
-                    Pressure
+                    Feed Pressure
 
                     <br />
 
                     <span className="dr-hi">
-                      दबाव
+                      फीड दबाव
                     </span>
 
                   </th>
@@ -1460,7 +1474,7 @@ function DryerForm({
 }
 
 
-export default function DryerSection() {
+export default function DryerSection({ user }) {
 
   const [activeTab, setActiveTab] =
     useState('new')
@@ -1555,6 +1569,7 @@ export default function DryerSection() {
             labelHi="नया ड्रायर"
             form={formNew}
             setForm={setFormNew}
+            userName={user?.name ?? ''}
           />
 
         </div>
@@ -1577,6 +1592,7 @@ export default function DryerSection() {
             labelHi="पुराना ड्रायर"
             form={formOld}
             setForm={setFormOld}
+            userName={user?.name ?? ''}
           />
 
         </div>
