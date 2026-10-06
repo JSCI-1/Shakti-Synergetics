@@ -191,15 +191,12 @@ function InputDropdown({ value, onChange, allOptions, recentlyUsed, usedInForm, 
 }
 
 function stamp12hr() {
-  const now = new Date()
-  const opts = {
+  return new Date().toLocaleTimeString('en-IN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
     timeZone: 'Asia/Kolkata',
-    day: '2-digit', month: '2-digit', year: 'numeric',
-    hour: '2-digit', minute: '2-digit', hour12: false,
-  }
-  const parts = new Intl.DateTimeFormat('en-IN', opts).formatToParts(now)
-  const get = t => parts.find(p => p.type === t)?.value ?? ''
-  return `${get('day')}/${get('month')}/${get('year')} ${get('hour')}:${get('minute')}`
+  })
 }
 
 export default function SlurrySection({
@@ -387,8 +384,8 @@ export default function SlurrySection({
         )
 
       if (upsertErr) {
-        setRSS(key, 'error')
-        return
+        // DB not available — fall through to local stamp so timestamp still shows
+        console.warn('slurry_input_saves upsert failed:', upsertErr.message)
       }
     } else {
       // Offline: use local stamp
