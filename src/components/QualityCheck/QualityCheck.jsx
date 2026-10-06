@@ -301,7 +301,7 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
       return `<tr><td style="${TD}">${label}</td><td style="${TD};font-weight:bold">${val}</td></tr>`
     }).join('')
     contentHtml = `<div style="page-break-inside:avoid;margin-bottom:16px;padding:10px;border:2px solid #b85c2c;border-radius:3px;box-sizing:border-box;width:100%">
-    <div style="font-weight:bold;font-size:13px;color:#b85c2c;margin-bottom:8px">Production Balance / उत्पादन शिल्लक</div>
+    <div style="font-weight:bold;font-size:13px;color:#b85c2c;margin-bottom:8px">Dry Slurry Balance / ड्राई स्लरी शेष</div>
     <table style="width:100%;border-collapse:collapse;table-layout:fixed">
       <tr><th style="${TH};width:60%">Item</th><th style="${TH};width:40%">Value</th></tr>
       ${rowsHtml}
@@ -438,7 +438,7 @@ function ProductionBalance({ loading, balance, fgUsed, setFgUsed, onSave, saving
   return (
     <div className="qc-prod-bal" data-prod-balance>
       <div className="qc-prod-bal-title">
-        Production Balance / उत्पादन शिल्लक
+        Dry Slurry Balance / ड्राई स्लरी शेष
       </div>
       <div className="qc-prod-bal-rows">
         <div className="qc-prod-bal-row">
@@ -456,7 +456,7 @@ function ProductionBalance({ loading, balance, fgUsed, setFgUsed, onSave, saving
           </span>
         </div>
         <div className="qc-prod-bal-row">
-          <span className="qc-prod-bal-label">FG used today (kg):</span>
+          <span className="qc-prod-bal-label">FG Today (kg):</span>
           <div className="qc-prod-bal-edit-row">
             <input
               type="number"
@@ -551,10 +551,21 @@ export default function QualityCheck() {
     if (!supabaseReady) return
     setFgSaving(true)
     const today = new Date().toISOString().slice(0, 10)
+    // Always read the current row first to avoid overwriting total_kg with 0
+    const { data: existing } = await supabase
+      .from('daily_production')
+      .select('total_kg')
+      .eq('production_date', today)
+      .maybeSingle()
+    const safeTotalKg = existing?.total_kg ?? prodBalance?.todayTotal ?? 0
     await supabase
       .from('daily_production')
       .upsert(
-        { production_date: today, total_kg: prodBalance?.todayTotal ?? 0, fg_used_kg: parseFloat(fgUsedEdit) || 5 },
+        {
+          production_date: today,
+          total_kg: safeTotalKg,
+          fg_used_kg: parseFloat(fgUsedEdit) || 5,
+        },
         { onConflict: 'production_date' }
       )
     setFgSaving(false)

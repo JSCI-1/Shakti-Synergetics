@@ -293,12 +293,14 @@ export const RAW_MATERIALS = [
 
 
 // ── SECTION 2: IN-PROCESS ─────────────────────────────────────
-export const IN_PROCESS = [
+// pinned: always shown at top (Solid Content + Sulphur Content)
+// dropdown: user selects one at a time (Suspensibility, Wet Sieve)
+export const IN_PROCESS_PINNED = [
   {
     id: 'ip_moisture',
-    label: 'Moisture Content',
+    label: 'Solid Content',
     type: 'formula-only',
-    tests: [{ ...SHARED_FORMULAS.moisture, id: 'ip_moisture_calc' }],
+    tests: [{ ...SHARED_FORMULAS.moisture, id: 'ip_moisture_calc', name: 'Solid Content' }],
   },
   {
     id: 'ip_sulphur',
@@ -306,6 +308,9 @@ export const IN_PROCESS = [
     type: 'formula-only',
     tests: [{ ...SHARED_FORMULAS.sulphur, id: 'ip_sulphur_calc' }],
   },
+]
+
+export const IN_PROCESS = [
   {
     id: 'ip_suspensibility',
     label: 'Suspensibility',

@@ -11,20 +11,26 @@ const FN_MAP = {
   calcBulkDensity, calcPurity, calcMeshSize, calcSuspensibility,
 }
 
-export default function FormulaCalculator({ formula }) {
+export default function FormulaCalculator({ formula, onInputChange }) {
   const [inputs, setInputs] = useState({})
-  const setInput = (key, val) => setInputs(prev => ({ ...prev, [key]: val }))
 
-  let calcResult = null
+  const setInput = (key, val) => {
+    setInputs(prev => ({ ...prev, [key]: val }))
+    if (onInputChange) onInputChange(key, val)
+  }
+
+  let calcResult    = null
   let intermediates = null
   const fn = FN_MAP[formula.calcFn]
   if (fn) {
-    const allFilled = formula.variables.every(v => inputs[v.key] !== '' && inputs[v.key] !== undefined)
+    const allFilled = formula.variables.every(
+      v => inputs[v.key] !== '' && inputs[v.key] !== undefined
+    )
     if (allFilled) {
       const raw = fn(inputs)
       if (raw !== null && typeof raw === 'object') {
         intermediates = { M: raw.M, m: raw.m }
-        calcResult = raw.result
+        calcResult    = raw.result
       } else {
         calcResult = raw
       }
@@ -33,8 +39,11 @@ export default function FormulaCalculator({ formula }) {
 
   const result = evaluate(calcResult, formula.rule)
 
+  function handleReset() { setInputs({}) }
+
   return (
-    <div className="qc-formula-card">
+    // data-formula-card — identified by printReport for DOM reading
+    <div className="qc-formula-card" data-formula-card={formula.id}>
       <div className="qc-formula-name">{formula.name}</div>
 
       <div className="qc-formula-display">
@@ -61,6 +70,7 @@ export default function FormulaCalculator({ formula }) {
               <span className="qc-var-desc">{v.desc}</span>
             </label>
             <div className="qc-input-unit">
+              {/* data-var-key and data-var-label used by printReport */}
               <input
                 type="number"
                 className="qc-input"
@@ -69,6 +79,10 @@ export default function FormulaCalculator({ formula }) {
                 onChange={e => setInput(v.key, e.target.value)}
                 step="any"
                 min="0"
+                data-var-key={v.key}
+                data-var-label={v.label}
+                data-var-desc={v.desc}
+                data-var-unit={v.unit || ''}
               />
               {v.unit && <span className="qc-unit">{v.unit}</span>}
             </div>
@@ -90,17 +104,16 @@ export default function FormulaCalculator({ formula }) {
         </div>
       )}
 
+      {/* data-result used by printReport to read displayed result */}
       <div className="qc-calc-result">
         <span className="qc-calc-label">Result:</span>
-        <span className="qc-calc-value">
+        <span className="qc-calc-value" data-result>
           {calcResult !== null ? `${calcResult} ${formula.resultUnit}` : '—'}
         </span>
         {formula.rule && <ResultBadge result={result} />}
       </div>
 
-      {/* Where list removed — variables shown inline with inputs above */}
-
-      <button type="button" className="qc-reset-btn" onClick={() => setInputs({})}>
+      <button type="button" className="qc-reset-btn" onClick={handleReset}>
         Reset / रीसेट
       </button>
     </div>

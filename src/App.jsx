@@ -104,17 +104,6 @@ export default function App() {
     <div className="app">
       <Header />
 
-      {/* User bar */}
-      <div className="user-bar">
-        <span className="user-bar-name">
-          👤 {user.name}
-          {user.role === 'admin' && <span className="user-bar-role"> · Admin</span>}
-        </span>
-        <button className="user-bar-logout" onClick={handleLogout}>
-          Sign Out / साइन आउट
-        </button>
-      </div>
-
       <TopNav tabs={allowedTabs} active={activeNav} onChange={setActiveNav} />
 
       <main className="main-content">

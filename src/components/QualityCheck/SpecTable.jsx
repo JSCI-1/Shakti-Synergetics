@@ -1,8 +1,6 @@
 import ResultBadge from './ResultBadge.jsx'
 import { evaluate } from '../../utils/qualityUtils.js'
 
-// SpecTable — renders a table of spec parameters.
-// Hides the Result column entirely when no param has a rule.
 export default function SpecTable({ params, values, onChange }) {
   const hasAnyRule = params.some(p => p.rule)
 
@@ -19,15 +17,13 @@ export default function SpecTable({ params, values, onChange }) {
         </thead>
         <tbody>
           {params.map(param => {
-            const val = values[param.id] ?? ''
+            const val    = values[param.id] ?? ''
             const result = evaluate(val, param.rule)
             return (
               <tr key={param.id} className={result === 'FAIL' ? 'qc-row-fail' : ''}>
                 <td className="qc-param-name">
                   {param.name}
-                  {param.method && (
-                    <div className="qc-method">{param.method}</div>
-                  )}
+                  {param.method && <div className="qc-method">{param.method}</div>}
                 </td>
                 <td className="qc-spec">{param.specification}</td>
                 <td className="qc-obs">
@@ -36,6 +32,11 @@ export default function SpecTable({ params, values, onChange }) {
                       className="qc-select"
                       value={val}
                       onChange={e => onChange(param.id, e.target.value)}
+                      // data attrs for DOM reading
+                      data-param-id={param.id}
+                      data-param-name={param.name}
+                      data-param-unit={param.unit || ''}
+                      data-param-spec={param.specification}
                     >
                       <option value="">— Select —</option>
                       {param.options.map(opt => (
@@ -52,6 +53,11 @@ export default function SpecTable({ params, values, onChange }) {
                         onChange={e => onChange(param.id, e.target.value)}
                         step="any"
                         min="0"
+                        // data attrs for DOM reading
+                        data-param-id={param.id}
+                        data-param-name={param.name}
+                        data-param-unit={param.unit || ''}
+                        data-param-spec={param.specification}
                       />
                       {param.unit && <span className="qc-unit">{param.unit}</span>}
                     </div>
@@ -59,7 +65,10 @@ export default function SpecTable({ params, values, onChange }) {
                 </td>
                 {hasAnyRule && (
                   <td className="qc-result">
-                    <ResultBadge result={result} />
+                    {/* data-result used by printReport */}
+                    <span data-result data-has-rule={!!param.rule}>
+                      <ResultBadge result={result} />
+                    </span>
                   </td>
                 )}
               </tr>
