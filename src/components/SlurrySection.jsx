@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react'
+import React, { useState, useMemo, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import './SlurrySection.css'
 
@@ -85,12 +85,11 @@ function emptyMotorForm() {
 // Each input row has origin_rm per batch (array matching batches)
 function emptyInputRow(name = '') {
   return {
-    id: Date.now() + Math.random(),
+    id: String(Date.now()) + String(Math.random()).slice(2, 8),
     input_name: name,
     origins: [],
     batches: [],
-    timestamp: '',
-    saved: false,
+    timestamp: '',  // first-stamp from DB; set once
   }
 }
 
@@ -138,6 +137,13 @@ export default function SlurrySection({
   const [motorSaving, setMotorSaving] = useState(false)
   const [motorSaved, setMotorSaved] = useState(false)
   const [motorError, setMotorError] = useState('')
+
+  // Stable session key: one per calendar date so timestamps survive page reload
+  const sessionId = useRef(`slurry-${new Date().toISOString().slice(0, 10)}`)
+
+  // rowSaveState: { [rowId_batchIdx]: 'saving' | 'saved' | 'error' }
+  const [rowSaveState, setRowSaveState] = useState({})
+  const setRSS = (key, val) => setRowSaveState(p => ({ ...p, [key]: val }))
 
   const set = (k, v) =>
     setForm(p => ({
@@ -238,17 +244,75 @@ export default function SlurrySection({
       }),
     }))
 
-  function saveInputRow(idx) {
-    setForm(p => {
-      if (p.input_rows[idx].saved) return p   // already stamped
-      return {
-        ...p,
-        input_rows: p.input_rows.map((r, i) =>
-          i === idx ? { ...r, timestamp: stamp12hr(), saved: true } : r
-        ),
+  // =========================================================
+  // AUTO-SAVE INPUT ROW on qty blur
+  // Upserts to slurry_input_saves; preserves first_stamp.
+  // =========================================================
+
+  const autoSaveInputRow = useCallback(async (rowIdx, batchIdx) => {
+    const row = form.input_rows[rowIdx]
+    const qty = row.batches[batchIdx] ?? ''
+    if (qty === '' || qty === null) return   // nothing to save yet
+
+    const key = `${row.id}_${batchIdx}`
+    setRSS(key, 'saving')
+
+    const now12 = stamp12hr()
+
+    // Check if this row+batch already has a first_stamp in DB
+    let firstStamp = row.timestamp || ''
+
+    if (supabaseReady) {
+      const { data: existing } = await supabase
+        .from('slurry_input_saves')
+        .select('first_stamp')
+        .eq('session_id', sessionId.current)
+        .eq('row_id', String(row.id))
+        .eq('batch_index', batchIdx)
+        .maybeSingle()
+
+      // Preserve DB first_stamp if it exists; otherwise use now
+      firstStamp = existing?.first_stamp || firstStamp || now12
+
+      const { error: upsertErr } = await supabase
+        .from('slurry_input_saves')
+        .upsert(
+          {
+            session_id:  sessionId.current,
+            row_id:      String(row.id),
+            batch_index: batchIdx,
+            input_name:  row.input_name,
+            origin:      row.origins[batchIdx] ?? '',
+            qty_kg:      parseFloat(qty) || 0,
+            first_stamp: firstStamp,
+            updated_at:  new Date().toISOString(),
+          },
+          { onConflict: 'session_id,row_id,batch_index' }
+        )
+
+      if (upsertErr) {
+        setRSS(key, 'error')
+        return
       }
-    })
-  }
+    } else {
+      // Offline: use local stamp
+      firstStamp = firstStamp || now12
+    }
+
+    // Write first_stamp back into React state (only if not already set)
+    setForm(p => ({
+      ...p,
+      input_rows: p.input_rows.map((r, i) =>
+        i === rowIdx && !r.timestamp
+          ? { ...r, timestamp: firstStamp }
+          : r
+      ),
+    }))
+
+    setRSS(key, 'saved')
+    // Clear the 'saved' indicator after 2 s
+    setTimeout(() => setRSS(key, null), 2000)
+  }, [form.input_rows, sessionId])
 
   function addInputRow() {
     setForm(p => ({
@@ -723,18 +787,6 @@ export default function SlurrySection({
                   </span>
                 </th>
 
-                {/* SAVE */}
-                <th
-                  className="sl-th-save"
-                  rowSpan={2}
-                >
-                  Save
-                  <br />
-                  <span className="sl-hi">
-                    सहेजें
-                  </span>
-                </th>
-
                 {/* ACTION */}
                 <th
                   className="sl-th-action"
@@ -795,11 +847,7 @@ export default function SlurrySection({
 
                   <tr
                     key={row.id}
-                    className={`${ri % 2 === 0 ? '' : 'sl-tr-alt'} ${
-                      row.saved
-                        ? 'sl-row-saved'
-                        : ''
-                    }`}
+                    className={`${ri % 2 === 0 ? '' : 'sl-tr-alt'}`}
                   >
 
                     {/* INPUT NAME */}
@@ -870,7 +918,19 @@ export default function SlurrySection({
                                   e.target.value
                                 )
                               }
+                              onBlur={() =>
+                                autoSaveInputRow(ri, bi)
+                              }
                             />
+                            {/* Auto-save indicator */}
+                            {(() => {
+                              const k = `${row.id}_${bi}`
+                              const s = rowSaveState[k]
+                              if (s === 'saving') return <span className="sl-autosave-indicator sl-autosave-saving">…</span>
+                              if (s === 'saved')  return <span className="sl-autosave-indicator sl-autosave-ok">Saved ✓</span>
+                              if (s === 'error')  return <span className="sl-autosave-indicator sl-autosave-err">!</span>
+                              return null
+                            })()}
 
                           </td>
 
@@ -890,20 +950,6 @@ export default function SlurrySection({
                           —
                         </span>
                       )}
-
-                    </td>
-
-                    {/* SAVE */}
-                    <td className="sl-td-save">
-
-                      <button
-                        type="button"
-                        className="sl-row-save-btn"
-                        disabled={row.saved}
-                        onClick={() => saveInputRow(ri)}
-                      >
-                        {row.saved ? '✓' : '💾'}
-                      </button>
 
                     </td>
 

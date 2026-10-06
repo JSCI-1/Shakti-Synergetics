@@ -1351,3 +1351,33 @@
 .sl-row-save-btn:disabled:hover { background: transparent; border-color: #4caf50; }
 .sl-flow-stamp-btn:disabled     { opacity: 1; cursor: not-allowed; }
 
+
+/* ── Auto-save indicator (appears below qty input) ── */
+.sl-autosave-indicator {
+  display: block;
+  font-size: 9px;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.2;
+  margin-top: 2px;
+  border-radius: 3px;
+  padding: 1px 3px;
+}
+.sl-autosave-saving {
+  color: #aaa;
+}
+.sl-autosave-ok {
+  color: #2e7d32;
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  animation: sl-fade-out 2s ease forwards;
+}
+.sl-autosave-err {
+  color: #c62828;
+  background: #ffebee;
+}
+@keyframes sl-fade-out {
+  0%   { opacity: 1; }
+  60%  { opacity: 1; }
+  100% { opacity: 0; }
+}
