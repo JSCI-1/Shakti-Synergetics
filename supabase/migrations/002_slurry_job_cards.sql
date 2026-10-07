@@ -3,6 +3,8 @@
 -- Run this in: Supabase Dashboard → SQL Editor → New query
 -- ════════════════════════════════════════════════════════════
 
+-- Is not in work created separate database queries
+
 drop table if exists slurry_job_cards  cascade;
 drop table if exists batch_traceability cascade;
 drop table if exists slurry_motor_amp  cascade;

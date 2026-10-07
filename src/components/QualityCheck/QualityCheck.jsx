@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { RAW_MATERIALS, IN_PROCESS, IN_PROCESS_PINNED, FINISHED_GOODS } from '../../data/qualityData.js'
+import { UPL_GRADES } from '../../data/uplData.js'
 import { evaluate, calcSuspensibility } from '../../utils/qualityUtils.js'
 import { overallResult } from './OverallResult.jsx'
 import SpecTable from './SpecTable.jsx'
 import FormulaCalculator from './FormulaCalculator.jsx'
 import OverallResult from './OverallResult.jsx'
-import { supabase, supabaseReady } from '../../supabaseClient.js'
 import './QualityCheck.css'
 
 const TABS = [
@@ -205,7 +205,8 @@ function specTableToHtml(container) {
 // printReport
 // ─────────────────────────────────────────────────────────────
 function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, testedBy,
-                       rmBrand, ipBrand, fgBrand, prodBalance }) {
+                       rmBrand, ipBrand, fgBrand, rmSupplierName, rmInvoiceNo, rmBatchNo,
+                       uplGrade, uplValues }) {
   const now      = new Date()
   const printTs  = now.toLocaleDateString('en-IN') + ' ' +
                    now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
@@ -226,7 +227,9 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
     brand         = fgBrand
   }
 
-  const materialWithBrand = brand ? `${materialLabel} – ${brand}` : materialLabel
+  const gradeLabel        = uplGrade === 'export' ? 'Export Grade' : uplGrade === 'omri' ? 'OMRI Grade' : ''
+  const uplSuffix         = (activeTab === 'fg' && uplGrade) ? ` – UPL Limited (${gradeLabel})` : ''
+  const materialWithBrand = brand ? `${materialLabel} – ${brand}${uplSuffix}` : `${materialLabel}${uplSuffix}`
 
   const content = document.getElementById('qc-content')
   let   contentHtml = ''
@@ -291,23 +294,52 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
     }
   }
 
-  // Production Balance box
-  const balBox = content ? content.querySelector('[data-prod-balance]') : null
-  if (balBox) {
-    const rows = Array.from(balBox.querySelectorAll('.qc-prod-bal-row'))
-    const rowsHtml = rows.map(r => {
-      const label = r.querySelector('.qc-prod-bal-label')?.textContent.trim() || ''
-      const val   = r.querySelector('.qc-prod-bal-value')?.textContent.trim() || '—'
-      return `<tr><td style="${TD}">${label}</td><td style="${TD};font-weight:bold">${val}</td></tr>`
+  // UPL Parameters table (Finished Goods only, when a grade is active)
+  if (activeTab === 'fg' && uplGrade && uplValues) {
+    const rows = UPL_GRADES[uplGrade]
+    const groups = []
+    let cur = null
+    rows.forEach(row => {
+      if (row.group !== cur) { groups.push({ heading: row.group, rows: [] }); cur = row.group }
+      groups[groups.length - 1].rows.push(row)
+    })
+    const grpRows = groups.map(g => {
+      const headerRow = `<tr style="-webkit-print-color-adjust:exact;print-color-adjust:exact;background:#fdf3ee">
+        <td colspan="4" style="${TD};font-weight:bold;color:#b85c2c">${g.heading}</td>
+      </tr>`
+      const dataRows = g.rows.map(row => {
+        const val    = uplValues[row.id] ?? ''
+        const status = evaluate(val, row.rule)
+        const statusHtml = status === 'PASS'
+          ? `<span style="color:#2e7d32;font-weight:bold">Pass</span>`
+          : status === 'FAIL'
+          ? `<span style="color:#c62828;font-weight:bold">Fail</span>`
+          : '—'
+        return `<tr>
+          <td style="${TD}">${row.parameter}${row.unit ? ` (${row.unit})` : ''}</td>
+          <td style="${TD}">${row.specDisplay}</td>
+          <td style="${TD};text-align:center">${val !== '' ? val : '—'}</td>
+          <td style="${TD};text-align:center">${statusHtml}</td>
+        </tr>`
+      }).join('')
+      return headerRow + dataRows
     }).join('')
-    contentHtml = `<div style="page-break-inside:avoid;margin-bottom:16px;padding:10px;border:2px solid #b85c2c;border-radius:3px;box-sizing:border-box;width:100%">
-    <div style="font-weight:bold;font-size:13px;color:#b85c2c;margin-bottom:8px">Dry Slurry Balance / ड्राई स्लरी शेष</div>
-    <table style="width:100%;border-collapse:collapse;table-layout:fixed">
-      <tr><th style="${TH};width:60%">Item</th><th style="${TH};width:40%">Value</th></tr>
-      ${rowsHtml}
-    </table>
-  </div>` + contentHtml
+
+    contentHtml += `<div style="page-break-inside:avoid;margin-bottom:16px">
+      <div style="font-weight:bold;font-size:13px;color:#b85c2c;margin-bottom:6px">UPL Parameters – ${gradeLabel}</div>
+      <table style="width:100%;border-collapse:collapse;table-layout:fixed;word-break:break-word">
+        <tr>
+          <th style="${TH};width:30%">Parameter</th>
+          <th style="${TH};width:25%">Specification</th>
+          <th style="${TH};width:22%;text-align:center">Result</th>
+          <th style="${TH};width:23%;text-align:center">Status</th>
+        </tr>
+        ${grpRows}
+      </table>
+    </div>`
   }
+
+  // (Production Balance block removed)
 
   const reportHtml = `
     <style>
@@ -326,6 +358,11 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
         <td style="padding:4px 0;text-align:center"><b>Tested By / परीक्षक:</b> ${testedBy || '—'}</td>
         <td style="padding:4px 0;text-align:right"><b>Printed:</b> ${printTs}</td>
       </tr>
+      ${activeTab === 'rm' && (rmSupplierName || rmInvoiceNo || rmBatchNo) ? `<tr>
+        ${rmSupplierName ? `<td style="padding:2px 0"><b>Supplier / आपूर्तिकर्ता:</b> ${rmSupplierName}</td>` : '<td></td>'}
+        ${rmInvoiceNo    ? `<td style="padding:2px 0;text-align:center"><b>Invoice No.:</b> ${rmInvoiceNo}</td>` : '<td></td>'}
+        ${rmBatchNo      ? `<td style="padding:2px 0;text-align:right"><b>Batch No.:</b> ${rmBatchNo}</td>` : '<td></td>'}
+      </tr>` : ''}
     </table>
     <div style="font-size:12px;font-weight:bold;background:#f5f5f5;padding:6px 10px;margin-bottom:14px;border-left:4px solid #b85c2c">
       ${sectionLabel} &nbsp;›&nbsp; ${materialWithBrand}
@@ -375,31 +412,44 @@ function collectFGResults(product, values) {
 // ─────────────────────────────────────────────────────────────
 // BatchHeader
 // ─────────────────────────────────────────────────────────────
-function BatchHeader({ date, setDate, dateLabel, testedBy, setTestedBy, extra = [] }) {
+function BatchHeader({ date, setDate, dateLabel, testedBy, setTestedBy, extra = [], splitTime = false }) {
+  // splitTime=true: time-type fields go on a separate row with a top border (RM tab only)
+  const mainFields = splitTime ? extra.filter(f => f.type !== 'time') : extra
+  const timeFields = splitTime ? extra.filter(f => f.type === 'time') : []
+
+  const renderField = f => (
+    <div key={f.key} className="qc-batch-field">
+      <label className="qc-batch-label">
+        {f.label}{f.optional && <span style={{fontWeight:'400',color:'#aaa',fontSize:'10px'}}> (optional)</span>}
+      </label>
+      <input
+        type={f.type || 'text'}
+        className="qc-batch-input"
+        placeholder={f.placeholder || ''}
+        value={f.value}
+        onChange={e => f.onChange(e.target.value)}
+      />
+    </div>
+  )
+
   return (
-    <div className="qc-batch-bar">
-      <div className="qc-batch-field">
-        <label className="qc-batch-label">{dateLabel || 'Date / तारीख'}</label>
-        <input type="date" className="qc-batch-input" value={date} onChange={e => setDate(e.target.value)} />
-      </div>
-      <div className="qc-batch-field">
-        <label className="qc-batch-label">Tested By / परीक्षक</label>
-        <input className="qc-batch-input" placeholder="Name / नाम" value={testedBy} onChange={e => setTestedBy(e.target.value)} />
-      </div>
-      {extra.map(f => (
-        <div key={f.key} className="qc-batch-field">
-          <label className="qc-batch-label">
-            {f.label}{f.optional && <span style={{fontWeight:'400',color:'#aaa',fontSize:'10px'}}> (optional)</span>}
-          </label>
-          <input
-            type={f.type || 'text'}
-            className="qc-batch-input"
-            placeholder={f.placeholder || ''}
-            value={f.value}
-            onChange={e => f.onChange(e.target.value)}
-          />
+    <div className="qc-batch-header-wrap">
+      <div className="qc-batch-bar">
+        <div className="qc-batch-field">
+          <label className="qc-batch-label">{dateLabel || 'Date / तारीख'}</label>
+          <input type="date" className="qc-batch-input" value={date} onChange={e => setDate(e.target.value)} />
         </div>
-      ))}
+        <div className="qc-batch-field">
+          <label className="qc-batch-label">Tested By / परीक्षक</label>
+          <input className="qc-batch-input" placeholder="Name / नाम" value={testedBy} onChange={e => setTestedBy(e.target.value)} />
+        </div>
+        {mainFields.map(renderField)}
+      </div>
+      {timeFields.length > 0 && (
+        <div className="qc-batch-bar qc-batch-bar-time">
+          {timeFields.map(renderField)}
+        </div>
+      )}
     </div>
   )
 }
@@ -424,70 +474,6 @@ function computeRowSusp(br, suspInputs) {
 // ─────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────
-function ProductionBalance({ loading, balance, fgUsed, setFgUsed, onSave, saving }) {
-  if (loading) return <div className="qc-prod-bal qc-prod-bal-loading">Loading production data…</div>
-
-  const todayTotal    = balance?.todayTotal ?? null
-  const prevRemaining = balance?.prevRemaining ?? null
-  const prevDate      = balance?.prevDate ?? null
-  const fgUsedNum     = parseFloat(fgUsed) || 0
-  const todayTotalNum = typeof todayTotal === 'number' ? todayTotal : null
-  const remaining     = todayTotalNum !== null ? todayTotalNum - fgUsedNum : null
-  const isNegative    = remaining !== null && remaining < 0
-
-  return (
-    <div className="qc-prod-bal" data-prod-balance>
-      <div className="qc-prod-bal-title">
-        Dry Slurry Balance / ड्राई स्लरी शेष
-      </div>
-      <div className="qc-prod-bal-rows">
-        <div className="qc-prod-bal-row">
-          <span className="qc-prod-bal-label">
-            {prevDate ? `Remaining from ${prevDate}:` : 'Previous balance:'}
-          </span>
-          <span className="qc-prod-bal-value">
-            {prevRemaining !== null ? `${prevRemaining} kg` : '—'}
-          </span>
-        </div>
-        <div className="qc-prod-bal-row">
-          <span className="qc-prod-bal-label">Today's total production:</span>
-          <span className="qc-prod-bal-value">
-            {todayTotal !== null ? `${todayTotal} kg` : 'Not entered yet'}
-          </span>
-        </div>
-        <div className="qc-prod-bal-row">
-          <span className="qc-prod-bal-label">FG Today (kg):</span>
-          <div className="qc-prod-bal-edit-row">
-            <input
-              type="number"
-              className="qc-prod-bal-input"
-              value={fgUsed}
-              min="0"
-              step="0.01"
-              onChange={e => setFgUsed(e.target.value)}
-            />
-            <button
-              type="button"
-              className="qc-prod-bal-save-btn"
-              onClick={onSave}
-              disabled={saving}
-            >
-              {saving ? '…' : 'Save'}
-            </button>
-          </div>
-        </div>
-        <div className={`qc-prod-bal-row qc-prod-bal-remaining ${isNegative ? 'qc-prod-bal-negative' : ''}`}>
-          <span className="qc-prod-bal-label">Today's remaining:</span>
-          <span className="qc-prod-bal-value">
-            {remaining !== null ? `${remaining.toFixed(2)} kg` : '—'}
-            {isNegative && <span className="qc-prod-bal-warn"> ⚠ Production less than FG requirement</span>}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
 export default function QualityCheck() {
   const [activeTab,  setActiveTab]  = useState('rm')
   const [rmSelected, setRmSelected] = useState(RAW_MATERIALS[0].id)
@@ -499,78 +485,43 @@ export default function QualityCheck() {
   const [testedBy,   setTestedBy]   = useState('')
 
   // Extra per-section batch fields
-  const [rmInvoiceNo, setRmInvoiceNo] = useState('')
-  const [rmBatchNo,   setRmBatchNo]   = useState('')
-  const [rmTime,      setRmTime]      = useState('')
-  const [ipBatchNo,   setIpBatchNo]   = useState('')
-  const [ipTime,      setIpTime]      = useState('')
-  const [fgBatchNo,   setFgBatchNo]   = useState('')
-  const [fgTime,      setFgTime]      = useState('')
+  const [rmInvoiceNo,    setRmInvoiceNo]    = useState('')
+  const [rmBatchNo,      setRmBatchNo]      = useState('')
+  const [rmSupplierName, setRmSupplierName] = useState('')  // Supplier Name
+  const [rmTime,         setRmTime]         = useState('')
+  const [ipBatchNo,      setIpBatchNo]      = useState('')
+  const [ipTime,         setIpTime]         = useState('')
+  const [fgBatchNo,      setFgBatchNo]      = useState('')
+  const [fgTime,         setFgTime]         = useState('')
 
   // ── Per-section brand/type ──
   const rmBT = useBrandType()
   const ipBT = useBrandType()
   const fgBT = useBrandType()
 
-  // ── Production Balance (Finished Goods) ──
-  const [prodBalance,        setProdBalance]        = useState(null)
-  const [prodBalanceLoading, setProdBalanceLoading] = useState(false)
-  const [fgUsedEdit,         setFgUsedEdit]         = useState('5')
-  const [fgSaving,           setFgSaving]           = useState(false)
+  // ── UPL grade (Finished Goods → Sulphur 80% WDG only) ──
+  const [uplGrade,    setUplGrade]    = useState(null)   // null | 'export' | 'omri'
+  const [uplMenuOpen, setUplMenuOpen] = useState(false)
+  const [uplValues,   setUplValues]   = useState({})     // { [paramId]: string }
+  const uplBtnRef = useRef(null)
+
+  // Close UPL menu on outside click or Esc
+  useEffect(() => {
+    if (!uplMenuOpen) return
+    function handleOutside(e) {
+      if (uplBtnRef.current && !uplBtnRef.current.contains(e.target)) setUplMenuOpen(false)
+    }
+    function handleEsc(e) { if (e.key === 'Escape') setUplMenuOpen(false) }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('keydown', handleEsc)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('keydown', handleEsc)
+    }
+  }, [uplMenuOpen])
 
   // ── In-Process mill rows ──
   const [ipMillRows, setIpMillRows] = useState(emptyMillRows())
-
-  useEffect(() => {
-    if (activeTab !== 'fg' || !supabaseReady) return
-    fetchProdBalance()
-  }, [activeTab])
-
-  async function fetchProdBalance() {
-    setProdBalanceLoading(true)
-    const today = new Date().toISOString().slice(0, 10)
-    const { data } = await supabase
-      .from('daily_production')
-      .select('production_date, total_kg, fg_used_kg, remaining_kg')
-      .order('production_date', { ascending: false })
-      .limit(2)
-    setProdBalanceLoading(false)
-    if (!data || data.length === 0) { setProdBalance(null); return }
-    const todayRow = data.find(r => r.production_date === today)
-    const prevRow  = data.find(r => r.production_date !== today) || (todayRow ? null : data[0])
-    setProdBalance({
-      prevDate:      prevRow?.production_date ?? null,
-      prevRemaining: prevRow?.remaining_kg ?? null,
-      todayTotal:    todayRow?.total_kg ?? null,
-      todayFgUsed:   todayRow?.fg_used_kg ?? 5,
-    })
-    setFgUsedEdit(String(todayRow?.fg_used_kg ?? 5))
-  }
-
-  async function saveFgUsed() {
-    if (!supabaseReady) return
-    setFgSaving(true)
-    const today = new Date().toISOString().slice(0, 10)
-    // Always read the current row first to avoid overwriting total_kg with 0
-    const { data: existing } = await supabase
-      .from('daily_production')
-      .select('total_kg')
-      .eq('production_date', today)
-      .maybeSingle()
-    const safeTotalKg = existing?.total_kg ?? prodBalance?.todayTotal ?? 0
-    await supabase
-      .from('daily_production')
-      .upsert(
-        {
-          production_date: today,
-          total_kg: safeTotalKg,
-          fg_used_kg: parseFloat(fgUsedEdit) || 5,
-        },
-        { onConflict: 'production_date' }
-      )
-    setFgSaving(false)
-    fetchProdBalance()
-  }
 
   const setIpMillCell = (idx, field, val) =>
     setIpMillRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r))
@@ -599,19 +550,20 @@ export default function QualityCheck() {
   function handleReset() {
     setValues({})
     setResetKey(k => k + 1)
-    if (activeTab === 'rm') { setRmInvoiceNo(''); setRmBatchNo(''); setRmTime(''); rmBT.reset() }
+    if (activeTab === 'rm') { setRmInvoiceNo(''); setRmBatchNo(''); setRmSupplierName(''); setRmTime(''); rmBT.reset() }
     if (activeTab === 'ip') {
       setIpBatchNo(''); setIpTime('')
       setIpMillRows(emptyMillRows()); setSuspInputs({}); setSuspCardMill(IP_MILLS[0])
     }
-    if (activeTab === 'fg') { setFgBatchNo(''); setFgTime(''); fgBT.reset(); fetchProdBalance() }
+    if (activeTab === 'fg') { setFgBatchNo(''); setFgTime(''); fgBT.reset(); setUplGrade(null); setUplValues({}); setUplMenuOpen(false) }
   }
 
   function handlePrint() {
     printReport({
       activeTab, rmSelected, ipSelected, fgSelected, date, testedBy,
       rmBrand: rmBT.brand, ipBrand: ipBT.brand, fgBrand: fgBT.brand,
-      prodBalance,
+      rmSupplierName, rmInvoiceNo, rmBatchNo,
+      uplGrade, uplValues,
     })
   }
 
@@ -812,25 +764,75 @@ export default function QualityCheck() {
   function renderFG() {
     const product = FINISHED_GOODS.find(p => p.id === fgSelected)
     if (!product) return null
-    const displayLabel = fgBT.brand ? `${product.label} – ${fgBT.brand}` : product.label
+    const isWDG = fgSelected === 'sulphur80wdg'
+    const gradeLabel = uplGrade === 'export' ? 'Export Grade' : uplGrade === 'omri' ? 'OMRI Grade' : ''
+    const displayLabel = fgBT.brand
+      ? `${product.label} – ${fgBT.brand}${uplGrade ? ` – UPL Limited (${gradeLabel})` : ''}`
+      : `${product.label}${uplGrade ? ` – UPL Limited (${gradeLabel})` : ''}`
+
+    // Group UPL rows by heading
+    const uplGroups = uplGrade ? (() => {
+      const groups = []
+      let cur = null
+      UPL_GRADES[uplGrade].forEach(row => {
+        if (row.group !== cur) { groups.push({ heading: row.group, rows: [] }); cur = row.group }
+        groups[groups.length - 1].rows.push(row)
+      })
+      return groups
+    })() : []
+
     return (
       <>
-        <ProductionBalance
-          loading={prodBalanceLoading}
-          balance={prodBalance}
-          fgUsed={fgUsedEdit}
-          setFgUsed={setFgUsedEdit}
-          onSave={saveFgUsed}
-          saving={fgSaving}
-        />
         <DropdownWithBrand
           label="Product / उत्पाद"
           value={fgSelected}
           options={FINISHED_GOODS}
-          onChange={v => { setFgSelected(v); setValues({}); setResetKey(k => k + 1) }}
+          onChange={v => { setFgSelected(v); setValues({}); setResetKey(k => k + 1); setUplGrade(null); setUplValues({}); setUplMenuOpen(false) }}
           bt={fgBT}
         />
+
+        {/* UPL button — only for Sulphur 80% WDG */}
+        {isWDG && (
+          <div className="qc-upl-bar" ref={uplBtnRef}>
+            <button
+              type="button"
+              className={`qc-upl-btn${uplGrade ? ' qc-upl-btn-active' : ''}`}
+              onClick={() => setUplMenuOpen(o => !o)}
+            >
+              {uplGrade ? `UPL · ${gradeLabel}` : 'UPL ▾'}
+            </button>
+            {uplMenuOpen && (
+              <div className="qc-upl-menu">
+                {[['export', 'Export Grade'], ['omri', 'OMRI Grade']].map(([g, label]) => (
+                  <button
+                    key={g}
+                    type="button"
+                    className={`qc-upl-menu-item${uplGrade === g ? ' qc-upl-menu-item-active' : ''}`}
+                    onClick={() => {
+                      if (uplGrade === g) {
+                        // clicking active grade → turn off
+                        if (Object.values(uplValues).some(v => v !== '') &&
+                            !window.confirm('Turn off UPL? Existing UPL results will be cleared.')) return
+                        setUplGrade(null); setUplValues({})
+                      } else {
+                        // switch grade
+                        if (uplGrade && Object.values(uplValues).some(v => v !== '') &&
+                            !window.confirm('Switch UPL grade? Existing UPL results will be cleared.')) return
+                        setUplGrade(g); setUplValues({})
+                      }
+                      setUplMenuOpen(false)
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="qc-mat-title">{displayLabel}</div>
+
         {product.tests.map(test => {
           if (test.calcFn) return (
             <FormulaCalculator key={`${test.id}-${resetKey}`} formula={test} />
@@ -855,7 +857,85 @@ export default function QualityCheck() {
           )
           return null
         })}
-        <OverallResult results={collectFGResults(product, values)} />
+
+        {/* UPL Parameters table */}
+        {uplGrade && (
+          <div className="qc-upl-table-wrap" data-upl-table>
+            <div className="qc-upl-table-title">
+              UPL Parameters – {gradeLabel}
+            </div>
+            <div className="qc-upl-scroll">
+              <table className="qc-upl-table">
+                <thead>
+                  <tr>
+                    <th>Parameter / पैरामीटर</th>
+                    <th>Specification / विनिर्देश</th>
+                    <th>Result / परिणाम</th>
+                    <th>Status / स्थिति</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uplGroups.map(g => (
+                    <React.Fragment key={g.heading}>
+                      <tr className="qc-upl-group-row">
+                        <td colSpan={4}>{g.heading}</td>
+                      </tr>
+                      {g.rows.map(row => {
+                        const val    = uplValues[row.id] ?? ''
+                        const status = evaluate(val, row.rule)
+                        return (
+                          <tr key={row.id}>
+                            <td>{row.parameter}{row.unit ? ` (${row.unit})` : ''}</td>
+                            <td>{row.specDisplay}</td>
+                            <td>
+                              {row.type === 'complies' ? (
+                                <select
+                                  className="qc-upl-select"
+                                  value={val}
+                                  data-upl-id={row.id}
+                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                >
+                                  <option value="">— Select —</option>
+                                  <option value="Complies">Complies</option>
+                                  <option value="Does not comply">Does not comply</option>
+                                </select>
+                              ) : (
+                                <input
+                                  type="number"
+                                  className="qc-upl-input"
+                                  placeholder="—"
+                                  step="any"
+                                  value={val}
+                                  data-upl-id={row.id}
+                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                />
+                              )}
+                            </td>
+                            <td className="qc-upl-status-cell">
+                              {status === 'PASS' && <span className="qc-upl-pass">Pass</span>}
+                              {status === 'FAIL' && <span className="qc-upl-fail">Fail</span>}
+                              {status === null   && <span className="qc-upl-na">—</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </React.Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* Overall result — merges WDG rules + UPL params */}
+        <OverallResult results={{
+          ...collectFGResults(product, values),
+          ...(uplGrade
+            ? Object.fromEntries(
+                UPL_GRADES[uplGrade].map(row => [row.id, evaluate(uplValues[row.id] ?? '', row.rule)])
+              )
+            : {}),
+        }} />
       </>
     )
   }
@@ -887,11 +967,13 @@ export default function QualityCheck() {
           'Manufactured Date / निर्मित तारीख'
         }
         testedBy={testedBy} setTestedBy={setTestedBy}
+        splitTime={activeTab === 'rm'}
         extra={
           activeTab === 'rm' ? [
-            { key: 'rinv',   label: 'Invoice No.',          placeholder: 'e.g. INV-001', value: rmInvoiceNo, onChange: setRmInvoiceNo },
-            { key: 'rbatch', label: 'Batch No. / बैच नं.', placeholder: 'e.g. 3512',    value: rmBatchNo,   onChange: setRmBatchNo },
-            { key: 'rtime',  label: 'Time / समय',          value: rmTime,               onChange: setRmTime, type: 'time' },
+            { key: 'rinv',       label: 'Invoice No.',                            placeholder: 'e.g. INV-001', value: rmInvoiceNo,    onChange: setRmInvoiceNo },
+            { key: 'rsupplier',  label: 'Supplier Name / आपूर्तिकर्ता का नाम',  value: rmSupplierName,        onChange: setRmSupplierName },
+            { key: 'rbatch',     label: 'Batch No. / बैच नं.',                   placeholder: 'e.g. 3512',    value: rmBatchNo,       onChange: setRmBatchNo },
+            { key: 'rtime',      label: 'Time / समय',                            value: rmTime,                onChange: setRmTime, type: 'time' },
           ] :
           activeTab === 'ip' ? [
             { key: 'ibatch', label: 'Batch No. / बैच नं.', placeholder: 'e.g. 3512',    value: ipBatchNo,   onChange: setIpBatchNo },

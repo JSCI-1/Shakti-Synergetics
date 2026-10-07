@@ -275,19 +275,6 @@ function DryerForm({
     } else {
       setSaved(true)
       setForm(emptyForm(dryerType))
-      const today = new Date().toISOString().slice(0, 10)
-      const totalKg = parseFloat(form.total_production) || 0
-      await supabase
-        .from('daily_production')
-        .upsert(
-          {
-            production_date: form.date || today,
-            total_kg: totalKg,
-            entered_by: userName || form.operator || '',
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'production_date' }
-        )
     }
   }
 

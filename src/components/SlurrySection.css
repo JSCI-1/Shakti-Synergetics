@@ -1281,23 +1281,6 @@
   margin-bottom: 6px;
 }
 
-.sl-flow-stamp-btn {
-  background: transparent;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  padding: 3px 6px;
-  font-size: 11px;
-  cursor: pointer;
-  white-space: nowrap;
-  flex-shrink: 0;
-  transition: background 0.15s, border-color 0.15s;
-}
-
-.sl-flow-stamp-btn:hover {
-  background: #fdf3ee;
-  border-color: #b85c2c;
-}
-
 .sl-flow-ts {
   font-size: 10px;
   font-weight: 600;
@@ -1349,7 +1332,6 @@
 /* ── Save buttons locked after first stamp ── */
 .sl-row-save-btn:disabled       { opacity: 1; cursor: not-allowed; }
 .sl-row-save-btn:disabled:hover { background: transparent; border-color: #4caf50; }
-.sl-flow-stamp-btn:disabled     { opacity: 1; cursor: not-allowed; }
 
 
 /* ── Auto-save indicator (appears below qty input) ── */
@@ -1681,23 +1663,24 @@
   background: #fdf3ee;
 }
 
-/* ── Shift total bar ── */
-.sl-shift-total-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 16px;
-  background: #fdf3ee;
-  border-bottom: 1px solid #e8c5a8;
-  font-size: 13px;
-  font-weight: 700;
-  color: #b85c2c;
+/* ── Add Batch button bar ── */
+.sl-add-batch-bar {
+  padding: 12px 16px;
+  border-bottom: 1px solid #e0dbd4;
 }
 
-.sl-shift-total-val {
-  font-size: 16px;
+.sl-add-batch-btn {
+  background: #fff;
+  border: 2px dashed #b85c2c;
   color: #b85c2c;
+  font-weight: 700;
+  padding: 10px 20px;
+  min-height: 44px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
 }
+.sl-add-batch-btn:hover { background: #fdf3ee; }
 
 /* Mobile: cards are full-width, no horizontal scroll */
 @media (max-width: 640px) {
@@ -1741,3 +1724,43 @@
     padding: 5px 6px;
   }
 }
+
+/* ── Toast notification ── */
+.sl-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+  pointer-events: none;
+  animation: sl-toast-in 0.2s ease, sl-toast-out 0.4s ease 1.6s forwards;
+}
+.sl-toast-success {
+  background: #2e7d32;
+  color: #fff;
+}
+.sl-toast-error {
+  background: #c62828;
+  color: #fff;
+}
+@keyframes sl-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes sl-toast-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@media (max-width: 640px) {
+  .sl-toast {
+    left: 16px;
+    right: 16px;
+    bottom: 80px;   /* above mobile keyboard area */
+    text-align: center;
+  }
+}
+

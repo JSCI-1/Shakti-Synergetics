@@ -3,14 +3,12 @@ import { supabase, supabaseReady } from '../supabaseClient'
 import './SlurrySection.css'
 
 const DEFAULT_INPUT_OPTIONS = [
-  'LIGNO-A', 'LIGNO-B', 'WATER', 'Crude Sulphur', 'Sulphur powder',
+  'WATER', 'Crude Sulphur', 'Sulphur powder',
   'Papdi', 'Fine powder', 'Gujmol DN Liquid', 'Gujmol DN Powder',
   'Tamol DN Powder', 'FBPP', 'FZ1', 'Defoamer', 'China Clay',
   'Domsjo DS-10', 'Domsjo DA-30', 'Borresperse-NA', 'Borresperse-Ca',
   'Greensperse-Ca',
 ]
-
-const MILLS = ['V1', 'V2', 'V3', 'V4', 'V5', 'V6', 'V7', 'H1']
 
 const BATCH_OPTIONS = [
   {
@@ -27,21 +25,6 @@ const BATCH_OPTIONS = [
       { label: 'HST 2nd — 6 MT', value: 'HST-2nd-6MT' },
     ],
   },
-]
-
-const SLURRY_MOTORS = [
-  { id: 1,  name: 'Vertical Mill 01',  hp: 50 },
-  { id: 2,  name: 'Vertical Mill 02',  hp: 50 },
-  { id: 3,  name: 'Vertical Mill 03',  hp: 50 },
-  { id: 4,  name: 'Vertical Mill 04',  hp: 50 },
-  { id: 5,  name: 'Vertical Mill 05',  hp: 50 },
-  { id: 6,  name: 'Vertical Mill 06',  hp: 50 },
-  { id: 7,  name: 'Vertical Mill 07',  hp: 50 },
-  { id: 8,  name: 'Vertical Mill 08',  hp: 50 },
-  { id: 9,  name: 'Vertical Mill 09',  hp: 50 },
-  { id: 10, name: 'Vertical Mill 10',  hp: 50 },
-  { id: 11, name: 'Attrition Mill 01', hp: 75 },
-  { id: 12, name: 'Attrition Mill 02', hp: 60 },
 ]
 
 // ─── helpers ────────────────────────────────────────────────
@@ -84,35 +67,11 @@ function emptyBatchCard(prefillNames = []) {
   }
 }
 
-function emptyMotorEntry() {
-  return { amp: '', stop: '', timestamp: '', saved: false }
-}
-
-function emptyMotorForm() {
-  return {
-    running_date: todayISO(),
-    checked_by: '',
-    remark: '',
-    motors: SLURRY_MOTORS.map(() => emptyMotorEntry()),
-  }
-}
-
-function emptyMillRow(mill) {
-  return {
-    mill,
-    flow_rates: [{ value: '', timestamp: '' }],
-    current_amp: '',
-    zirconia_beads: '',
-    remarks: '',
-  }
-}
-
 function emptyForm() {
   return {
     date: '',
     shift1_operator: '',
     shift2_operator: '',
-    mills: MILLS.map(m => emptyMillRow(m)),
     operator: '',
     supervisor: '',
     manager: '',
@@ -205,7 +164,7 @@ function InputDropdown({ value, onChange, allOptions, recentlyUsed, usedInForm, 
 // ─────────────────────────────────────────────────────────────
 export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
-  // ── form state (no input_rows — those live in batches) ──
+  // ── form state ──
   const [form, setForm] = useState(emptyForm())
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
@@ -215,19 +174,24 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
   const [batches, setBatches] = useState([emptyBatchCard()])
   const [batchErrors, setBatchErrors] = useState({})
 
-  // ── motor accordion ──
-  const [motorOpen,    setMotorOpen]    = useState(false)
-  const [motorForm,    setMotorForm]    = useState(emptyMotorForm())
-  const [motorSaving,  setMotorSaving]  = useState(false)
-  const [motorSaved,   setMotorSaved]   = useState(false)
-  const [motorError,   setMotorError]   = useState('')
-
   // Stable session key
   const sessionId = useRef(`slurry-${new Date().toISOString().slice(0, 10)}`)
 
+  // Debounce timers for auto-save: keyed by "batchId_rowId"
+  const saveTimers = useRef({})
+
+  // Save sequence counters: keyed by rowId — incremented on each schedule to detect stale responses
+  const saveSeq = useRef({})
+
   // rowSaveState: { [rowId_batchIdx]: 'saving' | 'saved' | 'error' }
-  const [rowSaveState, setRowSaveState] = useState({})
+  const [rowSaveState,   setRowSaveState]   = useState({})
   const setRSS = (key, val) => setRowSaveState(p => ({ ...p, [key]: val }))
+
+  // Row timestamps stored separately so saving never re-renders the input cells
+  const [rowTimestamps, setRowTimestamps] = useState({})
+
+  // Toast notification: { msg, type: 'success'|'error' } | null
+  const [toast, setToast] = useState(null)
 
   // Custom inputs
   const [customInputs, setCustomInputs] = useState([])
@@ -284,14 +248,20 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
     const row   = batch.rows.find(r => r.id === rowId)
     if (!row || row.qty === '' || row.qty === null) return
 
+    // Stale-save guard: stamp this save with a sequence number
+    saveSeq.current[rowId] = (saveSeq.current[rowId] || 0) + 1
+    const mySeq = saveSeq.current[rowId]
+
     const key    = `${rowId}_${batchIdx}`
     setRSS(key, 'saving')
     const now12  = stamp12hr()
-    let firstStamp = row.timestamp || ''
+    // Use the separate rowTimestamps store; fall back to row.timestamp for pre-loaded data
+    let firstStamp = rowTimestamps[rowId] || row.timestamp || ''
 
+    let saveOk = true
     if (supabaseReady) {
       const { data: existing } = await supabase
-        .from('slurry_input_saves')
+        .from('process_input_saves')
         .select('first_stamp')
         .eq('session_id', sessionId.current)
         .eq('row_id', rowId)
@@ -301,7 +271,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       firstStamp = existing?.first_stamp || firstStamp || now12
 
       const { error: upsertErr } = await supabase
-        .from('slurry_input_saves')
+        .from('process_input_saves')
         .upsert(
           {
             session_id:  sessionId.current,
@@ -316,29 +286,42 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
           { onConflict: 'session_id,row_id,batch_index' }
         )
 
-      if (upsertErr) console.warn('slurry_input_saves upsert failed:', upsertErr.message)
+      if (upsertErr) {
+        console.warn('slurry_input_saves upsert failed:', upsertErr.message)
+        saveOk = false
+      }
     } else {
       firstStamp = firstStamp || now12
     }
 
-    // Write first_stamp back into row (only if not already set)
-    const withStamp = batches.map(b =>
-      b.id === batchId
-        ? {
-            ...b,
-            rows: b.rows.map(r =>
-              r.id === rowId && !r.timestamp
-                ? { ...r, timestamp: firstStamp }
-                : r
-            ),
-          }
-        : b
-    )
-    syncParent(withStamp)
+    // Discard stale response — a newer save was triggered after this one started
+    if (saveSeq.current[rowId] !== mySeq) return
 
-    setRSS(key, 'saved')
-    setTimeout(() => setRSS(key, null), 2000)
-  }, [batches, sessionId])   // eslint-disable-line react-hooks/exhaustive-deps
+    if (saveOk) {
+      // Update ONLY the timestamp cell — never touch batches state here
+      setRowTimestamps(p => ({ ...p, [rowId]: firstStamp }))
+      setRSS(key, 'saved')
+      setToast({ msg: '✓ Data saved successfully / डेटा सफलतापूर्वक सहेजा गया', type: 'success' })
+      setTimeout(() => setRSS(key, null), 2000)
+      setTimeout(() => setToast(null), 2000)
+    } else {
+      setRSS(key, 'error')
+      setToast({ msg: 'Save failed, please try again / सहेजना विफल, कृपया पुनः प्रयास करें', type: 'error' })
+      setTimeout(() => setRSS(key, null), 3000)
+      setTimeout(() => setToast(null), 3000)
+    }
+  }, [batches, sessionId, rowTimestamps])   // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Schedule a debounced auto-save 1 s after the user stops typing,
+  // but only when both origin and qty are filled.
+  const scheduleAutoSave = useCallback((batchId, rowId, origin, qty) => {
+    const timerKey = `${batchId}_${rowId}`
+    clearTimeout(saveTimers.current[timerKey])
+    if (!origin.trim() || !qty.toString().trim()) return   // need both fields
+    saveTimers.current[timerKey] = setTimeout(() => {
+      autoSaveBatchRow(batchId, rowId)
+    }, 1000)
+  }, [autoSaveBatchRow])
 
   // =========================================================
   // COMPLETE BATCH
@@ -364,21 +347,17 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
     setBatchErrors(p => { const n = { ...p }; delete n[batchId]; return n })
 
     const now12      = stamp12hr()
-    const timestamps = batch.rows.map(r => r.timestamp).filter(Boolean)
+    const timestamps = batch.rows.map(r => rowTimestamps[r.id] || r.timestamp).filter(Boolean)
     const firstStamp = batch.firstStamp || (timestamps[0] || now12)
     const lastStamp  = timestamps.length > 0 ? timestamps[timestamps.length - 1] : now12
 
-    const prefillNames = batch.rows.map(r => r.inputName).filter(Boolean)
-    const nextCard     = emptyBatchCard(prefillNames)
-
+    // Lock this batch only — never create a new batch here
     const updated = batches.map(b =>
       b.id === batchId
         ? { ...b, completed: true, locked: true, completedAt: now12, firstStamp, lastStamp, expanded: true }
-        : b.completed
-          ? { ...b, expanded: false }   // collapse older completed cards
-          : b
+        : b
     )
-    syncParent([...updated, nextCard])
+    syncParent(updated)
   }
 
   // =========================================================
@@ -401,11 +380,51 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
     ))
   }
 
-  // ── Derived values ──
+  // "+ Add Batch" button — validates & locks the current active card, then opens the next one
+  function addBatchCard() {
+    const activeBatch = batches.find(b => !b.completed && !b.locked)
+    if (activeBatch) {
+      // Run same validation as completeBatch
+      if (!activeBatch.batchNo.trim()) {
+        setBatchErrors(p => ({ ...p, [activeBatch.id]: 'Batch No. is required / बैच नं. आवश्यक है' }))
+        return
+      }
+      if (!activeBatch.tankType) {
+        setBatchErrors(p => ({ ...p, [activeBatch.id]: 'Tank must be selected / टैंक चुनें' }))
+        return
+      }
+      if (!activeBatch.rows.some(r => parseFloat(r.qty) > 0)) {
+        setBatchErrors(p => ({ ...p, [activeBatch.id]: 'At least one Qty > 0 required / कम से कम एक मात्रा > 0 चाहिए' }))
+        return
+      }
+      setBatchErrors(p => { const n = { ...p }; delete n[activeBatch.id]; return n })
 
-  const shiftTotal = batches.reduce((sum, b) =>
-    sum + b.rows.reduce((s, r) => s + (parseFloat(r.qty) || 0), 0), 0
-  )
+      const now12      = stamp12hr()
+      const timestamps = activeBatch.rows.map(r => rowTimestamps[r.id] || r.timestamp).filter(Boolean)
+      const firstStamp = activeBatch.firstStamp || (timestamps[0] || now12)
+      const lastStamp  = timestamps.length > 0 ? timestamps[timestamps.length - 1] : now12
+      const prefillNames = activeBatch.rows.map(r => r.inputName).filter(Boolean)
+      const nextCard     = emptyBatchCard(prefillNames)
+
+      const updated = batches.map(b =>
+        b.id === activeBatch.id
+          ? { ...b, completed: true, locked: true, completedAt: now12, firstStamp, lastStamp, expanded: false }
+          : b.completed
+            ? { ...b, expanded: false }
+            : b
+      )
+      syncParent([...updated, nextCard])
+    } else {
+      // All batches already completed — just add an empty card
+      const lastCompleted = batches.filter(b => b.completed)
+      const prefillNames  = lastCompleted.length > 0
+        ? lastCompleted[lastCompleted.length - 1].rows.map(r => r.inputName).filter(Boolean)
+        : []
+      syncParent([...batches, emptyBatchCard(prefillNames)])
+    }
+  }
+
+  // ── Derived values ──
 
   const recentInputNames = useMemo(() => {
     const completed = batches.filter(b => b.completed)
@@ -414,63 +433,6 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       : batches[batches.length - 1]
     return [...new Set(source.rows.map(r => r.inputName).filter(Boolean))]
   }, [batches])
-
-  // =========================================================
-  // MILL OPERATIONS
-  // =========================================================
-
-  const setMill = (idx, field, val) =>
-    setForm(p => ({
-      ...p,
-      mills: p.mills.map((m, i) => i === idx ? { ...m, [field]: val } : m),
-    }))
-
-  function addFlowRate(mi) {
-    setForm(p => ({
-      ...p,
-      mills: p.mills.map((m, i) =>
-        i === mi
-          ? { ...m, flow_rates: [...m.flow_rates, { value: '', timestamp: '' }] }
-          : m
-      ),
-    }))
-  }
-
-  function setFlowRate(mi, fi, value) {
-    setForm(p => ({
-      ...p,
-      mills: p.mills.map((m, i) =>
-        i === mi
-          ? { ...m, flow_rates: m.flow_rates.map((f, j) => j === fi ? { ...f, value } : f) }
-          : m
-      ),
-    }))
-  }
-
-  function stampFlowRate(mi, fi) {
-    setForm(p => {
-      if (p.mills[mi].flow_rates[fi].timestamp) return p
-      return {
-        ...p,
-        mills: p.mills.map((m, i) =>
-          i === mi
-            ? { ...m, flow_rates: m.flow_rates.map((f, j) => j === fi ? { ...f, timestamp: stamp12hr() } : f) }
-            : m
-        ),
-      }
-    })
-  }
-
-  function removeFlowRate(mi, fi) {
-    setForm(p => ({
-      ...p,
-      mills: p.mills.map((m, i) =>
-        i === mi && m.flow_rates.length > 1
-          ? { ...m, flow_rates: m.flow_rates.filter((_, j) => j !== fi) }
-          : m
-      ),
-    }))
-  }
 
   // =========================================================
   // MAIN FORM SUBMIT
@@ -489,7 +451,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
     setSaved(false)
 
     const { error: err } = await supabase
-      .from('slurry_job_cards')
+      .from('process_job_cards')
       .insert([{
         date:             form.date || null,
         shift1_operator:  form.shift1_operator,
@@ -503,10 +465,9 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
             input_name: r.inputName,
             origin:     r.origin,
             qty_kg:     parseFloat(r.qty) || 0,
-            timestamp:  r.timestamp || '',
+            timestamp:  rowTimestamps[r.id] || r.timestamp || '',
           }))
         ),
-        mills:            form.mills,
         operator:         form.operator,
         supervisor:       form.supervisor,
         manager:          form.manager,
@@ -527,66 +488,18 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
   }
 
   // =========================================================
-  // MOTOR OPERATIONS
-  // =========================================================
-
-  const setMotorCell = (mi, key, val) =>
-    setMotorForm(p => ({
-      ...p,
-      motors: p.motors.map((m, idx) => idx === mi ? { ...m, [key]: val } : m),
-    }))
-
-  function saveMotorRow(mi) {
-    setMotorForm(p => {
-      if (p.motors[mi].saved) return p
-      return {
-        ...p,
-        motors: p.motors.map((m, idx) =>
-          idx === mi ? { ...m, timestamp: stamp12hr(), saved: true } : m
-        ),
-      }
-    })
-  }
-
-  async function handleMotorSubmit(e) {
-    e.preventDefault()
-
-    if (!supabaseReady) {
-      setMotorError('Supabase not configured.')
-      return
-    }
-
-    setMotorSaving(true)
-    setMotorError('')
-    setMotorSaved(false)
-
-    const { error: err } = await supabase
-      .from('slurry_motor_amp')
-      .insert([{
-        running_date: motorForm.running_date,
-        checked_by:   motorForm.checked_by,
-        remark:       motorForm.remark,
-        motor_data:   motorForm.motors,
-      }])
-
-    setMotorSaving(false)
-
-    if (err) {
-      setMotorError(err.message)
-    } else {
-      setMotorSaved(true)
-      setMotorForm(emptyMotorForm())
-    }
-  }
-
-  // =========================================================
   // RENDER
   // =========================================================
 
   return (
     <div className="sl-wrapper">
 
-      {/* ── TITLE ── */}
+      {/* ── Toast notification ── */}
+      {toast && (
+        <div className={`sl-toast ${toast.type === 'error' ? 'sl-toast-error' : 'sl-toast-success'}`}>
+          {toast.msg}
+        </div>
+      )}
       <div className="sl-title-bar">
         <div className="sl-title-main">
           Batch Operator — Process Job Card /{' '}
@@ -700,8 +613,8 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                               <td>{row.origin    || '—'}</td>
                               <td>{row.qty       || '—'}</td>
                               <td>
-                                {row.timestamp
-                                  ? <span className="sl-ts-badge">{row.timestamp}</span>
+                                {(rowTimestamps[row.id] || row.timestamp)
+                                  ? <span className="sl-ts-badge">{rowTimestamps[row.id] || row.timestamp}</span>
                                   : <span className="sl-ts-empty">—</span>}
                               </td>
                             </tr>
@@ -782,7 +695,11 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                 className="sl-input-cell"
                                 placeholder="RM / Origin"
                                 value={row.origin}
-                                onChange={e => setBatchRowField(batch.id, row.id, 'origin', e.target.value)}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  setBatchRowField(batch.id, row.id, 'origin', val)
+                                  scheduleAutoSave(batch.id, row.id, val, row.qty)
+                                }}
                               />
                             </td>
                             <td>
@@ -790,17 +707,42 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                 type="number"
                                 className="sl-input-num"
                                 placeholder="—"
+                                data-rowid={row.id}
+                                data-batchid={batch.id}
                                 value={row.qty}
-                                onChange={e => setBatchRowField(batch.id, row.id, 'qty', e.target.value)}
+                                onChange={e => {
+                                  const val = e.target.value
+                                  setBatchRowField(batch.id, row.id, 'qty', val)
+                                  scheduleAutoSave(batch.id, row.id, row.origin, val)
+                                }}
                                 onBlur={() => autoSaveBatchRow(batch.id, row.id)}
+                                onKeyDown={e => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault()
+                                    // Save immediately, then move focus to next row's Qty
+                                    autoSaveBatchRow(batch.id, row.id)
+                                    const allQtyInputs = Array.from(
+                                      document.querySelectorAll(`[data-batchid="${batch.id}"] input[data-rowid], input[data-batchid="${batch.id}"]`)
+                                    )
+                                    // simpler: query all qty inputs in the same batch card
+                                    const card = e.target.closest('.sl-batch-card')
+                                    if (card) {
+                                      const qtys = Array.from(card.querySelectorAll('input[data-rowid]'))
+                                      const idx  = qtys.indexOf(e.target)
+                                      if (idx !== -1 && idx + 1 < qtys.length) {
+                                        qtys[idx + 1].focus()
+                                      }
+                                    }
+                                  }
+                                }}
                               />
                               {saveState === 'saving' && <span className="sl-autosave-indicator sl-autosave-saving">…</span>}
                               {saveState === 'saved'  && <span className="sl-autosave-indicator sl-autosave-ok">Saved ✓</span>}
                               {saveState === 'error'  && <span className="sl-autosave-indicator sl-autosave-err">!</span>}
                             </td>
                             <td className="sl-td-ts">
-                              {row.timestamp
-                                ? <span className="sl-ts-badge">{row.timestamp}</span>
+                              {(rowTimestamps[row.id] || row.timestamp)
+                                ? <span className="sl-ts-badge">{rowTimestamps[row.id] || row.timestamp}</span>
                                 : <span className="sl-ts-empty">—</span>}
                             </td>
                             <td className="sl-td-action">
@@ -822,7 +764,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                     <button
                       type="button"
                       className="sl-add-btn"
-                      onClick={() => addRowToBatch(batch.id)}
+                      onClick={e => { e.stopPropagation(); addRowToBatch(batch.id) }}
                     >
                       + Add Input Row / <span className="sl-hi">इनपुट पंक्ति जोड़ें</span>
                     </button>
@@ -840,7 +782,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                   <button
                     type="button"
                     className="sl-batch-complete-btn"
-                    onClick={() => completeBatch(batch.id)}
+                    onClick={e => { e.stopPropagation(); completeBatch(batch.id) }}
                   >
                     ✓ Complete Batch-{batchIdx + 1} / <span className="sl-hi">बैच पूर्ण करें</span>
                   </button>
@@ -851,103 +793,15 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
         </div>
 
-        {/* ── Shift Total ── */}
-        <div className="sl-shift-total-bar">
-          Shift Total / <span className="sl-hi">शिफ्ट कुल:</span>
-          <strong className="sl-shift-total-val">
-            {shiftTotal > 0 ? ` ${shiftTotal} kg` : ' —'}
-          </strong>
-        </div>
-
-        {/* ══════════════════════════════════════════════════
-            MILLING TABLE
-        ══════════════════════════════════════════════════ */}
-
-        <div className="sl-section-title">
-          Sand Milling / <span className="sl-hi">सैंड मिलिंग</span>
-        </div>
-
-        <div className="sl-mill-scroll">
-          <table className="sl-mill-table">
-            <thead>
-              <tr>
-                <th>Mill / मिल</th>
-                <th>Flow Rate (LPH) / फ्लो रेट</th>
-                <th>Current AMP / करंट</th>
-                <th>Zirconia Beads (kg) / ज़िरकोनिया</th>
-                <th>Remarks / टिप्पणी</th>
-              </tr>
-            </thead>
-            <tbody>
-              {form.mills.map((m, mi) => (
-                <tr key={m.mill}>
-                  <td className="sl-mill-name">{m.mill}</td>
-                  <td className="sl-mill-flow-cell">
-                    {m.flow_rates.map((fr, fi) => (
-                      <div key={fi} className="sl-flow-entry">
-                        <input
-                          type="number"
-                          className="sl-input-num-wide"
-                          placeholder="—"
-                          value={fr.value}
-                          onChange={e => setFlowRate(mi, fi, e.target.value)}
-                        />
-                        {fr.timestamp
-                          ? <span className="sl-flow-ts">{fr.timestamp}</span>
-                          : (
-                            <button
-                              type="button"
-                              className="sl-flow-stamp-btn"
-                              onClick={() => stampFlowRate(mi, fi)}
-                            >
-                              ⏱ Stamp
-                            </button>
-                          )}
-                        {m.flow_rates.length > 1 && (
-                          <button
-                            type="button"
-                            className="sl-flow-del-btn"
-                            onClick={() => removeFlowRate(mi, fi)}
-                          >✕</button>
-                        )}
-                      </div>
-                    ))}
-                    <button
-                      type="button"
-                      className="sl-flow-add-btn"
-                      onClick={() => addFlowRate(mi)}
-                    >+ reading</button>
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      className="sl-input-num-wide"
-                      placeholder="—"
-                      value={m.current_amp}
-                      onChange={e => setMill(mi, 'current_amp', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      type="number"
-                      className="sl-input-num-wide"
-                      placeholder="—"
-                      value={m.zirconia_beads}
-                      onChange={e => setMill(mi, 'zirconia_beads', e.target.value)}
-                    />
-                  </td>
-                  <td>
-                    <input
-                      className="sl-input-wide-text"
-                      placeholder="—"
-                      value={m.remarks}
-                      onChange={e => setMill(mi, 'remarks', e.target.value)}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* ── Add Batch button ── */}
+        <div className="sl-add-batch-bar">
+          <button
+            type="button"
+            className="sl-add-btn sl-add-batch-btn"
+            onClick={e => { e.stopPropagation(); addBatchCard() }}
+          >
+            + Add Batch / <span className="sl-hi">बैच जोड़ें</span>
+          </button>
         </div>
 
         {/* ══════════════════════════════════════════════════
@@ -955,17 +809,6 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
         ══════════════════════════════════════════════════ */}
 
         <div className="sl-approval-bar">
-          <div className="sl-approval-field">
-            <label className="sl-label">
-              Operator / <span className="sl-label-hi">ऑपरेटर</span>
-            </label>
-            <input
-              className="sl-input"
-              placeholder="Name"
-              value={form.operator}
-              onChange={e => set('operator', e.target.value)}
-            />
-          </div>
           <div className="sl-approval-field">
             <label className="sl-label">
               Supervisor / <span className="sl-label-hi">सुपरवाइज़र</span>
@@ -1020,152 +863,6 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
         </div>
 
       </form>
-
-      {/* ══════════════════════════════════════════════════
-          RUNNING MOTOR AMP — accordion
-      ══════════════════════════════════════════════════ */}
-
-      <div className="sl-accordion">
-        <button
-          type="button"
-          className="sl-accordion-header"
-          onClick={() => setMotorOpen(o => !o)}
-        >
-          <span className="sl-accordion-title">
-            Running Motor Amp Status / <span className="sl-hi">चलते मोटर एम्पेयर स्थिति</span>
-          </span>
-          <span className="sl-accordion-icon">{motorOpen ? '▲' : '▼'}</span>
-        </button>
-
-        {motorOpen && (
-          <form className="sl-motor-form" onSubmit={handleMotorSubmit}>
-
-            <div className="sl-motor-meta">
-              <div className="sl-motor-meta-field">
-                <label className="sl-label">
-                  Date / <span className="sl-label-hi">तारीख</span>
-                </label>
-                <input
-                  type="date"
-                  className="sl-input"
-                  value={motorForm.running_date}
-                  onChange={e => setMotorForm(p => ({ ...p, running_date: e.target.value }))}
-                />
-              </div>
-              <div className="sl-motor-meta-field">
-                <label className="sl-label">
-                  Checked By / <span className="sl-label-hi">जाँचकर्ता</span>
-                </label>
-                <input
-                  className="sl-input"
-                  placeholder="Name"
-                  value={motorForm.checked_by}
-                  onChange={e => setMotorForm(p => ({ ...p, checked_by: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <div className="sl-motor-scroll">
-              <table className="sl-motor-table">
-                <thead>
-                  <tr>
-                    <th>Sr.</th>
-                    <th>Motor Name / मोटर नाम</th>
-                    <th>HP</th>
-                    <th>AMP</th>
-                    <th>Stop / रोकें</th>
-                    <th>Timestamp / समय</th>
-                    <th>Save / सहेजें</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {SLURRY_MOTORS.map((motor, mi) => {
-                    const entry = motorForm.motors[mi]
-                    return (
-                      <tr key={motor.id} className={`${mi % 2 === 0 ? '' : 'sl-motor-alt'} ${entry.saved ? 'sl-motor-saved' : ''}`}>
-                        <td className="sl-motor-sr">{motor.id}</td>
-                        <td className="sl-motor-name">{motor.name}</td>
-                        <td className="sl-motor-hp">{motor.hp}</td>
-                        <td>
-                          <input
-                            type="number"
-                            className="sl-motor-input"
-                            placeholder="—"
-                            value={entry.amp}
-                            onChange={e => setMotorCell(mi, 'amp', e.target.value)}
-                            disabled={entry.saved}
-                          />
-                        </td>
-                        <td>
-                          <select
-                            className="sl-motor-select"
-                            value={entry.stop}
-                            onChange={e => setMotorCell(mi, 'stop', e.target.value)}
-                            disabled={entry.saved}
-                          >
-                            <option value="">—</option>
-                            <option value="Yes">Yes</option>
-                            <option value="No">No</option>
-                          </select>
-                        </td>
-                        <td className="sl-motor-ts">
-                          {entry.timestamp
-                            ? <span className="sl-ts-badge">{entry.timestamp}</span>
-                            : <span className="sl-ts-empty">—</span>}
-                        </td>
-                        <td className="sl-motor-save-cell">
-                          <button
-                            type="button"
-                            className={`sl-row-save-btn ${entry.saved ? 'sl-row-saved' : ''}`}
-                            onClick={() => saveMotorRow(mi)}
-                            disabled={entry.saved}
-                          >
-                            {entry.saved ? '✓' : 'Save'}
-                          </button>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="sl-motor-remark">
-              <label className="sl-label">
-                Remark / <span className="sl-label-hi">टिप्पणी</span>
-              </label>
-              <textarea
-                className="sl-textarea"
-                rows={2}
-                value={motorForm.remark}
-                onChange={e => setMotorForm(p => ({ ...p, remark: e.target.value }))}
-              />
-            </div>
-
-            <div className="sl-actions">
-              {motorError && <div className="sl-error">Error: {motorError}</div>}
-              {motorSaved  && <div className="sl-success">✓ Motor log saved / मोटर लॉग सहेजा</div>}
-
-              <button type="submit" className="sl-save-btn" disabled={motorSaving}>
-                {motorSaving ? 'Saving…' : 'Save Motor Log / मोटर लॉग सहेजें'}
-              </button>
-
-              <button
-                type="button"
-                className="sl-reset-btn"
-                onClick={() => {
-                  setMotorForm(emptyMotorForm())
-                  setMotorSaved(false)
-                  setMotorError('')
-                }}
-              >
-                Reset / रीसेट
-              </button>
-            </div>
-
-          </form>
-        )}
-      </div>
 
     </div>
   )
