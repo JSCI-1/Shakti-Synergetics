@@ -1,3 +1,5 @@
+import React from 'react'
+
 // ResultBadge — shows PASS (green) or FAIL (red).
 // Renders nothing if result is null.
 export default function ResultBadge({ result }) {

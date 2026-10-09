@@ -1,3 +1,5 @@
+import React from 'react'
+
 // OverallResult — shows PASS / FAIL / Incomplete summary for all limited params.
 // Hidden entirely when no params have rules.
 //

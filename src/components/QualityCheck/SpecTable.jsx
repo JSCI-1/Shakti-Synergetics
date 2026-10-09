@@ -1,3 +1,4 @@
+import React from 'react'
 import ResultBadge from './ResultBadge.jsx'
 import { evaluate } from '../../utils/qualityUtils.js'
 
