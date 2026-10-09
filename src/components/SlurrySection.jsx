@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useRef, useCallback } from 'react'
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
+import { useDraft, useUserId } from '../utils/useDraft.js'
 import './SlurrySection.css'
 
 const DEFAULT_INPUT_OPTIONS = [
@@ -163,15 +164,33 @@ function InputDropdown({ value, onChange, allOptions, recentlyUsed, usedInForm, 
 // SlurrySection
 // ─────────────────────────────────────────────────────────────
 export default function SlurrySection({ sharedBatches, setSharedBatches }) {
+  const uid = useUserId()
 
-  // ── form state ──
-  const [form, setForm] = useState(emptyForm())
+  // ── form state (meta: date, operators, approval) ──
+  const [form, setForm, clearFormDraft] = useDraft(`draft:${uid}:batch:form`, emptyForm())
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [error,  setError]  = useState('')
 
   // ── batch cards state ──
-  const [batches, setBatches] = useState([emptyBatchCard()])
+  // Validate restored draft — if shape is wrong (e.g. stale old format), reset to fresh
+  const [batchesDraft, setBatches, clearBatchesDraft] = useDraft(
+    `draft:${uid}:batch:cards`,
+    () => [emptyBatchCard()]
+  )
+
+  // Guard: if draft is corrupt/stale, use a fresh card and clear the bad draft
+  const isValidDraft = Array.isArray(batchesDraft) &&
+    batchesDraft.length > 0 &&
+    batchesDraft[0]?.id != null &&
+    Array.isArray(batchesDraft[0]?.rows)
+
+  useEffect(() => {
+    if (!isValidDraft) clearBatchesDraft()
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const batches = isValidDraft ? batchesDraft : [emptyBatchCard()]
+
   const [batchErrors, setBatchErrors] = useState({})
 
   // Stable session key
@@ -188,13 +207,13 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
   const setRSS = (key, val) => setRowSaveState(p => ({ ...p, [key]: val }))
 
   // Row timestamps stored separately so saving never re-renders the input cells
-  const [rowTimestamps, setRowTimestamps] = useState({})
+  const [rowTimestamps, setRowTimestamps, clearTimestampsDraft] = useDraft(`draft:${uid}:batch:timestamps`, {})
 
   // Toast notification: { msg, type: 'success'|'error' } | null
   const [toast, setToast] = useState(null)
 
-  // Custom inputs
-  const [customInputs, setCustomInputs] = useState([])
+  // Custom inputs (persist across reloads)
+  const [customInputs, setCustomInputs, clearCustomInputsDraft] = useDraft(`draft:${uid}:batch:customInputs`, [])
   const allInputOptions = [...DEFAULT_INPUT_OPTIONS, ...customInputs]
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -203,10 +222,16 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
   // BATCH HELPERS
   // =========================================================
 
-  /** Sync both local state and parent (BatchTraceability) in one call */
+  /** Sync both local state and parent (BatchTraceability) in one call.
+   *  BatchTraceability reads b.batch_no and b.tank_type (snake_case),
+   *  so we add those aliases when pushing to the parent. */
   function syncParent(nextBatches) {
     setBatches(nextBatches)
-    setSharedBatches(nextBatches)
+    setSharedBatches(nextBatches.map(b => ({
+      ...b,
+      batch_no:  b.batchNo  ?? b.batch_no  ?? '',
+      tank_type: b.tankType ?? b.tank_type ?? '',
+    })))
   }
 
   function setBatchField(batchId, field, val) {
@@ -479,9 +504,10 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       setError(err.message)
     } else {
       setSaved(true)
-      setForm(emptyForm())
+      clearFormDraft()
+      clearBatchesDraft()
+      clearTimestampsDraft()
       const fresh = [emptyBatchCard()]
-      setBatches(fresh)
       setSharedBatches(fresh)
       setBatchErrors({})
     }
@@ -849,9 +875,10 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
             type="button"
             className="sl-reset-btn"
             onClick={() => {
-              setForm(emptyForm())
+              clearFormDraft()
+              clearBatchesDraft()
+              clearTimestampsDraft()
               const fresh = [emptyBatchCard()]
-              setBatches(fresh)
               setSharedBatches(fresh)
               setBatchErrors({})
               setSaved(false)
