@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import React, { useState, useRef, useEffect, useCallback, Fragment } from 'react'
 import { RAW_MATERIALS, IN_PROCESS, IN_PROCESS_PINNED, FINISHED_GOODS } from '../../data/qualityData.js'
 import { UPL_GRADES } from '../../data/uplData.js'
 import { evaluate, calcSuspensibility } from '../../utils/qualityUtils.js'
@@ -6,6 +6,7 @@ import { overallResult } from './OverallResult.jsx'
 import SpecTable from './SpecTable.jsx'
 import FormulaCalculator from './FormulaCalculator.jsx'
 import OverallResult from './OverallResult.jsx'
+import { useDraft, useUserId } from '../../utils/useDraft.js'
 import './QualityCheck.css'
 
 const TABS = [
@@ -399,9 +400,10 @@ function collectResults(material, values) {
     material.tests.forEach(t => { if (t.rule) out[t.id] = evaluate(values[t.id] ?? '', t.rule) })
   return out
 }
-function collectFGResults(product, values) {
+function collectFGResults(product, values, hiddenTests = []) {
   const out = {}
   product.tests.forEach(test => {
+    if (hiddenTests.includes(test.id)) return   // skip hidden tests
     if (test.type === 'spec-single' && test.rule) out[test.id] = evaluate(values[test.id] ?? '', test.rule)
     if (test.type === 'spec-group') test.params.forEach(p => { if (p.rule) out[p.id] = evaluate(values[p.id] ?? '', p.rule) })
     if (test.calcFn && test.rule) out[test.id] = evaluate(values[test.id] ?? '', test.rule)
@@ -475,34 +477,102 @@ function computeRowSusp(br, suspInputs) {
 // Main component
 // ─────────────────────────────────────────────────────────────
 export default function QualityCheck() {
-  const [activeTab,  setActiveTab]  = useState('rm')
-  const [rmSelected, setRmSelected] = useState(RAW_MATERIALS[0].id)
-  const [ipSelected, setIpSelected] = useState(IN_PROCESS[0].id)
-  const [fgSelected, setFgSelected] = useState(FINISHED_GOODS[0].id)
-  const [values,     setValues]     = useState({})
-  const [resetKey,   setResetKey]   = useState(0)
-  const [date,       setDate]       = useState('')
-  const [testedBy,   setTestedBy]   = useState('')
+  const uid = useUserId()
 
-  // Extra per-section batch fields
-  const [rmInvoiceNo,    setRmInvoiceNo]    = useState('')
-  const [rmBatchNo,      setRmBatchNo]      = useState('')
-  const [rmSupplierName, setRmSupplierName] = useState('')  // Supplier Name
-  const [rmTime,         setRmTime]         = useState('')
-  const [ipBatchNo,      setIpBatchNo]      = useState('')
-  const [ipTime,         setIpTime]         = useState('')
-  const [fgBatchNo,      setFgBatchNo]      = useState('')
-  const [fgTime,         setFgTime]         = useState('')
+  // ── Active tab (persisted) ──
+  const [activeTab, setActiveTab] = useDraft(`draft:${uid}:qc:activeTab`, 'rm')
 
-  // ── Per-section brand/type ──
-  const rmBT = useBrandType()
-  const ipBT = useBrandType()
-  const fgBT = useBrandType()
+  // ── Per-tab draft state ──
+  const [rmDraft, setRmDraft, clearRmDraft] = useDraft(`draft:${uid}:qc:rm`, {
+    selected: RAW_MATERIALS[0].id,
+    values: {}, date: '', testedBy: '',
+    invoiceNo: '', batchNo: '', supplierName: '', time: '',
+    brand: '',
+  })
+  const [ipDraft, setIpDraft, clearIpDraft] = useDraft(`draft:${uid}:qc:ip`, {
+    selected: IN_PROCESS[0].id,
+    values: {}, date: '', testedBy: '',
+    batchNo: '', time: '',
+    brand: '',
+    millRows: emptyMillRows(), suspInputs: {}, suspCardMill: IP_MILLS[0],
+  })
+  const [fgDraft, setFgDraft, clearFgDraft] = useDraft(`draft:${uid}:qc:fg`, {
+    selected: FINISHED_GOODS[0].id,
+    values: {}, date: '', testedBy: '',
+    batchNo: '', time: '',
+    brand: '',
+    uplGrade: null, uplValues: {},
+  })
 
-  // ── UPL grade (Finished Goods → Sulphur 80% WDG only) ──
-  const [uplGrade,    setUplGrade]    = useState(null)   // null | 'export' | 'omri'
-  const [uplMenuOpen, setUplMenuOpen] = useState(false)
-  const [uplValues,   setUplValues]   = useState({})     // { [paramId]: string }
+  // Convenience aliases — read from active tab draft
+  const rmSelected     = rmDraft.selected
+  const ipSelected     = ipDraft.selected
+  const fgSelected     = fgDraft.selected
+  const values         = activeTab === 'rm' ? rmDraft.values : activeTab === 'ip' ? ipDraft.values : fgDraft.values
+  const date           = activeTab === 'rm' ? rmDraft.date : activeTab === 'ip' ? ipDraft.date : fgDraft.date
+  const testedBy       = activeTab === 'rm' ? rmDraft.testedBy : activeTab === 'ip' ? ipDraft.testedBy : fgDraft.testedBy
+  const rmInvoiceNo    = rmDraft.invoiceNo
+  const rmBatchNo      = rmDraft.batchNo
+  const rmSupplierName = rmDraft.supplierName
+  const rmTime         = rmDraft.time
+  const ipBatchNo      = ipDraft.batchNo
+  const ipTime         = ipDraft.time
+  const fgBatchNo      = fgDraft.batchNo
+  const fgTime         = fgDraft.time
+  const uplGrade       = fgDraft.uplGrade
+  const uplValues      = fgDraft.uplValues
+  const ipMillRows     = ipDraft.millRows
+  const suspInputs     = ipDraft.suspInputs
+  const suspCardMill   = ipDraft.suspCardMill
+
+  // Setters
+  const setRmSelected     = v => setRmDraft(p => ({ ...p, selected: v }))
+  const setIpSelected     = v => setIpDraft(p => ({ ...p, selected: v }))
+  const setFgSelected     = v => setFgDraft(p => ({ ...p, selected: v }))
+  const setValues         = fn => {
+    if (activeTab === 'rm') setRmDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
+    else if (activeTab === 'ip') setIpDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
+    else setFgDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
+  }
+  const setDate = v => {
+    if (activeTab === 'rm') setRmDraft(p => ({ ...p, date: v }))
+    else if (activeTab === 'ip') setIpDraft(p => ({ ...p, date: v }))
+    else setFgDraft(p => ({ ...p, date: v }))
+  }
+  const setTestedBy = v => {
+    if (activeTab === 'rm') setRmDraft(p => ({ ...p, testedBy: v }))
+    else if (activeTab === 'ip') setIpDraft(p => ({ ...p, testedBy: v }))
+    else setFgDraft(p => ({ ...p, testedBy: v }))
+  }
+  const setRmInvoiceNo    = v => setRmDraft(p => ({ ...p, invoiceNo: v }))
+  const setRmBatchNo      = v => setRmDraft(p => ({ ...p, batchNo: v }))
+  const setRmSupplierName = v => setRmDraft(p => ({ ...p, supplierName: v }))
+  const setRmTime         = v => setRmDraft(p => ({ ...p, time: v }))
+  const setIpBatchNo      = v => setIpDraft(p => ({ ...p, batchNo: v }))
+  const setIpTime         = v => setIpDraft(p => ({ ...p, time: v }))
+  const setFgBatchNo      = v => setFgDraft(p => ({ ...p, batchNo: v }))
+  const setFgTime         = v => setFgDraft(p => ({ ...p, time: v }))
+  const setUplGrade       = v => setFgDraft(p => ({ ...p, uplGrade: v }))
+  const setUplValues      = fn => setFgDraft(p => ({ ...p, uplValues: typeof fn === 'function' ? fn(p.uplValues) : fn }))
+  const setUplMenuOpen    = v => setUplMenuOpenLocal(v)  // menu state is NOT persisted (intentional)
+  const setIpMillRows     = fn => setIpDraft(p => ({ ...p, millRows: typeof fn === 'function' ? fn(p.millRows) : fn }))
+  const setSuspInputs     = fn => setIpDraft(p => ({ ...p, suspInputs: typeof fn === 'function' ? fn(p.suspInputs) : fn }))
+  const setSuspCardMill   = v => setIpDraft(p => ({ ...p, suspCardMill: v }))
+
+  // Brand/type state — stored in draft, not useBrandType hook
+  const rmBrand    = rmDraft.brand || ''
+  const ipBrand    = ipDraft.brand || ''
+  const fgBrand    = fgDraft.brand || ''
+  const setRmBrand = v => setRmDraft(p => ({ ...p, brand: v }))
+  const setIpBrand = v => setIpDraft(p => ({ ...p, brand: v }))
+  const setFgBrand = v => setFgDraft(p => ({ ...p, brand: v }))
+
+  // ── resetKey for FormulaCalculator remounting ──
+  const [resetKey, setResetKey] = useState(0)
+
+  // ── UPL menu open state (transient, not persisted) ──
+  const [uplMenuOpenLocal, setUplMenuOpenLocal] = useState(false)
+  const uplMenuOpen = uplMenuOpenLocal
   const uplBtnRef = useRef(null)
 
   // Close UPL menu on outside click or Esc
@@ -520,17 +590,52 @@ export default function QualityCheck() {
     }
   }, [uplMenuOpen])
 
-  // ── In-Process mill rows ──
-  const [ipMillRows, setIpMillRows] = useState(emptyMillRows())
+  // ── In-Process mill rows ── (now stored in ipDraft.millRows via setIpMillRows alias above)
 
   const setIpMillCell = (idx, field, val) =>
     setIpMillRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r))
 
   // ── Suspensibility card inputs (lifted for mill table) ──
-  const [suspInputs,  setSuspInputs]  = useState({})
-  const [suspCardMill, setSuspCardMill] = useState(IP_MILLS[0])
   const setSuspInput = useCallback((key, val) =>
-    setSuspInputs(prev => ({ ...prev, [key]: val })), [])
+    setSuspInputs(prev => ({ ...prev, [key]: val })), [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  function copySuspToMill() {
+    const cardBR = suspInputs.BR ?? ''
+    const idx = ipMillRows.findIndex(r => r.mill === suspCardMill)
+    if (idx === -1 || !cardBR) return
+    setIpMillRows(prev => prev.map((r, i) => i === idx ? { ...r, br: cardBR } : r))
+  }
+
+  // ── Brand/type popup state (transient — not persisted) ──
+  const [rmPopupOpen, setRmPopupOpen] = useState(false)
+  const [ipPopupOpen, setIpPopupOpen] = useState(false)
+  const [fgPopupOpen, setFgPopupOpen] = useState(false)
+  const rmDropdownRef = useRef(null)
+  const ipDropdownRef = useRef(null)
+  const fgDropdownRef = useRef(null)
+
+  // Build bt-compatible objects from draft brand + transient popup state
+  const rmBT = {
+    brand: rmBrand, popupOpen: rmPopupOpen, dropdownRef: rmDropdownRef,
+    openPopup:    () => setRmPopupOpen(true),
+    handleClose:  () => setRmPopupOpen(false),
+    handleConfirm: v => { setRmBrand(v); setRmPopupOpen(false) },
+    reset:        () => { setRmBrand(''); setRmPopupOpen(false) },
+  }
+  const ipBT = {
+    brand: ipBrand, popupOpen: ipPopupOpen, dropdownRef: ipDropdownRef,
+    openPopup:    () => setIpPopupOpen(true),
+    handleClose:  () => setIpPopupOpen(false),
+    handleConfirm: v => { setIpBrand(v); setIpPopupOpen(false) },
+    reset:        () => { setIpBrand(''); setIpPopupOpen(false) },
+  }
+  const fgBT = {
+    brand: fgBrand, popupOpen: fgPopupOpen, dropdownRef: fgDropdownRef,
+    openPopup:    () => setFgPopupOpen(true),
+    handleClose:  () => setFgPopupOpen(false),
+    handleConfirm: v => { setFgBrand(v); setFgPopupOpen(false) },
+    reset:        () => { setFgBrand(''); setFgPopupOpen(false) },
+  }
 
   function copySuspToMill() {
     const cardBR = suspInputs.BR ?? ''
@@ -543,25 +648,27 @@ export default function QualityCheck() {
 
   function handleTabChange(key) {
     setActiveTab(key)
-    setValues({})
     setResetKey(k => k + 1)
   }
 
   function handleReset() {
-    setValues({})
     setResetKey(k => k + 1)
-    if (activeTab === 'rm') { setRmInvoiceNo(''); setRmBatchNo(''); setRmSupplierName(''); setRmTime(''); rmBT.reset() }
-    if (activeTab === 'ip') {
-      setIpBatchNo(''); setIpTime('')
-      setIpMillRows(emptyMillRows()); setSuspInputs({}); setSuspCardMill(IP_MILLS[0])
+    if (activeTab === 'rm') {
+      clearRmDraft()
     }
-    if (activeTab === 'fg') { setFgBatchNo(''); setFgTime(''); fgBT.reset(); setUplGrade(null); setUplValues({}); setUplMenuOpen(false) }
+    if (activeTab === 'ip') {
+      clearIpDraft()
+    }
+    if (activeTab === 'fg') {
+      clearFgDraft()
+      setUplMenuOpen(false)
+    }
   }
 
   function handlePrint() {
     printReport({
       activeTab, rmSelected, ipSelected, fgSelected, date, testedBy,
-      rmBrand: rmBT.brand, ipBrand: ipBT.brand, fgBrand: fgBT.brand,
+      rmBrand, ipBrand, fgBrand,
       rmSupplierName, rmInvoiceNo, rmBatchNo,
       uplGrade, uplValues,
     })
@@ -616,7 +723,7 @@ export default function QualityCheck() {
   function renderRM() {
     const mat = RAW_MATERIALS.find(m => m.id === rmSelected)
     if (!mat) return null
-    const displayLabel = rmBT.brand ? `${mat.label} – ${rmBT.brand}` : mat.label
+    const displayLabel = rmBrand ? `${mat.label} – ${rmBrand}` : mat.label
     return (
       <>
         <DropdownWithBrand
@@ -642,7 +749,7 @@ export default function QualityCheck() {
 
   function renderIP() {
     const test = IN_PROCESS.find(t => t.id === ipSelected)
-    const ipLabel = test ? (ipBT.brand ? `${test.label} – ${ipBT.brand}` : test.label) : ''
+    const ipLabel = test ? (ipBrand ? `${test.label} – ${ipBrand}` : test.label) : ''
     return (
       <>
         {/* Fixed tests */}
@@ -766,8 +873,8 @@ export default function QualityCheck() {
     if (!product) return null
     const isWDG = fgSelected === 'sulphur80wdg'
     const gradeLabel = uplGrade === 'export' ? 'Export Grade' : uplGrade === 'omri' ? 'OMRI Grade' : ''
-    const displayLabel = fgBT.brand
-      ? `${product.label} – ${fgBT.brand}${uplGrade ? ` – UPL Limited (${gradeLabel})` : ''}`
+    const displayLabel = fgBrand
+      ? `${product.label} – ${fgBrand}${uplGrade ? ` – UPL Limited (${gradeLabel})` : ''}`
       : `${product.label}${uplGrade ? ` – UPL Limited (${gradeLabel})` : ''}`
 
     // Group UPL rows by heading
@@ -780,6 +887,9 @@ export default function QualityCheck() {
       })
       return groups
     })() : []
+
+    // WDG tests hidden when UPL grade covers them
+    const hiddenTests = uplGrade ? (UPL_GRADES[uplGrade].hideTests ?? []) : []
 
     return (
       <>
@@ -794,13 +904,39 @@ export default function QualityCheck() {
         {/* UPL button — only for Sulphur 80% WDG */}
         {isWDG && (
           <div className="qc-upl-bar" ref={uplBtnRef}>
-            <button
-              type="button"
-              className={`qc-upl-btn${uplGrade ? ' qc-upl-btn-active' : ''}`}
-              onClick={() => setUplMenuOpen(o => !o)}
-            >
-              {uplGrade ? `UPL · ${gradeLabel}` : 'UPL ▾'}
-            </button>
+            {!uplGrade ? (
+              /* ── No grade selected: plain toggle button ── */
+              <button
+                type="button"
+                className="qc-upl-btn"
+                onClick={() => setUplMenuOpen(o => !o)}
+              >
+                UPL ▾
+              </button>
+            ) : (
+              /* ── Grade active: label part + separate ✕ part ── */
+              <div className="qc-upl-btn-active-wrap">
+                <button
+                  type="button"
+                  className="qc-upl-btn qc-upl-btn-active qc-upl-btn-label"
+                  onClick={() => setUplMenuOpen(o => !o)}
+                >
+                  UPL · {gradeLabel}
+                </button>
+                <button
+                  type="button"
+                  className="qc-upl-btn qc-upl-btn-active qc-upl-btn-close"
+                  title="Turn off UPL"
+                  onClick={() => {
+                    if (Object.values(uplValues).some(v => v !== '') &&
+                        !window.confirm('Turn off UPL? Existing UPL results will be cleared.')) return
+                    setUplGrade(null); setUplValues({}); setUplMenuOpen(false)
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            )}
             {uplMenuOpen && (
               <div className="qc-upl-menu">
                 {[['export', 'Export Grade'], ['omri', 'OMRI Grade']].map(([g, label]) => (
@@ -810,12 +946,12 @@ export default function QualityCheck() {
                     className={`qc-upl-menu-item${uplGrade === g ? ' qc-upl-menu-item-active' : ''}`}
                     onClick={() => {
                       if (uplGrade === g) {
-                        // clicking active grade → turn off
+                        // clicking active grade in menu → turn off
                         if (Object.values(uplValues).some(v => v !== '') &&
                             !window.confirm('Turn off UPL? Existing UPL results will be cleared.')) return
                         setUplGrade(null); setUplValues({})
                       } else {
-                        // switch grade
+                        // switch to a different grade
                         if (uplGrade && Object.values(uplValues).some(v => v !== '') &&
                             !window.confirm('Switch UPL grade? Existing UPL results will be cleared.')) return
                         setUplGrade(g); setUplValues({})
@@ -833,7 +969,9 @@ export default function QualityCheck() {
 
         <div className="qc-mat-title">{displayLabel}</div>
 
-        {product.tests.map(test => {
+        {product.tests
+          .filter(test => !hiddenTests.includes(test.id))
+          .map(test => {
           if (test.calcFn) return (
             <FormulaCalculator key={`${test.id}-${resetKey}`} formula={test} />
           )
@@ -876,7 +1014,7 @@ export default function QualityCheck() {
                 </thead>
                 <tbody>
                   {uplGroups.map(g => (
-                    <React.Fragment key={g.heading}>
+                    <Fragment key={g.heading}>
                       <tr className="qc-upl-group-row">
                         <td colSpan={4}>{g.heading}</td>
                       </tr>
@@ -919,7 +1057,7 @@ export default function QualityCheck() {
                           </tr>
                         )
                       })}
-                    </React.Fragment>
+                    </Fragment>
                   ))}
                 </tbody>
               </table>
@@ -927,9 +1065,9 @@ export default function QualityCheck() {
           </div>
         )}
 
-        {/* Overall result — merges WDG rules + UPL params */}
+        {/* Overall result — merges WDG rules (minus hidden) + UPL params */}
         <OverallResult results={{
-          ...collectFGResults(product, values),
+          ...collectFGResults(product, values, hiddenTests),
           ...(uplGrade
             ? Object.fromEntries(
                 UPL_GRADES[uplGrade].map(row => [row.id, evaluate(uplValues[row.id] ?? '', row.rule)])
