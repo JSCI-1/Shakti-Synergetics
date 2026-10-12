@@ -5,7 +5,10 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
+
+.header-left { display: flex; flex-direction: column; }
 
 .header-title {
   font-size: 17px;
@@ -19,17 +22,58 @@
   margin-top: 2px;
 }
 
+/* ── User info + sign-out ── */
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-shrink: 0;
+}
+
+.header-user {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.header-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0c890;
+  line-height: 1.3;
+}
+
+.header-user-role {
+  font-size: 10px;
+  color: #888;
+  text-transform: capitalize;
+}
+
+.header-signout-btn {
+  background: transparent;
+  border: 1px solid #555;
+  color: #ccc;
+  padding: 5px 12px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.header-signout-btn:hover {
+  border-color: #b85c2c;
+  color: #f0c890;
+}
+
 /* ── Mobile ── */
 @media (max-width: 640px) {
-  .header {
-    padding: 10px 14px;
-  }
+  .header         { padding: 10px 14px; }
+  .header-title   { font-size: 15px; }
+  .header-subtitle { font-size: 10px; }
+  .header-user-name { font-size: 12px; }
+  .header-signout-btn { font-size: 11px; padding: 4px 9px; }
+}
 
-  .header-title {
-    font-size: 15px;
-  }
-
-  .header-subtitle {
-    font-size: 10px;
-  }
+@media (max-width: 400px) {
+  .header-user { display: none; }
 }

@@ -476,8 +476,11 @@ function computeRowSusp(br, suspInputs) {
 // ─────────────────────────────────────────────────────────────
 // Main component
 // ─────────────────────────────────────────────────────────────
-export default function QualityCheck() {
+export default function QualityCheck({ user }) {
   const uid = useUserId()
+
+  // Auto-fill testedBy with logged-in user's name (falls back to empty for manual entry)
+  const userName = user?.name || ''
 
   // ── Active tab (persisted) ──
   const [activeTab, setActiveTab] = useDraft(`draft:${uid}:qc:activeTab`, 'rm')
@@ -485,24 +488,32 @@ export default function QualityCheck() {
   // ── Per-tab draft state ──
   const [rmDraft, setRmDraft, clearRmDraft] = useDraft(`draft:${uid}:qc:rm`, {
     selected: RAW_MATERIALS[0].id,
-    values: {}, date: '', testedBy: '',
+    values: {}, date: '', testedBy: userName,
     invoiceNo: '', batchNo: '', supplierName: '', time: '',
     brand: '',
   })
   const [ipDraft, setIpDraft, clearIpDraft] = useDraft(`draft:${uid}:qc:ip`, {
     selected: IN_PROCESS[0].id,
-    values: {}, date: '', testedBy: '',
+    values: {}, date: '', testedBy: userName,
     batchNo: '', time: '',
     brand: '',
     millRows: emptyMillRows(), suspInputs: {}, suspCardMill: IP_MILLS[0],
   })
   const [fgDraft, setFgDraft, clearFgDraft] = useDraft(`draft:${uid}:qc:fg`, {
     selected: FINISHED_GOODS[0].id,
-    values: {}, date: '', testedBy: '',
+    values: {}, date: '', testedBy: userName,
     batchNo: '', time: '',
     brand: '',
     uplGrade: null, uplValues: {},
   })
+
+  // When user logs in mid-session (e.g. tab restore), backfill empty testedBy fields
+  useEffect(() => {
+    if (!userName) return
+    setRmDraft(p => ({ ...p, testedBy: p.testedBy || userName }))
+    setIpDraft(p => ({ ...p, testedBy: p.testedBy || userName }))
+    setFgDraft(p => ({ ...p, testedBy: p.testedBy || userName }))
+  }, [userName])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Convenience aliases — read from active tab draft
   const rmSelected     = rmDraft.selected

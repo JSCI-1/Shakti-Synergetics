@@ -13,15 +13,17 @@
 
 .login-card {
   background: #fff;
-  border-radius: 10px;
-  box-shadow: 0 4px 28px rgba(0,0,0,0.12);
+  border-radius: 12px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.11);
   padding: 36px 32px 28px;
   width: 100%;
-  max-width: 420px;
+  max-width: 400px;
 }
 
+/* ── Header ── */
 .login-header   { text-align: center; margin-bottom: 24px; }
-.login-logo     { font-size: 38px; color: #b85c2c; margin-bottom: 8px; }
+.login-logo     { display: flex; justify-content: center; margin-bottom: 12px; }
+.login-logo-img { width: 88px; height: 88px; object-fit: contain; border-radius: 12px; }
 .login-title    { font-size: 22px; font-weight: 700; color: #1a1a1a; margin: 0 0 4px; }
 .login-title-hi { font-weight: 400; color: #666; }
 .login-brand    { font-size: 13px; font-weight: 700; color: #b85c2c; margin: 4px 0 0; }
@@ -33,11 +35,27 @@
 .login-label    { font-size: 13px; font-weight: 600; color: #444; }
 .login-label-hi { font-weight: 400; color: #999; font-size: 12px; }
 
+/* Full-width standalone input */
+.login-input-full {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  background: #fafaf8;
+  color: #1a1a1a;
+  outline: none;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+.login-input-full:focus { border-color: #b85c2c; background: #fff; }
+
+/* Phone row */
 .login-phone-row {
   display: flex;
   align-items: center;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
   overflow: hidden;
   background: #fafaf8;
   transition: border-color 0.15s;
@@ -45,12 +63,12 @@
 .login-phone-row:focus-within { border-color: #b85c2c; }
 
 .login-prefix {
-  padding: 10px 12px;
+  padding: 11px 13px;
   font-size: 14px;
   font-weight: 600;
   color: #555;
   background: #f0ede8;
-  border-right: 1px solid #ccc;
+  border-right: 1px solid #ddd;
   flex-shrink: 0;
 }
 
@@ -58,27 +76,80 @@
   flex: 1;
   border: none;
   outline: none;
-  padding: 10px 12px;
-  font-size: 15px;
+  padding: 11px 13px;
+  font-size: 16px;
   background: transparent;
   color: #1a1a1a;
   width: 100%;
+  letter-spacing: 1px;
 }
 
+/* OTP input */
 .login-otp-input {
-  border: 1px solid #ccc !important;
-  border-radius: 6px !important;
+  border: 1.5px solid #ddd !important;
+  border-radius: 8px !important;
   background: #fafaf8;
   text-align: center;
-  font-size: 24px;
+  font-size: 28px;
   font-weight: 700;
-  letter-spacing: 8px;
-  padding: 12px !important;
-  -moz-appearance: textfield;
+  letter-spacing: 12px;
+  padding: 14px 12px !important;
+  box-sizing: border-box;
+  width: 100%;
+  color: #1a1a1a;
+  transition: border-color 0.15s;
 }
-.login-otp-input::-webkit-outer-spin-button,
-.login-otp-input::-webkit-inner-spin-button { -webkit-appearance: none; }
-.login-otp-input:focus { border-color: #b85c2c !important; background: #fff; }
+.login-otp-input:focus {
+  border-color: #b85c2c !important;
+  background: #fff;
+  outline: none;
+}
+
+/* ── WhatsApp sent banner ── */
+.login-wa-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f0faf5;
+  border: 1px solid #b2dfcc;
+  border-radius: 10px;
+  padding: 12px 14px;
+}
+
+.login-wa-banner-icon {
+  width: 28px;
+  height: 28px;
+  color: #25D366;
+  flex-shrink: 0;
+}
+
+.login-wa-banner-text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.login-wa-banner-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a6640;
+  line-height: 1.3;
+}
+
+.login-wa-banner-phone {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: 0.5px;
+  margin-top: 1px;
+}
+
+.login-wa-banner-check {
+  font-size: 18px;
+  color: #25D366;
+  font-weight: 700;
+  flex-shrink: 0;
+}
 
 /* ── Buttons ── */
 .login-btn {
@@ -86,55 +157,104 @@
   color: #fff;
   border: none;
   padding: 13px;
-  border-radius: 6px;
+  border-radius: 8px;
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.2s;
-  margin-top: 4px;
+  margin-top: 2px;
 }
 .login-btn:hover:not(:disabled) { background: #9e4c22; }
 .login-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
-.login-back-btn {
-  background: transparent;
+/* WhatsApp green button variant */
+.login-btn-wa {
+  background: #25D366;
+}
+.login-btn-wa:hover:not(:disabled) { background: #1fba58; }
+
+.login-btn-inner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.login-wa-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* Spinner */
+.login-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255,255,255,0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: login-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes login-spin { to { transform: rotate(360deg); } }
+
+/* ── Resend row ── */
+.login-resend-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 28px;
+}
+
+.login-resend-timer {
+  font-size: 12px;
+  color: #999;
+}
+
+.login-resend-sep {
+  color: #ccc;
+  font-size: 12px;
+}
+
+.login-link-btn {
+  background: none;
   border: none;
   color: #b85c2c;
-  font-size: 13px;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  text-align: center;
-  padding: 4px;
+  padding: 0;
+  text-decoration: none;
+  transition: color 0.15s;
 }
-.login-back-btn:hover { text-decoration: underline; }
+.login-link-btn:hover:not(:disabled) { text-decoration: underline; }
+.login-link-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* ── Messages ── */
 .login-error {
   background: #fff0f0;
   border: 1px solid #f5c6c6;
-  border-radius: 5px;
-  padding: 8px 12px;
+  border-radius: 8px;
+  padding: 10px 13px;
   font-size: 13px;
   color: #c0392b;
+  line-height: 1.5;
 }
-.login-info {
-  background: #e8f5e9;
-  border: 1px solid #a5d6a7;
-  border-radius: 5px;
-  padding: 8px 12px;
-  font-size: 13px;
-  color: #2e7d32;
-  font-weight: 600;
-}
+
 .login-note {
   font-size: 11px;
   color: #aaa;
   text-align: center;
   margin: 0;
-  line-height: 1.6;
+  line-height: 1.7;
 }
+.login-note-hi { color: #bbb; }
 
 /* ── Mobile ── */
 @media (max-width: 480px) {
-  .login-card { padding: 28px 18px 22px; }
-  .login-title { font-size: 19px; }
+  .login-card       { padding: 28px 18px 22px; }
+  .login-title      { font-size: 19px; }
+  .login-otp-input  { font-size: 24px; letter-spacing: 8px; }
 }
