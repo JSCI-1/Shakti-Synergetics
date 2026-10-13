@@ -409,7 +409,20 @@
   cursor: pointer;
   transition: background 0.2s;
 }
-.qc-print-btn:hover { background: #9e4c22; }
+.qc-print-btn:hover:not(:disabled) { background: #9e4c22; }
+.qc-print-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Inline save error (FG Print/Download) */
+.qc-error {
+  flex: 1 1 100%;
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef9a9a;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
 .qc-clear-btn {
   background: transparent;
   color: #888;
@@ -798,6 +811,24 @@
 }
 .qc-upl-btn-active:hover { background: #9e4c22; }
 
+/* Split button when grade is active: [UPL · Label] [✕] side by side, no gap between */
+.qc-upl-btn-active-wrap {
+  display: inline-flex;
+  align-items: stretch;
+}
+.qc-upl-btn-active-wrap .qc-upl-btn-label {
+  border-radius: 5px 0 0 5px;
+  border-right: none;
+  padding-right: 10px;
+}
+.qc-upl-btn-active-wrap .qc-upl-btn-close {
+  border-radius: 0 5px 5px 0;
+  border-left: 1px solid rgba(255,255,255,0.4);
+  padding: 6px 10px;
+  font-size: 13px;
+  min-height: 36px;
+}
+
 .qc-upl-menu {
   position: absolute;
   top: calc(100% + 4px);
@@ -918,6 +949,72 @@
 @media (max-width: 640px) {
   .qc-upl-bar { flex-direction: column; align-items: stretch; }
   .qc-upl-btn { width: 100%; min-height: 44px; font-size: 13px; }
+  .qc-upl-btn-active-wrap { width: 100%; }
+  .qc-upl-btn-active-wrap .qc-upl-btn-label { flex: 1; min-height: 44px; }
+  .qc-upl-btn-active-wrap .qc-upl-btn-close { min-height: 44px; }
   .qc-upl-menu { left: 0; right: 0; min-width: unset; }
   .qc-upl-table-wrap { margin: 8px 8px; }
+}
+
+/* ══ Finished Goods — Product + Grade + Dryer bar ══ */
+.qc-fg-bar {
+  display: flex;
+  gap: 12px 16px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: #fafaf8;
+  border-bottom: 1px solid #e0dbd4;
+}
+
+/* The product dropdown re-uses .qc-dropdown-bar, which normally carries its
+   own padding/background/border. Inside the FG bar we neutralise those so it
+   lines up as a plain flex column alongside the Grade/Dryer fields. */
+.qc-fg-bar .qc-dropdown-bar {
+  padding: 0;
+  background: transparent;
+  border-bottom: none;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.qc-grade-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+/* Shared field label spacing so all three columns align along the top */
+.qc-fg-bar .qc-dropdown-label {
+  font-weight: 600;
+}
+
+/* Keep every select in the FG bar the same height/border/radius */
+.qc-fg-bar .qc-dropdown {
+  padding: 7px 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+}
+
+.qc-grade-select {
+  min-width: 140px;
+  font-weight: 600;
+  color: #b85c2c;
+  border-color: #b85c2c;
+}
+.qc-grade-select:focus { border-color: #9e4c22; }
+
+.qc-dryer-select {
+  min-width: 140px;
+  font-weight: 600;
+}
+
+@media (max-width: 600px) {
+  .qc-fg-bar { flex-direction: column; align-items: stretch; }
+  .qc-fg-bar .qc-dropdown-bar { width: 100%; }
+  .qc-grade-field { width: 100%; }
+  .qc-grade-select,
+  .qc-dryer-select { min-width: 100%; }
 }

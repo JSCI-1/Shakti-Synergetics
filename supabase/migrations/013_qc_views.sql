@@ -128,9 +128,20 @@ SELECT
   date,
   tested_by,
 
+  -- Finished Goods report meta (newly persisted in values jsonb)
+  values->>'dryer'                              AS fg_dryer,        -- ND1 | ND2
+  values->>'shift'                              AS fg_shift,        -- null until an FG shift input exists
+  values->>'batch_no'                           AS fg_batch_no,
+  values->>'time'                               AS fg_time,
+  values->>'brand'                              AS fg_brand,
+  values->>'product'                            AS fg_product,
+  values->>'grade'                              AS fg_grade,
+
   -- Core tests
   (values->>'fg_sulphur')::numeric              AS sulphur_content_pct,
   (values->>'fg_susp')::numeric                 AS suspensibility_pct,
+  -- Moisture is now a direct % value (single input), not a formula result.
+  -- Storage key 'fg_moisture' is unchanged so this mapping still holds.
   (values->>'fg_moisture')::numeric             AS moisture_pct,
   (values->>'fg_bulk')::numeric                 AS bulk_density_gcc,
   (values->>'fg_wetSieve')::numeric             AS wet_sieve_pct,
@@ -212,8 +223,18 @@ SELECT
   values->'ip_mill_rows'                        AS ip_mill_rows_json,
 
   -- ── FINISHED GOODS ──
+  -- Report meta (newly persisted in values jsonb)
+  values->>'dryer'                              AS fg_dryer,        -- ND1 | ND2
+  values->>'shift'                              AS fg_shift,        -- null until an FG shift input exists
+  values->>'batch_no'                           AS fg_batch_no,
+  values->>'time'                               AS fg_time,
+  values->>'brand'                              AS fg_brand,
+  values->>'product'                            AS fg_product,
+  values->>'grade'                              AS fg_grade,
+
   (values->>'fg_sulphur')::numeric              AS fg_sulphur_content_pct,
   (values->>'fg_susp')::numeric                 AS fg_suspensibility_pct,
+  -- Moisture is now a direct % value (single input), not a formula result.
   (values->>'fg_moisture')::numeric             AS fg_moisture_pct,
   (values->>'fg_bulk')::numeric                 AS fg_bulk_density_gcc,
   (values->>'fg_wetSieve')::numeric             AS fg_wet_sieve_pct,

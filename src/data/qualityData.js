@@ -63,7 +63,7 @@ export const SHARED_FORMULAS = {
     resultUnit: '%',
     variables: [
       { key: 'M', label: 'M', desc: 'Mass of material taken (g)', unit: 'g' },
-      { key: 'm', label: 'm', desc: 'Mass of residue (g)', unit: 'g' },
+      { key: 'm', label: 'm', desc: 'Mass of Granules Retained on the Sieve (g) (% of Fines)', unit: 'g' },
     ],
     calcFn: 'calcSieve',
   },
@@ -75,7 +75,7 @@ export const SHARED_FORMULAS = {
     resultUnit: '%',
     variables: [
       { key: 'M', label: 'M', desc: 'Mass of material taken (g)', unit: 'g' },
-      { key: 'm', label: 'm', desc: 'Mass of residue (g)', unit: 'g' },
+      { key: 'm', label: 'm', desc: 'Mass of Granules Retained on the Sieve (g) (% of Fines)', unit: 'g' },
     ],
     calcFn: 'calcSieve',
   },
@@ -338,8 +338,16 @@ export const FINISHED_GOODS = [
       { ...SHARED_FORMULAS.sulphur,         id: 'fg_sulphur'  },
       // B) Suspensibility — formula, no rule
       { ...SHARED_FORMULAS.suspensibility,  id: 'fg_susp'     },
-      // C) Moisture Content — formula, no rule
-      { ...SHARED_FORMULAS.moisture,        id: 'fg_moisture' },
+      // C) Moisture Content — single % value (no formula; FG only)
+      {
+        id: 'fg_moisture',
+        type: 'spec-single',
+        name: 'Moisture Content',
+        specification: '—',
+        inputType: 'number',
+        unit: '%',
+        // no rule
+      },
       // D) Bulk Density — formula, no rule
       { ...SHARED_FORMULAS.bulkDensity,     id: 'fg_bulk'     },
       // E) Wet Sieve — formula, no rule

@@ -7,6 +7,7 @@ import SpecTable from './SpecTable.jsx'
 import FormulaCalculator from './FormulaCalculator.jsx'
 import OverallResult from './OverallResult.jsx'
 import { useDraft, useUserId } from '../../utils/useDraft.js'
+import { supabase, supabaseReady } from '../../supabaseClient.js'
 import './QualityCheck.css'
 
 const TABS = [
@@ -203,11 +204,61 @@ function specTableToHtml(container) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// collectReportValues — scrape the live DOM (#qc-content) for the
+// SAME values the printed report shows, keyed by test/param id so
+// the saved Supabase record matches the printout exactly.
+//   - Formula cards  → result value under the card's test id
+//   - .qc-single-spec → input value under its data-test-id
+//   - spec-group     → input/select value under data-param-id
+//   - UPL table      → input/select value under data-upl-id
+// Formula-card results read the displayed "<num> <unit>" and keep
+// only the leading number so numeric view casts keep working.
+// ─────────────────────────────────────────────────────────────
+function collectReportValues() {
+  const out = {}
+  const content = document.getElementById('qc-content')
+  if (!content) return out
+
+  // Formula cards — store the computed result (numeric part only)
+  content.querySelectorAll('[data-formula-card]').forEach(card => {
+    const id = card.getAttribute('data-formula-card')
+    if (!id) return
+    const resultText = card.querySelector('.qc-calc-value[data-result]')?.textContent.trim() || ''
+    const num = resultText.replace(/[^0-9.+-].*$/, '').trim()
+    out[id] = num !== '' && num !== '—' ? num : ''
+  })
+
+  // Single-spec blocks (pH, Wettability, Moisture %) — keyed by data-test-id
+  content.querySelectorAll('.qc-single-spec[data-test-id]').forEach(block => {
+    const id = block.getAttribute('data-test-id')
+    if (!id) return
+    const inp = block.querySelector('input')
+    out[id] = inp ? (inp.value ?? '') : ''
+  })
+
+  // Spec-group inputs/selects (Persistent Foaming) — keyed by data-param-id
+  content.querySelectorAll('[data-param-id]').forEach(el => {
+    const id = el.getAttribute('data-param-id')
+    if (!id) return
+    out[id] = el.value ?? ''
+  })
+
+  // UPL parameters — keyed by data-upl-id
+  content.querySelectorAll('[data-upl-id]').forEach(el => {
+    const id = el.getAttribute('data-upl-id')
+    if (!id) return
+    out[id] = el.value ?? ''
+  })
+
+  return out
+}
+
+// ─────────────────────────────────────────────────────────────
 // printReport
 // ─────────────────────────────────────────────────────────────
 function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, testedBy,
                        rmBrand, ipBrand, fgBrand, rmSupplierName, rmInvoiceNo, rmBatchNo,
-                       uplGrade, uplValues }) {
+                       uplGrade, uplValues, fgDryer }) {
   const now      = new Date()
   const printTs  = now.toLocaleDateString('en-IN') + ' ' +
                    now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
@@ -228,8 +279,8 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
     brand         = fgBrand
   }
 
-  const gradeLabel        = uplGrade === 'export' ? 'Export Grade' : uplGrade === 'omri' ? 'OMRI Grade' : ''
-  const uplSuffix         = (activeTab === 'fg' && uplGrade) ? ` – UPL Limited (${gradeLabel})` : ''
+  const gradeLabel        = uplGrade === 'export' ? 'UPL Export Grade' : uplGrade === 'omri' ? 'UPL OMRI Grade' : uplGrade === 'colour' ? 'Colour' : 'Normal'
+  const uplSuffix         = (activeTab === 'fg' && uplGrade) ? ` (${gradeLabel})` : ''
   const materialWithBrand = brand ? `${materialLabel} – ${brand}${uplSuffix}` : `${materialLabel}${uplSuffix}`
 
   const content = document.getElementById('qc-content')
@@ -366,7 +417,7 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
       </tr>` : ''}
     </table>
     <div style="font-size:12px;font-weight:bold;background:#f5f5f5;padding:6px 10px;margin-bottom:14px;border-left:4px solid #b85c2c">
-      ${sectionLabel} &nbsp;›&nbsp; ${materialWithBrand}
+      ${sectionLabel} &nbsp;›&nbsp; ${materialWithBrand}${activeTab === 'fg' && fgDryer ? ` &nbsp;›&nbsp; Dryer: ${fgDryer}` : ''}
     </div>
     ${contentHtml}
     <div style="display:flex;justify-content:space-between;margin-top:32px;flex-wrap:wrap;gap:16px">
@@ -505,6 +556,10 @@ export default function QualityCheck({ user }) {
     batchNo: '', time: '',
     brand: '',
     uplGrade: null, uplValues: {},
+    // Per-dryer FG value buckets (ND1 / ND2). Fully independent — switching
+    // never overwrites/clears/mixes. Legacy flat `values` is migrated into ND1.
+    dryer: 'ND1',
+    valuesByDryer: { ND1: {}, ND2: {} },
   })
 
   // When user logs in mid-session (e.g. tab restore), backfill empty testedBy fields
@@ -515,11 +570,19 @@ export default function QualityCheck({ user }) {
     setFgDraft(p => ({ ...p, testedBy: p.testedBy || userName }))
   }, [userName])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── FG per-dryer buckets (ND1 / ND2) ──
+  // Backward-compatible with old flat drafts: if valuesByDryer is missing,
+  // migrate the legacy flat `values` into the ND1 bucket. Handled gracefully
+  // (derived + setter rewrites) so DRAFT_VERSION does not need bumping.
+  const fgDryer         = fgDraft.dryer || 'ND1'
+  const fgValuesByDryer = fgDraft.valuesByDryer || { ND1: fgDraft.values || {}, ND2: {} }
+  const fgValues        = fgValuesByDryer[fgDryer] || {}
+
   // Convenience aliases — read from active tab draft
   const rmSelected     = rmDraft.selected
   const ipSelected     = ipDraft.selected
   const fgSelected     = fgDraft.selected
-  const values         = activeTab === 'rm' ? rmDraft.values : activeTab === 'ip' ? ipDraft.values : fgDraft.values
+  const values         = activeTab === 'rm' ? rmDraft.values : activeTab === 'ip' ? ipDraft.values : fgValues
   const date           = activeTab === 'rm' ? rmDraft.date : activeTab === 'ip' ? ipDraft.date : fgDraft.date
   const testedBy       = activeTab === 'rm' ? rmDraft.testedBy : activeTab === 'ip' ? ipDraft.testedBy : fgDraft.testedBy
   const rmInvoiceNo    = rmDraft.invoiceNo
@@ -543,8 +606,20 @@ export default function QualityCheck({ user }) {
   const setValues         = fn => {
     if (activeTab === 'rm') setRmDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
     else if (activeTab === 'ip') setIpDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
-    else setFgDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
+    else setFgDraft(p => {
+      // Write into the CURRENT dryer's bucket only — the other dryer's bucket
+      // is preserved untouched (never overwritten/cleared/mixed).
+      const dryer = p.dryer || 'ND1'
+      const vbd   = p.valuesByDryer || { ND1: p.values || {}, ND2: {} }
+      const cur   = vbd[dryer] || {}
+      const next  = typeof fn === 'function' ? fn(cur) : fn
+      return { ...p, valuesByDryer: { ...vbd, [dryer]: next } }
+    })
   }
+  const setFgDryer = v => setFgDraft(p => {
+    const vbd = p.valuesByDryer || { ND1: p.values || {}, ND2: {} }
+    return { ...p, dryer: v, valuesByDryer: vbd }
+  })
   const setDate = v => {
     if (activeTab === 'rm') setRmDraft(p => ({ ...p, date: v }))
     else if (activeTab === 'ip') setIpDraft(p => ({ ...p, date: v }))
@@ -580,6 +655,11 @@ export default function QualityCheck({ user }) {
 
   // ── resetKey for FormulaCalculator remounting ──
   const [resetKey, setResetKey] = useState(0)
+
+  // ── FG Print/Download save state (FG tab only) ──
+  const [qcSaving, setQcSaving] = useState(false)
+  const [qcError, setQcError]   = useState('')
+  const lastSavedSig            = useRef('')
 
   // ── UPL menu open state (transient, not persisted) ──
   const [uplMenuOpenLocal, setUplMenuOpenLocal] = useState(false)
@@ -672,17 +752,86 @@ export default function QualityCheck({ user }) {
     }
     if (activeTab === 'fg') {
       clearFgDraft()
-      setUplMenuOpen(false)
     }
   }
 
-  function handlePrint() {
+  function doPrint() {
     printReport({
       activeTab, rmSelected, ipSelected, fgSelected, date, testedBy,
       rmBrand, ipBrand, fgBrand,
       rmSupplierName, rmInvoiceNo, rmBatchNo,
       uplGrade, uplValues,
+      fgDryer,
     })
+  }
+
+  async function handlePrint() {
+    // Save-before-print is scoped to the Finished Goods tab only.
+    // RM / IP printing is left exactly as before (no DB write).
+    if (activeTab !== 'fg') {
+      doPrint()
+      return
+    }
+
+    if (qcSaving) return   // in-flight guard — ignore repeated clicks
+
+    // Capture the SAME values the printout shows (from the live DOM) so the
+    // saved record matches the printed report exactly.
+    const captured = collectReportValues()
+
+    // Light validation — require a date or at least one captured value.
+    const hasValue = Object.values(captured).some(v => v !== '' && v != null)
+    if (!date && !hasValue) {
+      setQcError('Enter at least one value before saving.')
+      return
+    }
+
+    // One row for quality_control_records. Only the ACTIVE dryer's values are
+    // saved per click (values.dryer makes the record unambiguous); this keeps
+    // saved == printed since the DOM reflects the active dryer only.
+    const row = {
+      tab: 'fg',
+      date: date || null,
+      tested_by: testedBy || null,
+      values: {
+        ...captured,
+        date: date || null,
+        shift: null,            // FG form has no shift input today — stored null for forward-compat
+        batch_no: fgBatchNo || null,
+        time: fgTime || null,
+        brand: fgBrand || null,
+        product: fgSelected || null,
+        grade: uplGrade || null,
+        dryer: fgDryer,
+      },
+    }
+
+    // Skip an identical immediate re-save (defence against double submit).
+    const sig = JSON.stringify(row.values)
+    if (sig === lastSavedSig.current) {
+      doPrint()
+      return
+    }
+
+    if (!supabaseReady) {
+      setQcError('Supabase not configured. Cannot save report — printing is blocked.')
+      return
+    }
+
+    setQcSaving(true)
+    setQcError('')
+
+    const { error } = await supabase.from('quality_control_records').insert([row])
+
+    setQcSaving(false)
+
+    if (error) {
+      setQcError(error.message || 'Failed to save report.')
+      return   // do NOT print on save failure
+    }
+
+    lastSavedSig.current = sig
+    doPrint()
   }
 
   // ─────────────────────────────────────────────────────────
@@ -883,13 +1032,19 @@ export default function QualityCheck({ user }) {
     const product = FINISHED_GOODS.find(p => p.id === fgSelected)
     if (!product) return null
     const isWDG = fgSelected === 'sulphur80wdg'
-    const gradeLabel = uplGrade === 'export' ? 'Export Grade' : uplGrade === 'omri' ? 'OMRI Grade' : ''
+
+    // Grade label for display and print
+    const gradeLabel =
+      uplGrade === 'export'  ? 'UPL Export Grade' :
+      uplGrade === 'omri'    ? 'UPL OMRI Grade'   :
+      uplGrade === 'colour'  ? 'Colour'            : 'Normal'
+
     const displayLabel = fgBrand
-      ? `${product.label} – ${fgBrand}${uplGrade ? ` – UPL Limited (${gradeLabel})` : ''}`
-      : `${product.label}${uplGrade ? ` – UPL Limited (${gradeLabel})` : ''}`
+      ? `${product.label} – ${fgBrand}${isWDG ? ` (${gradeLabel})` : ''}`
+      : `${product.label}${isWDG ? ` (${gradeLabel})` : ''}`
 
     // Group UPL rows by heading
-    const uplGroups = uplGrade ? (() => {
+    const uplGroups = (uplGrade === 'export' || uplGrade === 'omri') ? (() => {
       const groups = []
       let cur = null
       UPL_GRADES[uplGrade].forEach(row => {
@@ -900,83 +1055,91 @@ export default function QualityCheck({ user }) {
     })() : []
 
     // WDG tests hidden when UPL grade covers them
-    const hiddenTests = uplGrade ? (UPL_GRADES[uplGrade].hideTests ?? []) : []
+    const hiddenTests = (uplGrade === 'export' || uplGrade === 'omri')
+      ? (UPL_GRADES[uplGrade].hideTests ?? [])
+      : []
 
     return (
       <>
-        <DropdownWithBrand
-          label="Product / उत्पाद"
-          value={fgSelected}
-          options={FINISHED_GOODS}
-          onChange={v => { setFgSelected(v); setValues({}); setResetKey(k => k + 1); setUplGrade(null); setUplValues({}); setUplMenuOpen(false) }}
-          bt={fgBT}
-        />
-
-        {/* UPL button — only for Sulphur 80% WDG */}
-        {isWDG && (
-          <div className="qc-upl-bar" ref={uplBtnRef}>
-            {!uplGrade ? (
-              /* ── No grade selected: plain toggle button ── */
-              <button
-                type="button"
-                className="qc-upl-btn"
-                onClick={() => setUplMenuOpen(o => !o)}
+        {/* Product dropdown + Grade dropdown in one bar */}
+        <div className="qc-fg-bar">
+          <div className="qc-dropdown-bar" style={{ position: 'relative', flex: 1 }}>
+            <label className="qc-dropdown-label">Product / उत्पाद</label>
+            <div className="qc-dropdown-wrap" ref={fgBT.dropdownRef}>
+              <select
+                className="qc-dropdown"
+                value={fgSelected}
+                onChange={e => {
+                  setFgSelected(e.target.value)
+                  setValues({})
+                  setResetKey(k => k + 1)
+                  setUplGrade(null)
+                  setUplValues({})
+                  fgBT.reset()
+                  fgBT.openPopup()
+                }}
               >
-                UPL ▾
-              </button>
-            ) : (
-              /* ── Grade active: label part + separate ✕ part ── */
-              <div className="qc-upl-btn-active-wrap">
-                <button
-                  type="button"
-                  className="qc-upl-btn qc-upl-btn-active qc-upl-btn-label"
-                  onClick={() => setUplMenuOpen(o => !o)}
-                >
-                  UPL · {gradeLabel}
-                </button>
-                <button
-                  type="button"
-                  className="qc-upl-btn qc-upl-btn-active qc-upl-btn-close"
-                  title="Turn off UPL"
-                  onClick={() => {
-                    if (Object.values(uplValues).some(v => v !== '') &&
-                        !window.confirm('Turn off UPL? Existing UPL results will be cleared.')) return
-                    setUplGrade(null); setUplValues({}); setUplMenuOpen(false)
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            )}
-            {uplMenuOpen && (
-              <div className="qc-upl-menu">
-                {[['export', 'Export Grade'], ['omri', 'OMRI Grade']].map(([g, label]) => (
-                  <button
-                    key={g}
-                    type="button"
-                    className={`qc-upl-menu-item${uplGrade === g ? ' qc-upl-menu-item-active' : ''}`}
-                    onClick={() => {
-                      if (uplGrade === g) {
-                        // clicking active grade in menu → turn off
-                        if (Object.values(uplValues).some(v => v !== '') &&
-                            !window.confirm('Turn off UPL? Existing UPL results will be cleared.')) return
-                        setUplGrade(null); setUplValues({})
-                      } else {
-                        // switch to a different grade
-                        if (uplGrade && Object.values(uplValues).some(v => v !== '') &&
-                            !window.confirm('Switch UPL grade? Existing UPL results will be cleared.')) return
-                        setUplGrade(g); setUplValues({})
-                      }
-                      setUplMenuOpen(false)
-                    }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            )}
+                {FINISHED_GOODS.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              {fgBT.brand && (
+                <button type="button" className="qc-brand-edit-icon" title="Edit brand / type" onClick={fgBT.openPopup}>✎</button>
+              )}
+              <BrandTypePopup
+                anchorRef={fgBT.dropdownRef}
+                open={fgBT.popupOpen}
+                initialValue={fgBT.brand}
+                placeholder="e.g. Vedanta, Local…"
+                onConfirm={fgBT.handleConfirm}
+                onClose={fgBT.handleClose}
+              />
+            </div>
+            {fgBT.brand && <span className="qc-brand-badge">– {fgBT.brand}</span>}
           </div>
-        )}
+
+          {/* Grade dropdown — only for Sulphur 80% WDG */}
+          {isWDG && (
+            <div className="qc-grade-field">
+              <label className="qc-dropdown-label">Grade / ग्रेड</label>
+              <select
+                className="qc-dropdown qc-grade-select"
+                value={uplGrade ?? 'normal'}
+                onChange={e => {
+                  const v = e.target.value
+                  if (v === 'normal') {
+                    setUplGrade(null); setUplValues({})
+                  } else {
+                    setUplGrade(v); setUplValues({})
+                  }
+                  setValues({})
+                  setResetKey(k => k + 1)
+                }}
+              >
+                <option value="normal">Normal</option>
+                <option value="export">UPL Export</option>
+                <option value="omri">UPL OMRI</option>
+                <option value="colour">Colour</option>
+              </select>
+            </div>
+          )}
+
+          {/* Select Dryer dropdown — ND1 / ND2 (always shown for all FG products) */}
+          <div className="qc-grade-field">
+            <label className="qc-dropdown-label">Select Dryer / ड्रायर चुनें</label>
+            <select
+              className="qc-dropdown qc-dryer-select"
+              value={fgDryer}
+              onChange={e => {
+                setFgDryer(e.target.value)
+                // Remount FormulaCalculator cards so their local input state
+                // reflects the newly-active dryer's values (prevents bleed-over).
+                setResetKey(k => k + 1)
+              }}
+            >
+              <option value="ND1">ND1</option>
+              <option value="ND2">ND2</option>
+            </select>
+          </div>
+        </div>
 
         <div className="qc-mat-title">{displayLabel}</div>
 
@@ -987,7 +1150,7 @@ export default function QualityCheck({ user }) {
             <FormulaCalculator key={`${test.id}-${resetKey}`} formula={test} />
           )
           if (test.type === 'spec-single') return (
-            <div key={test.id} className="qc-single-spec">
+            <div key={test.id} className="qc-single-spec" data-test-id={test.id}>
               <div className="qc-single-name">{test.name}</div>
               {test.method && <div className="qc-method">{test.method}</div>}
               <div className="qc-input-unit">
@@ -1007,8 +1170,8 @@ export default function QualityCheck({ user }) {
           return null
         })}
 
-        {/* UPL Parameters table */}
-        {uplGrade && (
+        {/* UPL Parameters table — only for export/omri grades */}
+        {(uplGrade === 'export' || uplGrade === 'omri') && (
           <div className="qc-upl-table-wrap" data-upl-table>
             <div className="qc-upl-table-title">
               UPL Parameters – {gradeLabel}
@@ -1076,10 +1239,10 @@ export default function QualityCheck({ user }) {
           </div>
         )}
 
-        {/* Overall result — merges WDG rules (minus hidden) + UPL params */}
+        {/* Overall result */}
         <OverallResult results={{
           ...collectFGResults(product, values, hiddenTests),
-          ...(uplGrade
+          ...((uplGrade === 'export' || uplGrade === 'omri')
             ? Object.fromEntries(
                 UPL_GRADES[uplGrade].map(row => [row.id, evaluate(uplValues[row.id] ?? '', row.rule)])
               )
@@ -1141,8 +1304,11 @@ export default function QualityCheck({ user }) {
       </div>
 
       <div className="qc-actions">
-        <button type="button" className="qc-print-btn" onClick={handlePrint}>
-          Print / Download
+        {qcError && (
+          <div className="qc-error">Error: {qcError}</div>
+        )}
+        <button type="button" className="qc-print-btn" onClick={handlePrint} disabled={qcSaving}>
+          {qcSaving ? 'Saving…' : 'Print / Download'}
         </button>
         <button type="button" className="qc-clear-btn" onClick={handleReset}>
           Reset All / सभी रीसेट करें
