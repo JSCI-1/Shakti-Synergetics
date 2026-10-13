@@ -1018,3 +1018,130 @@
   .qc-grade-select,
   .qc-dryer-select { min-width: 100%; }
 }
+
+/* ── Sieve → UPL "Record result" controls + log (OMRI Wet/Dry Sieve) ── */
+/* The whole block lines up with the other FG cards (same side margin as
+   .qc-formula-card: 12px 16px). Two columns on wide screens: formula+bar
+   on the left as one attached unit, recorded-entries log on the right. */
+.qc-sieve-apply-wrap {
+  margin: 12px 16px;
+}
+.qc-sieve-apply-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 380px);
+  gap: 16px;
+  align-items: start;
+}
+.qc-sieve-apply-formula {
+  min-width: 0;
+}
+/* Neutralize the inner FormulaCalculator's own margin so it fills the
+   grid column flush, and square off its bottom so the bar attaches. */
+.qc-sieve-apply-formula .qc-formula-card {
+  margin: 0;
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.qc-sieve-apply-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #fffdf9;
+  border: 1px solid #e0dbd4;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  flex-wrap: wrap;
+}
+.qc-sieve-apply-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+.qc-sieve-apply-select {
+  flex: 1 1 150px;
+  min-width: 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #fff;
+  cursor: pointer;
+}
+.qc-sieve-apply-select:focus { outline: none; border-color: #b85c2c; }
+.qc-sieve-apply-btn {
+  background: #b85c2c;
+  color: #fff;
+  border: none;
+  padding: 6px 14px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+.qc-sieve-apply-btn:hover:not(:disabled) { background: #9e4c22; }
+.qc-sieve-apply-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Recorded-entries log — contained, scrolls internally so the ×
+   column never clips. */
+.qc-sieve-log {
+  min-width: 0;
+  border: 1px solid #e0dbd4;
+  border-radius: 6px;
+  background: #fffdf9;
+  padding: 10px 12px;
+}
+.qc-sieve-log-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b85c2c;
+  margin-bottom: 8px;
+}
+.qc-sieve-log-empty {
+  font-size: 12px;
+  color: #999;
+  padding: 4px 0;
+}
+.qc-sieve-log-scroll {
+  overflow-x: auto;
+}
+.qc-sieve-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+.qc-sieve-log-table th,
+.qc-sieve-log-table td {
+  border: 1px solid #ece6dd;
+  padding: 5px 7px;
+  text-align: center;
+  white-space: nowrap;
+}
+.qc-sieve-log-table thead th {
+  background: #f7f1ea;
+  color: #6b4a2b;
+  font-weight: 700;
+}
+.qc-sieve-log-del {
+  border: none;
+  background: transparent;
+  color: #c0392b;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.qc-sieve-log-del:hover { color: #922b21; }
+
+@media (max-width: 760px) {
+  .qc-sieve-apply-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .qc-sieve-apply-bar { flex-direction: column; align-items: stretch; }
+  .qc-sieve-apply-select { flex: 1 1 auto; }
+  .qc-sieve-apply-btn { text-align: center; }
+}

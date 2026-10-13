@@ -1,0 +1,326 @@
+.pa-wrapper {
+  padding: 16px;
+  background: #f4f1ec;
+  min-height: 100%;
+}
+
+/* ── Header card ───────────────────────────────────────────── */
+.pa-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px 20px;
+  margin-bottom: 18px;
+  background: #fff;
+  border: 1px solid #e7e1d8;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.pa-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pa-header-icon {
+  font-size: 26px;
+  line-height: 1;
+}
+
+.pa-title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #2a2a2a;
+  letter-spacing: -0.2px;
+}
+
+.pa-subtitle {
+  margin-top: 2px;
+  font-size: 13px;
+  color: #8a8178;
+}
+
+.pa-subtitle-hi {
+  color: #a79e94;
+}
+
+.pa-header-right {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.pa-live {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pa-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #27ae60;
+  box-shadow: 0 0 0 3px rgba(39, 174, 96, 0.18);
+  animation: pa-pulse 2s infinite;
+}
+
+@keyframes pa-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0.35); }
+  70%  { box-shadow: 0 0 0 6px rgba(39, 174, 96, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(39, 174, 96, 0); }
+}
+
+.pa-live-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2a2a2a;
+}
+
+.pa-live-sub {
+  font-size: 11px;
+  color: #9a9188;
+}
+
+/* ── Status / errors ───────────────────────────────────────── */
+.pa-status {
+  padding: 24px;
+  text-align: center;
+  color: #999;
+  font-size: 14px;
+}
+
+.pa-error {
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  color: #c0392b;
+  font-size: 13px;
+  font-weight: 600;
+  background: #fdecea;
+  border: 1px solid #f5c6c0;
+  border-radius: 6px;
+}
+
+/* ── Per-dryer group ───────────────────────────────────────── */
+.pa-group {
+  margin-bottom: 22px;
+  background: #fff;
+  border: 1px solid #e7e1d8;
+  border-radius: 10px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.pa-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 11px 16px;
+  color: #fff;
+}
+
+/* New Dryer → orange (site accent); Old Dryer → blue (per design) */
+.pa-group-new .pa-group-header { background: #b85c2c; }
+.pa-group-old .pa-group-header { background: #2f5f8f; }
+
+.pa-group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.pa-group-icon {
+  font-size: 15px;
+}
+
+.pa-24h-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.18);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.pa-empty-hours {
+  padding: 16px;
+  color: #999;
+  font-size: 13px;
+}
+
+/* ── Table ─────────────────────────────────────────────────── */
+.pa-table-scroll {
+  overflow-x: auto;
+}
+
+.pa-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+  color: #333;
+}
+
+.pa-col-time  { width: 72px; }
+.pa-col-temp  { min-width: 68px; }
+.pa-col-other { min-width: 92px; }
+
+.pa-table th,
+.pa-table td {
+  border: 1px solid #ece6dd;
+  padding: 9px 10px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pa-table thead th {
+  background: #faf7f2;
+  color: #6b4a2b;
+  font-weight: 700;
+  font-size: 11.5px;
+  line-height: 1.25;
+}
+
+.pa-th-group {
+  background: #f3ece2 !important;
+  color: #8a5a2b !important;
+  font-size: 12px !important;
+}
+
+.pa-th-sub {
+  background: #faf7f2;
+  font-weight: 600;
+}
+
+.pa-th-unit {
+  font-weight: 500;
+  color: #a08a74;
+  font-size: 10.5px;
+}
+
+.pa-th-hi {
+  font-weight: 500;
+  color: #a08a74;
+  font-size: 10px;
+}
+
+/* Sticky time column + sticky header so names stay visible on scroll */
+.pa-th-time,
+.pa-td-time {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  font-weight: 700;
+  color: #b85c2c;
+  background: #fdf6ef;
+}
+
+.pa-table tbody tr:nth-child(even) td {
+  background: #fbf9f6;
+}
+
+.pa-table tbody tr:nth-child(even) .pa-td-time {
+  background: #fdf6ef;
+}
+
+.pa-table tbody tr:hover td {
+  background: #fcf3ea;
+}
+
+/* ── Quality Control (Finished Goods) live card ──────────────── */
+.pa-group-qc .pa-group-header { background: #2e7d5b; }  /* green — distinct from dryer cards */
+
+.pa-qc-body {
+  padding: 14px 16px;
+}
+
+.pa-qc-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 10px 14px;
+  margin-bottom: 4px;
+}
+
+.pa-qc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  background: #f7faf8;
+  border: 1px solid #e3ece7;
+  border-radius: 6px;
+}
+
+.pa-qc-field-k {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b8a7c;
+}
+
+.pa-qc-field-v {
+  font-size: 15px;
+  font-weight: 700;
+  color: #243a31;
+}
+
+.pa-qc-sieves {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.pa-qc-sieve {
+  border: 1px solid #e3ece7;
+  border-radius: 6px;
+  background: #fbfdfc;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.pa-qc-sieve-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #2e7d5b;
+  margin-bottom: 8px;
+}
+
+.pa-qc-sieve-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11.5px;
+}
+
+.pa-qc-sieve-table th,
+.pa-qc-sieve-table td {
+  border: 1px solid #e6ece9;
+  padding: 5px 7px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.pa-qc-sieve-table thead th {
+  background: #eef5f1;
+  color: #2e5c48;
+  font-weight: 700;
+}
+
+/* Pass/Fail tags reused from QualityCheck styling — redeclared here so the
+   read-only Activity view does not depend on QC's CSS being loaded. */
+.pa-group-qc .qc-upl-pass,
+.pa-qc-sieve .qc-upl-pass { color: #2e7d32; font-weight: 700; }
+.pa-group-qc .qc-upl-fail,
+.pa-qc-sieve .qc-upl-fail { color: #c62828; font-weight: 700; }
+.pa-group-qc .qc-upl-na,
+.pa-qc-sieve .qc-upl-na { color: #999; }

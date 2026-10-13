@@ -6,7 +6,7 @@ const SAMPLE_JOBS = [
     id: 455,
     status: 'Pending Stores',
     machine: 'M1',
-    date: '21/09/2026',
+    date: '21/09/26',
     shift: 'Day',
     batchNo: '44',
     party: 'R5299',
@@ -14,7 +14,7 @@ const SAMPLE_JOBS = [
     oilRequired: '50 kg',
     supplier: 'test',
     lotNumber: '44',
-    emptyDate: '21/09/2026',
+    emptyDate: '21/09/26',
   },
 ]
 

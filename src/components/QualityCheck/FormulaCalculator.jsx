@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import ResultBadge from './ResultBadge.jsx'
 import {
   evaluate,
@@ -11,7 +11,7 @@ const FN_MAP = {
   calcBulkDensity, calcPurity, calcMeshSize, calcSuspensibility,
 }
 
-export default function FormulaCalculator({ formula, onInputChange }) {
+export default function FormulaCalculator({ formula, onInputChange, onResult }) {
   const [inputs, setInputs] = useState({})
 
   const setInput = (key, val) => {
@@ -38,6 +38,12 @@ export default function FormulaCalculator({ formula, onInputChange }) {
   }
 
   const result = evaluate(calcResult, formula.rule)
+
+  // Expose the computed result to the parent (used to push a sieve result
+  // into the matching UPL parameter row). Fires whenever the result changes.
+  useEffect(() => {
+    if (onResult) onResult(calcResult)
+  }, [calcResult])  // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleReset() { setInputs({}) }
 

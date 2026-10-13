@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
+import { useDraft, useUserId } from '../utils/useDraft.js'
 import './ThermpackJobCard.css'
 
 function Label({ en, hi, required }) {
@@ -153,18 +154,10 @@ function emptyMotorForm() {
   }
 }
 
-// Format date value (yyyy-mm-dd) → dd/mm/yyyy for display label
-function fmtDate(val) {
-  if (!val) return ''
-
-  const [y, m, d] = val.split('-')
-
-  return `${d}/${m}/${y}`
-}
-
 export default function ThermpackJobCard() {
-  const [form, setForm] = useState(emptyForm())
-  const [motorForm, setMotorForm] = useState(emptyMotorForm())
+  const uid = useUserId()
+  const [form,      setForm,      clearFormDraft]  = useDraft(`draft:${uid}:thermopack:form`,  emptyForm())
+  const [motorForm, setMotorForm, clearMotorDraft] = useDraft(`draft:${uid}:thermopack:motor`, emptyMotorForm())
   const [motorOpen, setMotorOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [savedMain, setSavedMain] = useState(false)
@@ -367,7 +360,7 @@ export default function ThermpackJobCard() {
       setError(e1.message)
     } else {
       setSavedMain(true)
-      setForm(emptyForm())
+      clearFormDraft()
     }
   }
 
@@ -402,7 +395,7 @@ export default function ThermpackJobCard() {
       setError(e2.message)
     } else {
       setSavedMotor(true)
-      setMotorForm(emptyMotorForm())
+      clearMotorDraft()
     }
   }
 
@@ -1329,7 +1322,7 @@ export default function ThermpackJobCard() {
             type="button"
             className="tjc-reset-btn"
             onClick={() => {
-              setForm(emptyForm())
+              clearFormDraft()
               setSavedMain(false)
               setError('')
             }}
@@ -1461,7 +1454,7 @@ export default function ThermpackJobCard() {
                   {saving ? 'Saving…' : 'Save Motor Status / मोटर स्थिति सहेजें'}
                 </button>
                 <button type="button" className="tjc-reset-btn"
-                  onClick={() => { setMotorForm(emptyMotorForm()); setSavedMotor(false) }}>
+                  onClick={() => { clearMotorDraft(); setSavedMotor(false) }}>
                   Reset / रीसेट
                 </button>
               </div>

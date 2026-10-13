@@ -12,38 +12,89 @@
 
 
 /* ════════════════════════════════════
-   SUB TAB BAR
+   DRYER SELECTION SCREEN — two large blocks
    ════════════════════════════════════ */
 
-.dr-tab-bar {
+.dr-select-screen {
   display: flex;
-  background: #1a1a1a;
-  border-bottom: 2px solid #b85c2c;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  padding: 48px 20px;
+  width: 100%;
 }
 
-.dr-tab-btn {
-  flex: 1;
-  background: transparent;
-  border: none;
-  color: #aaa;
-  padding: 12px 16px;
-  font-size: 13px;
-  font-weight: 600;
+.dr-select-heading {
+  font-size: 16px;
+  font-weight: 700;
+  color: #2d2d2d;
+  margin-bottom: 6px;
+  letter-spacing: 0.3px;
+}
+.dr-select-heading-hi {
+  font-weight: 400;
+  color: #888;
+}
+
+.dr-select-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 88%;
+  max-width: 900px;
+  padding: 26px 28px;
+  background: #fff;
+  border: 1.5px solid #e0dbd4;
+  border-radius: 20px;
   cursor: pointer;
-  text-align: center;
-  border-bottom: 3px solid transparent;
-  margin-bottom: -2px;
-  transition: color 0.15s, border-color 0.15s;
-  white-space: nowrap;
+  transition: all 0.18s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-.dr-tab-btn:hover {
+.dr-select-block:hover {
+  border-color: #b85c2c;
+  box-shadow: 0 4px 16px rgba(184, 92, 44, 0.18);
+  transform: translateY(-2px);
+}
+
+.dr-select-block-text {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.35;
+}
+
+.dr-select-block-en {
+  font-size: 19px;
+  font-weight: 700;
+  color: #b85c2c;
+}
+
+.dr-select-block-hi {
+  font-size: 13px;
+  font-weight: 400;
+  color: #888;
+}
+
+/* Back button in the form title bar */
+.dr-back-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #555;
   color: #f0c890;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
 }
-
-.dr-tab-active {
-  color: #f0c890 !important;
-  border-bottom-color: #b85c2c !important;
+.dr-back-btn:hover {
+  border-color: #b85c2c;
+  background: rgba(184, 92, 44, 0.15);
 }
 
 .dr-content {
@@ -58,9 +109,12 @@
 .dr-form-wrapper {
   background: #fff;
   border: 1px solid #d8d0c8;
-  border-radius: 0 0 6px 6px;
+  border-radius: 16px;
   overflow: hidden;
-  width: 100%;
+  width: calc(100% - 24px);
+  max-width: 1400px;
+  margin: 12px auto;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.07);
 }
 
 
@@ -71,6 +125,15 @@
 .dr-title-bar {
   background: #1a1a1a;
   padding: 12px 20px 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  position: relative;
+}
+
+/* Title fills remaining space and stays centered */
+.dr-title-bar .dr-title-main {
+  flex: 1;
   text-align: center;
 }
 
@@ -204,7 +267,7 @@
    ════════════════════════════════════ */
 
 .dr-table-section {
-  border-bottom: 1px solid #e0dbd4;
+  padding: 12px;
 }
 
 .dr-table-scroll {
@@ -214,6 +277,8 @@
   max-height: 560px;
   -webkit-overflow-scrolling: touch;
   position: relative;
+  border: 1px solid #d8d0c8;
+  border-radius: 12px;
 }
 
 
@@ -1002,10 +1067,27 @@
 
 @media (max-width: 640px) {
 
-  .dr-tab-btn {
-    padding: 10px 8px;
+  .dr-select-screen {
+    padding: 32px 14px;
+    gap: 16px;
+  }
 
-    font-size: 12px;
+  .dr-select-block {
+    width: 92%;
+    padding: 20px 18px;
+  }
+
+  .dr-select-block-en { font-size: 17px; }
+  .dr-select-block-hi { font-size: 12px; }
+
+  .dr-title-bar {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+
+  .dr-back-btn {
+    padding: 4px 9px;
+    font-size: 11px;
   }
 
   .dr-title-company {
@@ -1013,7 +1095,7 @@
   }
 
   .dr-title-main {
-    font-size: 12px;
+    font-size: 11px;
   }
 
 
@@ -1414,3 +1496,16 @@ details[open] .dr-cal-summary::after {
 /* ── Save button locked after first stamp ── */
 .dr-row-save-btn:disabled       { opacity: 1; cursor: not-allowed; }
 .dr-row-save-btn:disabled:hover { background: transparent; border-color: #4caf50; }
+
+/* Per-hour shared-save error — compact, lives inside the Save cell
+   so it never reflows the fixed-colgroup log table. */
+.dr-row-save-err {
+  margin-top: 2px;
+  max-width: 72px;
+  color: #c0392b;
+  font-size: 9px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

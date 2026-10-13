@@ -16,6 +16,29 @@ const TABS = [
   { key: 'fg', label: 'Finished Goods', labelHi: 'तैयार माल'  },
 ]
 
+// Which UPL parameter rows a Wet/Dry Sieve formula result can be pushed into
+// (the micron targets shown in the UPL Parameters table), per grade.
+//   OMRI   → Wet Sieve + Dry Sieve
+//   Export → Wet Sieve only (Dry Sieve is not an Export parameter)
+const SIEVE_UPL_TARGETS = {
+  omri: {
+    fg_drySieve: [
+      { id: 'upl_omri_ds_500', label: '500 Micron (Min 99)' },
+      { id: 'upl_omri_ds_106', label: '106 Micron (Max 11)' },
+    ],
+    fg_wetSieve: [
+      { id: 'upl_omri_ws_160', label: '160 Micron (Min 99.98)' },
+      { id: 'upl_omri_ws_25',  label: '25 Micron (Min 99.50)' },
+    ],
+  },
+  export: {
+    fg_wetSieve: [
+      { id: 'upl_exp_ws_160', label: '160 Micron (Max 0.02)' },
+      { id: 'upl_exp_ws_25',  label: '25 Micron (Max 0.20)' },
+    ],
+  },
+}
+
 // ─────────────────────────────────────────────────────────────
 // BrandTypePopup — reusable dropdown-anchored popup
 // Props:
@@ -556,10 +579,16 @@ export default function QualityCheck({ user }) {
     batchNo: '', time: '',
     brand: '',
     uplGrade: null, uplValues: {},
+    // OMRI sieve calculation log: timestamped entries per sieve test.
+    //   { fg_wetSieve: [{ result, status, time, targetLabel }], fg_drySieve: [...] }
+    sieveLog: {},
     // Per-dryer FG value buckets (ND1 / ND2). Fully independent — switching
     // never overwrites/clears/mixes. Legacy flat `values` is migrated into ND1.
     dryer: 'ND1',
-    valuesByDryer: { ND1: {}, ND2: {} },
+    // Per-(dryer, grade) FG values, per-grade UPL values, per-grade sieve logs.
+    valuesByDryer: { ND1: {}, ND2: {} },   // shape: { [dryer]: { [grade]: {...} } }
+    uplValuesByGrade: {},                   // shape: { [grade]: {...} }
+    sieveLogByGrade: {},                    // shape: { [grade]: { fg_wetSieve:[], fg_drySieve:[] } }
   })
 
   // When user logs in mid-session (e.g. tab restore), backfill empty testedBy fields
@@ -570,13 +599,23 @@ export default function QualityCheck({ user }) {
     setFgDraft(p => ({ ...p, testedBy: p.testedBy || userName }))
   }, [userName])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── FG per-dryer buckets (ND1 / ND2) ──
-  // Backward-compatible with old flat drafts: if valuesByDryer is missing,
-  // migrate the legacy flat `values` into the ND1 bucket. Handled gracefully
-  // (derived + setter rewrites) so DRAFT_VERSION does not need bumping.
-  const fgDryer         = fgDraft.dryer || 'ND1'
-  const fgValuesByDryer = fgDraft.valuesByDryer || { ND1: fgDraft.values || {}, ND2: {} }
-  const fgValues        = fgValuesByDryer[fgDryer] || {}
+  // ── FG per-dryer × per-grade buckets ──
+  // FG values, UPL values, and sieve logs are kept independent per
+  // (dryer, grade) so switching ND1/ND2 or Normal/Export/OMRI/Colour never
+  // overwrites, clears, or mixes another combination's data. Backward
+  // compatible with old flat drafts (legacy `values` migrates into ND1/normal;
+  // flat uplValues/sieveLog migrate into the 'normal' grade). Handled via
+  // derived reads + setter rewrites so DRAFT_VERSION does not need bumping.
+  const fgDryer   = fgDraft.dryer || 'ND1'
+  const fgGrade   = fgDraft.uplGrade || 'normal'
+
+  // Legacy-safe per-(dryer,grade) values bucket.
+  const fgValuesByDryer = fgDraft.valuesByDryer || { ND1: { normal: fgDraft.values || {} }, ND2: {} }
+  const fgDryerBucket   = fgValuesByDryer[fgDryer] || {}
+  // A dryer bucket may be legacy flat (values object) or grade-keyed.
+  const fgValues = (fgDryerBucket && typeof fgDryerBucket === 'object' && !Array.isArray(fgDryerBucket))
+    ? (fgDryerBucket[fgGrade] || {})
+    : {}
 
   // Convenience aliases — read from active tab draft
   const rmSelected     = rmDraft.selected
@@ -594,7 +633,9 @@ export default function QualityCheck({ user }) {
   const fgBatchNo      = fgDraft.batchNo
   const fgTime         = fgDraft.time
   const uplGrade       = fgDraft.uplGrade
-  const uplValues      = fgDraft.uplValues
+  // UPL values are per-grade. Legacy flat `uplValues` migrates into 'normal'.
+  const uplValuesByGrade = fgDraft.uplValuesByGrade || { normal: fgDraft.uplValues || {} }
+  const uplValues        = uplValuesByGrade[fgGrade] || {}
   const ipMillRows     = ipDraft.millRows
   const suspInputs     = ipDraft.suspInputs
   const suspCardMill   = ipDraft.suspCardMill
@@ -607,17 +648,23 @@ export default function QualityCheck({ user }) {
     if (activeTab === 'rm') setRmDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
     else if (activeTab === 'ip') setIpDraft(p => ({ ...p, values: typeof fn === 'function' ? fn(p.values) : fn }))
     else setFgDraft(p => {
-      // Write into the CURRENT dryer's bucket only — the other dryer's bucket
-      // is preserved untouched (never overwritten/cleared/mixed).
+      // Write into the CURRENT (dryer, grade) bucket only — every other
+      // combination is preserved untouched (never overwritten/cleared/mixed).
       const dryer = p.dryer || 'ND1'
-      const vbd   = p.valuesByDryer || { ND1: p.values || {}, ND2: {} }
-      const cur   = vbd[dryer] || {}
+      const grade = p.uplGrade || 'normal'
+      const vbd   = p.valuesByDryer || { ND1: { normal: p.values || {} }, ND2: {} }
+      let   db    = vbd[dryer] || {}
+      // Normalize a legacy flat dryer bucket → { normal: {...} }
+      if (db && typeof db === 'object' && (db.fg_moisture !== undefined || db.fg_susp !== undefined)) {
+        db = { normal: db }
+      }
+      const cur   = db[grade] || {}
       const next  = typeof fn === 'function' ? fn(cur) : fn
-      return { ...p, valuesByDryer: { ...vbd, [dryer]: next } }
+      return { ...p, valuesByDryer: { ...vbd, [dryer]: { ...db, [grade]: next } } }
     })
   }
   const setFgDryer = v => setFgDraft(p => {
-    const vbd = p.valuesByDryer || { ND1: p.values || {}, ND2: {} }
+    const vbd = p.valuesByDryer || { ND1: { normal: p.values || {} }, ND2: {} }
     return { ...p, dryer: v, valuesByDryer: vbd }
   })
   const setDate = v => {
@@ -639,8 +686,30 @@ export default function QualityCheck({ user }) {
   const setFgBatchNo      = v => setFgDraft(p => ({ ...p, batchNo: v }))
   const setFgTime         = v => setFgDraft(p => ({ ...p, time: v }))
   const setUplGrade       = v => setFgDraft(p => ({ ...p, uplGrade: v }))
-  const setUplValues      = fn => setFgDraft(p => ({ ...p, uplValues: typeof fn === 'function' ? fn(p.uplValues) : fn }))
+  const setUplValues      = fn => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const uvg   = p.uplValuesByGrade || { normal: p.uplValues || {} }
+    const cur   = uvg[grade] || {}
+    const next  = typeof fn === 'function' ? fn(cur) : fn
+    return { ...p, uplValuesByGrade: { ...uvg, [grade]: next } }
+  })
+  // Sieve logs are per-grade. Legacy flat `sieveLog` migrates into 'normal'.
+  const sieveLogByGrade   = fgDraft.sieveLogByGrade || { normal: fgDraft.sieveLog || {} }
+  const sieveLog          = sieveLogByGrade[fgGrade] || {}
+  const addSieveEntry     = (testId, entry) => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const slg   = p.sieveLogByGrade || { normal: p.sieveLog || {} }
+    const cur   = slg[grade] || {}
+    return { ...p, sieveLogByGrade: { ...slg, [grade]: { ...cur, [testId]: [ ...(cur[testId] || []), entry ] } } }
+  })
+  const removeSieveEntry  = (testId, idx) => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const slg   = p.sieveLogByGrade || { normal: p.sieveLog || {} }
+    const cur   = slg[grade] || {}
+    return { ...p, sieveLogByGrade: { ...slg, [grade]: { ...cur, [testId]: (cur[testId] || []).filter((_, i) => i !== idx) } } }
+  })
   const setUplMenuOpen    = v => setUplMenuOpenLocal(v)  // menu state is NOT persisted (intentional)
+
   const setIpMillRows     = fn => setIpDraft(p => ({ ...p, millRows: typeof fn === 'function' ? fn(p.millRows) : fn }))
   const setSuspInputs     = fn => setIpDraft(p => ({ ...p, suspInputs: typeof fn === 'function' ? fn(p.suspInputs) : fn }))
   const setSuspCardMill   = v => setIpDraft(p => ({ ...p, suspCardMill: v }))
@@ -655,6 +724,79 @@ export default function QualityCheck({ user }) {
 
   // ── resetKey for FormulaCalculator remounting ──
   const [resetKey, setResetKey] = useState(0)
+
+  // ── Latest computed Wet/Dry Sieve formula results + chosen UPL micron
+  //    target (OMRI only). Lets the operator push a sieve formula result
+  //    into the matching UPL row so its Pass/Fail status auto-computes. ──
+  const [sieveResult, setSieveResult] = useState({})   // { fg_wetSieve, fg_drySieve }
+  const [sieveTarget, setSieveTarget] = useState({ fg_wetSieve: 'upl_omri_ws_160', fg_drySieve: 'upl_omri_ds_500' })
+
+  // Latest computed Suspensibility result (fg_susp is a formula card, so its
+  // result lives in the card's local state — capture it for the live feed).
+  const [suspResult, setSuspResult] = useState(null)
+
+  // ── Live push to Production → Activity (qc_activity_draft) ──────────
+  // Upserts the current Finished Goods snapshot keyed on (dryer, date, grade).
+  // Called on each sieve "Record" and (debounced) when batch/moisture/susp/
+  // dryer/date/grade change. Requires a date to key on; guards supabaseReady.
+  // Never blocks the UI — errors are swallowed (this is an optional feed;
+  // the authoritative save is still Print/Download → quality_control_records).
+  const toNum = v => {
+    const n = parseFloat(v)
+    return Number.isFinite(n) ? n : null
+  }
+  const pushQcActivity = useCallback((override = {}) => {
+    if (!supabaseReady || !supabase) return
+    const d = fgDraft || {}
+    const dryer = d.dryer || 'ND1'
+    const logDate = d.date
+    if (!logDate) return   // need a date to key the live row
+    const grade = d.uplGrade || 'normal'
+    // Read the CURRENT (dryer, grade) buckets (shape matches the derived reads).
+    const vbd = d.valuesByDryer || { ND1: { normal: d.values || {} }, ND2: {} }
+    let db = vbd[dryer] || {}
+    if (db && typeof db === 'object' && (db.fg_moisture !== undefined || db.fg_susp !== undefined)) {
+      db = { normal: db }   // normalize legacy flat bucket
+    }
+    const curVals = db[grade] || {}
+    const slg = d.sieveLogByGrade || { normal: d.sieveLog || {} }
+    const log = slg[grade] || {}
+    const product = (FINISHED_GOODS.find(p => p.id === d.selected) || {}).label || null
+
+    const row = {
+      dryer,
+      log_date: logDate,
+      grade,
+      product,
+      batch_no: d.batchNo || null,
+      moisture_pct: toNum(curVals.fg_moisture),
+      suspensibility_pct: override.susp !== undefined ? toNum(override.susp) : toNum(suspResult),
+      wet_sieve_log: override.wetLog ?? (log.fg_wetSieve || []),
+      dry_sieve_log: override.dryLog ?? (log.fg_drySieve || []),
+      tested_by: d.testedBy || userName || null,
+      updated_at: new Date().toISOString(),
+      last_saved_at: new Date().toISOString(),
+    }
+
+    supabase
+      .from('qc_activity_draft')
+      .upsert(row, { onConflict: 'dryer,log_date,grade' })
+      .then(({ error }) => {
+        // Optional feed — does not block the UI. Log so a failing push
+        // (missing table / RLS / Realtime) is diagnosable in the console.
+        if (error) console.warn('[QC Activity] live push failed:', error.message, error)
+      })
+  }, [fgDraft, suspResult, userName])
+
+  // Debounced live push when FG batch / moisture / suspensibility / dryer /
+  // date / grade change (FG tab only, and only once a date is set).
+  const fgMoistureVal = fgValues.fg_moisture
+  useEffect(() => {
+    if (activeTab !== 'fg') return
+    if (!fgDraft.date) return
+    const t = setTimeout(() => pushQcActivity(), 700)
+    return () => clearTimeout(t)
+  }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgMoistureVal, suspResult])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── FG Print/Download save state (FG tab only) ──
   const [qcSaving, setQcSaving] = useState(false)
@@ -1105,12 +1247,15 @@ export default function QualityCheck({ user }) {
                 value={uplGrade ?? 'normal'}
                 onChange={e => {
                   const v = e.target.value
-                  if (v === 'normal') {
-                    setUplGrade(null); setUplValues({})
-                  } else {
-                    setUplGrade(v); setUplValues({})
-                  }
-                  setValues({})
+                  // Each grade keeps its OWN values/uplValues/sieveLog bucket,
+                  // so switching only changes which grade is active — the other
+                  // grades' data is preserved and restored when you switch back.
+                  setUplGrade(v === 'normal' ? null : v)
+                  // Clear only the TRANSIENT computed results (they recompute
+                  // from the newly-active grade's inputs after remount).
+                  setSieveResult({})
+                  setSuspResult(null)
+                  // Remount formula cards so they re-read the active grade's values.
                   setResetKey(k => k + 1)
                 }}
               >
@@ -1146,8 +1291,112 @@ export default function QualityCheck({ user }) {
         {product.tests
           .filter(test => !hiddenTests.includes(test.id))
           .map(test => {
+          // Wet/Dry Sieve are measured several times. Each calculation can be
+          // RECORDED as a timestamped entry (result + Pass/Fail status + time)
+          // shown beside the formula; recording also pushes the value into the
+          // chosen UPL micron row. OMRI → Wet+Dry Sieve; Export → Wet Sieve only.
+          const gradeTargets = SIEVE_UPL_TARGETS[uplGrade] || {}
+          const sieveApply = gradeTargets[test.id]
+          if (test.calcFn && sieveApply) {
+            const opts   = gradeTargets[test.id]
+            // Fall back to the first option if the stored target isn't valid for
+            // this grade's options (e.g. an OMRI default carried into Export).
+            const stored = sieveTarget[test.id]
+            const target = opts.some(o => o.id === stored) ? stored : opts[0].id
+            const res    = sieveResult[test.id]
+            const hasRes = res !== null && res !== undefined && res !== ''
+            const log    = sieveLog[test.id] || []
+            const targetRule = ((UPL_GRADES[uplGrade] || []).find(r => r.id === target) || {}).rule
+
+            function recordSieve() {
+              if (!hasRes) return
+              const status = evaluate(res, targetRule) || '—'
+              const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+              const targetLabel = (opts.find(o => o.id === target) || {}).label || ''
+              const entry = { result: String(res), status, time, targetLabel }
+              addSieveEntry(test.id, entry)
+              // Also push into the UPL row so its table status reflects the latest.
+              setUplValues(p => ({ ...p, [target]: String(res) }))
+              // Live push to Production → Activity immediately with the fresh log
+              // (state updates are async, so pass the updated array as an override).
+              const newLog = [ ...((sieveLog[test.id]) || []), entry ]
+              pushQcActivity(
+                test.id === 'fg_wetSieve' ? { wetLog: newLog } : { dryLog: newLog }
+              )
+            }
+
+            return (
+              <div key={`${test.id}-${resetKey}`} className="qc-sieve-apply-wrap">
+                <div className="qc-sieve-apply-grid">
+                  <div className="qc-sieve-apply-formula">
+                    <FormulaCalculator
+                      formula={test}
+                      onResult={val => setSieveResult(p => ({ ...p, [test.id]: val }))}
+                    />
+                    <div className="qc-sieve-apply-bar">
+                      <span className="qc-sieve-apply-label">Micron:</span>
+                      <select
+                        className="qc-sieve-apply-select"
+                        value={target}
+                        onChange={e => setSieveTarget(p => ({ ...p, [test.id]: e.target.value }))}
+                      >
+                        {opts.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                      </select>
+                      <button
+                        type="button"
+                        className="qc-sieve-apply-btn"
+                        disabled={!hasRes}
+                        onClick={recordSieve}
+                      >
+                        + Record {hasRes ? `(${res})` : ''}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Recorded entries — result + status + time */}
+                  <div className="qc-sieve-log" data-sieve-log={test.id}>
+                    <div className="qc-sieve-log-title">{test.name} — recorded</div>
+                    {log.length === 0 ? (
+                      <div className="qc-sieve-log-empty">No entries yet.</div>
+                    ) : (
+                      <div className="qc-sieve-log-scroll">
+                        <table className="qc-sieve-log-table">
+                          <thead>
+                            <tr><th>#</th><th>Micron</th><th>Result</th><th>Status</th><th>Time</th><th></th></tr>
+                          </thead>
+                          <tbody>
+                            {log.map((e, idx) => (
+                              <tr key={idx}>
+                                <td>{idx + 1}</td>
+                                <td>{e.targetLabel}</td>
+                                <td>{e.result}</td>
+                                <td>
+                                  {e.status === 'PASS' && <span className="qc-upl-pass">Pass</span>}
+                                  {e.status === 'FAIL' && <span className="qc-upl-fail">Fail</span>}
+                                  {e.status !== 'PASS' && e.status !== 'FAIL' && <span className="qc-upl-na">—</span>}
+                                </td>
+                                <td>{e.time}</td>
+                                <td>
+                                  <button type="button" className="qc-sieve-log-del"
+                                    title="Remove" onClick={() => removeSieveEntry(test.id, idx)}>×</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          }
           if (test.calcFn) return (
-            <FormulaCalculator key={`${test.id}-${resetKey}`} formula={test} />
+            <FormulaCalculator
+              key={`${test.id}-${resetKey}`}
+              formula={test}
+              onResult={test.id === 'fg_susp' ? setSuspResult : undefined}
+            />
           )
           if (test.type === 'spec-single') return (
             <div key={test.id} className="qc-single-spec" data-test-id={test.id}>

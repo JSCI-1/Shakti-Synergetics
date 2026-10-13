@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
+import { useDraft, useUserId } from '../utils/useDraft.js'
 import './DryerSection.css'
 
 
@@ -158,11 +159,24 @@ function DryerForm({
   labelHi,
   form,
   setForm,
+  onClearDraft,
+  onBack,
   userName,
 }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+
+  // Per-row shared-save state (SEPARATE from the form-level `error`
+  // used by Save Log Sheet, to avoid collision):
+  //   rowSaving[i] — the per-hour upsert for row i is in flight
+  //   rowErrors[i] — the last shared-save error message for row i
+  const [rowSaving, setRowSaving] = useState({})
+  const [rowErrors, setRowErrors] = useState({})
+
+  // Guards the once-per-(dryer,date) cross-device load so it does not
+  // thrash against useDraft's 600ms debounced localStorage writer.
+  const loadedKeyRef = useRef(null)
 
 
   const set = (k, v) => {
@@ -181,6 +195,9 @@ function DryerForm({
           ? {
               ...r,
               [field]: val,
+              // Editing a saved hour un-saves it so the ✓ reverts to 💾
+              // and the hour can be re-saved (last-write-wins).
+              saved: false,
             }
           : r
       ),
@@ -188,23 +205,134 @@ function DryerForm({
   }
 
 
-  function saveRow(i) {
-    setForm(p => {
-      if (p.rows[i].saved) return p
+  // ── Cross-device load / shift handover ──────────────────────
+  // When the production date changes for this dryer, the shared
+  // Supabase draft (not stale localStorage) is authoritative for the
+  // freshly chosen date: reset rows, then merge in non-expired remote
+  // hours. Merge is non-clobbering — a remote hour fills a local row
+  // ONLY if that local row is still empty-and-unsaved.
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return
+    if (!form.date) return
 
-      return {
+    const loadKey = `${dryerType}|${form.date}`
+    if (loadedKeyRef.current === loadKey) return   // already loaded this (dryer,date)
+    loadedKeyRef.current = loadKey
+
+    let cancelled = false
+
+    ;(async () => {
+      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const { data, error: err } = await supabase
+        .from('dryer_hourly_draft')
+        .select('hour, shift, values, operator')
+        .eq('dryer_type', dryerType)
+        .eq('log_date', form.date)
+        .gt('last_saved_at', cutoff)
+
+      if (cancelled || err || !data) return
+
+      const byHour = {}
+      data.forEach(r => { byHour[r.hour] = r })
+
+      // Reset rows for the new date, then overlay remote hours.
+      // (A fresh emptyRow() per slot means "empty-and-unsaved" is well
+      // defined and no stale cross-date saved:true row can leak in.)
+      setForm(p => ({
         ...p,
-        rows: p.rows.map((r, idx) =>
-          idx === i
-            ? {
-                ...r,
-                timestamp: stamp12hr(),
-                saved: true,
-              }
-            : r
-        ),
-      }
+        rows: TIME_SLOTS.map((slot, idx) => {
+          const base = emptyRow()
+          const prev = p.rows[idx]
+          // Preserve a locally-edited-but-unsaved hour that the operator
+          // typed before this load resolved (don't clobber in-progress work).
+          const localHasUnsaved =
+            prev && !prev.saved &&
+            Object.keys(emptyRow()).some(
+              k => k !== 'timestamp' && k !== 'saved' && (prev[k] ?? '') !== ''
+            )
+          if (localHasUnsaved) return prev
+
+          const remote = byHour[slot]
+          if (!remote) return base
+
+          const v = remote.values || {}
+          return {
+            ...base,
+            ...v,
+            // remote rows represent an already-shared (saved) hour
+            saved: true,
+          }
+        }),
+      }))
+    })()
+
+    return () => { cancelled = true }
+  }, [dryerType, form.date])  // eslint-disable-line react-hooks/exhaustive-deps
+
+
+  // ── Per-hour Save → upsert this hour to the shared draft ────
+  // ADDITIVE: Save Log Sheet (handleSubmit → dryer_logs) is unchanged.
+  async function saveRow(i) {
+    const hour = TIME_SLOTS[i]
+
+    // Clear any prior error for this row
+    setRowErrors(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
     })
+
+    if (!supabaseReady || !supabase) {
+      setRowErrors(prev => ({ ...prev, [i]: 'Supabase not configured.' }))
+      return
+    }
+    if (!form.date) {
+      setRowErrors(prev => ({ ...prev, [i]: 'Set the production date first.' }))
+      return
+    }
+
+    const row = form.rows[i]
+    const { timestamp: _ts, saved: _sv, ...fields } = row
+    const ts = stamp12hr()
+
+    setRowSaving(prev => ({ ...prev, [i]: true }))
+
+    const { error: err } = await supabase
+      .from('dryer_hourly_draft')
+      .upsert(
+        {
+          dryer_type: dryerType,
+          log_date: form.date,
+          hour,
+          shift: form.shift || null,
+          operator: form.operator || userName || null,
+          // timestamp is display-only (en-IN); never used for expiry/order
+          values: { ...fields, timestamp: ts },
+          updated_at: new Date().toISOString(),
+          last_saved_at: new Date().toISOString(),
+        },
+        { onConflict: 'dryer_type,log_date,hour' }
+      )
+
+    setRowSaving(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
+    })
+
+    if (err) {
+      // Do NOT mark the row saved — leave it re-savable for retry.
+      setRowErrors(prev => ({ ...prev, [i]: err.message || 'Save failed.' }))
+      return
+    }
+
+    // Success — stamp timestamp + mark saved locally.
+    setForm(p => ({
+      ...p,
+      rows: p.rows.map((r, idx) =>
+        idx === i ? { ...r, timestamp: ts, saved: true } : r
+      ),
+    }))
   }
 
 
@@ -274,7 +402,7 @@ function DryerForm({
       setError(err.message)
     } else {
       setSaved(true)
-      setForm(emptyForm(dryerType))
+      onClearDraft()
     }
   }
 
@@ -370,6 +498,12 @@ function DryerForm({
       {/* ── Title ── */}
 
       <div className="dr-title-bar">
+
+        {onBack && (
+          <button type="button" className="dr-back-btn" onClick={onBack}>
+            ← Back / वापस
+          </button>
+        )}
 
         <div className="dr-title-main">
 
@@ -1020,11 +1154,18 @@ function DryerForm({
                       <button
                         type="button"
                         className="dr-row-save-btn"
-                        disabled={form.rows[i].saved}
+                        disabled={!!rowSaving[i]}
+                        title={form.rows[i].saved ? 'Saved — click to re-save this hour' : 'Save this hour'}
                         onClick={() => saveRow(i)}
                       >
-                        {form.rows[i].saved ? '✓' : '💾'}
+                        {rowSaving[i] ? '…' : form.rows[i].saved ? '✓' : '💾'}
                       </button>
+
+                      {rowErrors[i] && (
+                        <div className="dr-row-save-err" title={rowErrors[i]}>
+                          {rowErrors[i]}
+                        </div>
+                      )}
 
                     </td>
 
@@ -1436,11 +1577,7 @@ function DryerForm({
             type="button"
             className="dr-reset-btn"
             onClick={() => {
-
-              setForm(
-                emptyForm(dryerType)
-              )
-
+              onClearDraft()
               setSaved(false)
               setError('')
 
@@ -1461,126 +1598,84 @@ function DryerForm({
 
 
 export default function DryerSection({ user }) {
+  const uid = useUserId()
 
-  const [activeTab, setActiveTab] =
-    useState('new')
+  // null → selection screen; 'new' / 'old' → that dryer's form
+  const [activeTab, setActiveTab] = useState(null)
 
+  const [formNew, setFormNew, clearFormNewDraft] =
+    useDraft(`draft:${uid}:dryer:formNew`, emptyForm('new'))
 
-  const [formNew, setFormNew] =
-    useState(emptyForm('new'))
+  const [formOld, setFormOld, clearFormOldDraft] =
+    useDraft(`draft:${uid}:dryer:formOld`, emptyForm('old'))
 
-
-  const [formOld, setFormOld] =
-    useState(emptyForm('old'))
+  const goBack = () => setActiveTab(null)
 
 
   return (
 
     <div className="dr-wrapper">
 
-      {/* Tabs */}
+      {/* ── Selection screen — two large rounded blocks ── */}
+      {activeTab === null && (
+        <div className="dr-select-screen">
+          <div className="dr-select-heading">
+            Select Dryer / <span className="dr-select-heading-hi">ड्रायर चुनें</span>
+          </div>
 
-      <div className="dr-tab-bar">
-
-        <button
-          type="button"
-          className={`dr-tab-btn ${
-            activeTab === 'new'
-              ? 'dr-tab-active'
-              : ''
-          }`}
-          onClick={() =>
-            setActiveTab('new')
-          }
-        >
-
-          New Dryer /{' '}
-
-          <span
-            style={{
-              fontSize: '11px',
-              fontWeight: '400',
-            }}
+          <button
+            type="button"
+            className="dr-select-block"
+            onClick={() => setActiveTab('new')}
           >
-            नया ड्रायर
-          </span>
+            <span className="dr-select-block-text">
+              <span className="dr-select-block-en">New Dryer</span>
+              <span className="dr-select-block-hi">नया ड्रायर</span>
+            </span>
+          </button>
 
-        </button>
-
-
-        <button
-          type="button"
-          className={`dr-tab-btn ${
-            activeTab === 'old'
-              ? 'dr-tab-active'
-              : ''
-          }`}
-          onClick={() =>
-            setActiveTab('old')
-          }
-        >
-
-          Old Dryer /{' '}
-
-          <span
-            style={{
-              fontSize: '11px',
-              fontWeight: '400',
-            }}
+          <button
+            type="button"
+            className="dr-select-block"
+            onClick={() => setActiveTab('old')}
           >
-            पुराना ड्रायर
-          </span>
+            <span className="dr-select-block-text">
+              <span className="dr-select-block-en">Old Dryer</span>
+              <span className="dr-select-block-hi">पुराना ड्रायर</span>
+            </span>
+          </button>
+        </div>
+      )}
 
-        </button>
-
-      </div>
-
-
+      {/* ── Forms — both stay mounted so each dryer keeps its data ── */}
       <div className="dr-content">
 
         {/* New Dryer */}
-
-        <div
-          style={{
-            display:
-              activeTab === 'new'
-                ? 'block'
-                : 'none',
-          }}
-        >
-
+        <div style={{ display: activeTab === 'new' ? 'block' : 'none' }}>
           <DryerForm
             dryerType="new"
             label="New Dryer"
             labelHi="नया ड्रायर"
             form={formNew}
             setForm={setFormNew}
+            onClearDraft={clearFormNewDraft}
+            onBack={goBack}
             userName={user?.name ?? ''}
           />
-
         </div>
 
-
         {/* Old Dryer */}
-
-        <div
-          style={{
-            display:
-              activeTab === 'old'
-                ? 'block'
-                : 'none',
-          }}
-        >
-
+        <div style={{ display: activeTab === 'old' ? 'block' : 'none' }}>
           <DryerForm
             dryerType="old"
             label="Old Dryer"
             labelHi="पुराना ड्रायर"
             form={formOld}
             setForm={setFormOld}
+            onClearDraft={clearFormOldDraft}
+            onBack={goBack}
             userName={user?.name ?? ''}
           />
-
         </div>
 
       </div>

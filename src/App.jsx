@@ -13,6 +13,7 @@ const SlurryWrapper    = lazy(() => import('./components/SlurryWrapper.jsx'))
 const DryerSection     = lazy(() => import('./components/DryerSection.jsx'))
 const SlurryOperator   = lazy(() => import('./components/SlurryOperator.jsx'))
 const QualityCheck     = lazy(() => import('./components/QualityCheck/QualityCheck.jsx'))
+const ProductionActivity = lazy(() => import('./components/ProductionActivity.jsx'))
 
 // Map nav-tab labels → the section key stored in app_users.sections
 const ALL_TABS = [
@@ -205,6 +206,17 @@ export default function App() {
           <ErrorBoundary label="Quality Control">
             <Suspense fallback={<SectionLoader />}>
               <QualityCheck user={user} />
+            </Suspense>
+          </ErrorBoundary>
+        )
+      case 'Production':
+        // Read-only live view of the shared hourly dryer draft.
+        // Tab visibility is role-gated by getAllowedTabs (sections
+        // includes 'production', or admin/'all').
+        return (
+          <ErrorBoundary label="Production">
+            <Suspense fallback={<SectionLoader />}>
+              <ProductionActivity />
             </Suspense>
           </ErrorBoundary>
         )

@@ -9,6 +9,31 @@
 
 
 -- ────────────────────────────────────────────────────────────
+-- DROP existing views first.
+--
+-- Why: PostgreSQL's `CREATE OR REPLACE VIEW` can only ADD new
+-- columns at the END of the column list — it cannot insert,
+-- reorder, or rename existing columns. The earlier version of
+-- qc_finished_goods / qc_all placed the new fg_dryer, fg_shift,
+-- … columns BEFORE the existing numeric columns, so Postgres
+-- read it as "rename column 5 (sulphur_content_pct) → fg_dryer"
+-- and raised:
+--   ERROR 42P16: cannot change name of view column ...
+--
+-- Dropping first lets the views be rebuilt from scratch with any
+-- column order. These are plain reporting views over
+-- quality_control_records — nothing persistent depends on them,
+-- so dropping and recreating is safe and loses no table data.
+-- IF EXISTS keeps the script re-runnable on a fresh database.
+-- ────────────────────────────────────────────────────────────
+DROP VIEW IF EXISTS qc_all;
+DROP VIEW IF EXISTS qc_finished_goods;
+DROP VIEW IF EXISTS qc_in_process_mills;
+DROP VIEW IF EXISTS qc_in_process;
+DROP VIEW IF EXISTS qc_raw_materials;
+
+
+-- ────────────────────────────────────────────────────────────
 -- VIEW 1: qc_raw_materials
 -- One row per RM quality check record.
 -- ────────────────────────────────────────────────────────────
@@ -268,3 +293,37 @@ SELECT
 
 FROM quality_control_records
 ORDER BY date DESC, created_at DESC;
+
+
+-- ════════════════════════════════════════════════════════════
+-- RLS FIX — allow logged-in (authenticated) users to save QC reports
+--
+-- Why: migration 006 created only an `anon` insert policy on
+-- quality_control_records:
+--     create policy "anon_insert_qc" ... for insert to anon ...
+-- Once a user signs in via Supabase Auth, their requests run as
+-- the `authenticated` role, which had NO insert policy — so the
+-- save-before-print insert was rejected with:
+--     new row violates row-level security policy for table
+--     "quality_control_records"
+--
+-- Fix: ADD matching policies for the `authenticated` role. The
+-- existing `anon` policies are left untouched, so nothing that
+-- currently works breaks. Safe to run on a live DB — no data
+-- change, only policy additions. DROP ... IF EXISTS first keeps
+-- this block re-runnable.
+-- ════════════════════════════════════════════════════════════
+
+drop policy if exists "authenticated_insert_qc" on quality_control_records;
+create policy "authenticated_insert_qc"
+  on quality_control_records
+  for insert
+  to authenticated
+  with check (true);
+
+drop policy if exists "authenticated_select_qc" on quality_control_records;
+create policy "authenticated_select_qc"
+  on quality_control_records
+  for select
+  to authenticated
+  using (true);

@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
+import { useDraft, useUserId } from '../utils/useDraft.js'
+import { formatDate as fmtDate } from '../utils/formatDate.js'
 import './SlurryConsumption.css'
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
@@ -9,11 +11,6 @@ function yesterdayISO() {
 }
 function stamp12hr() {
   return new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-}
-function fmtDate(iso) {
-  if (!iso) return ''
-  const [y, m, d] = iso.split('-')
-  return `${d}/${m}/${y}`
 }
 
 function emptyForm() {
@@ -46,9 +43,10 @@ const COL_HEADERS = (
 )
 
 export default function SlurryConsumption() {
+  const uid = useUserId()
   // ── Today's entry ──
   const today = todayISO()
-  const [form, setForm]     = useState(emptyForm())
+  const [form, setForm, clearFormDraft] = useDraft(`draft:${uid}:batch:consumption`, emptyForm())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
@@ -164,7 +162,7 @@ export default function SlurryConsumption() {
     }])
     setSaving(false)
     if (err) setError(err.message)
-    else { setSaved(true); loadPrevCumDiff() }
+    else { setSaved(true); clearFormDraft(); loadPrevCumDiff() }
   }
 
   const fmtV = v => (v === null || v === undefined || v === '') ? '—' : v
@@ -232,7 +230,7 @@ export default function SlurryConsumption() {
           {saving ? 'Saving…' : 'Save Report / रिपोर्ट सहेजें'}
         </button>
         <button type="button" className="sc-reset-btn"
-          onClick={() => { setForm(emptyForm()); setSaved(false); setError('') }}>
+          onClick={() => { clearFormDraft(); setSaved(false); setError('') }}>
           Reset / रीसेट
         </button>
       </div>
