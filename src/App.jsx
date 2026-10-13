@@ -4,7 +4,6 @@ import Header from './components/Header.jsx'
 import TopNav from './components/TopNav.jsx'
 import LoginPage from './components/LoginPage.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
-import { clearAllDraftsForUser } from './utils/useDraft.js'
 import './App.css'
 
 // Lazy-load every heavy section
@@ -131,9 +130,11 @@ export default function App() {
 
   // ── 2. Sign out ───────────────────────────────────────────
   async function handleSignOut() {
-    if (user) clearAllDraftsForUser(user.id)
+    // Keep the user's drafts across logout (Option A): do NOT clear
+    // draft:<uid>:* keys, and keep `draft_uid` so the same per-user draft
+    // namespace is restored when they log back in. Only the auth session and
+    // cached profile are cleared.
     localStorage.removeItem('jsci_user')
-    localStorage.removeItem('draft_uid')
     await supabase.auth.signOut()
     setUser(null)
     setActiveNav(null)
