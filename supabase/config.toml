@@ -1,0 +1,19 @@
+# Supabase project config.
+#
+# Edge Function settings. The Google Sheets sync functions do their OWN
+# authentication via the shared-secret `x-sheets-sync-secret` header
+# (see supabase/functions/sheets-sync-pull & sheets-sync-ack), so Supabase's
+# built-in JWT gateway check MUST be turned off for them. Otherwise the gateway
+# returns 401 BEFORE the function code runs — the Apps Script sync worker sends
+# the shared secret, not a Supabase JWT, so every pull/ack would be rejected and
+# no data would ever reach Google Sheets.
+#
+# NOTE: `sms-hook` is an Auth hook invoked by Supabase Auth with its own
+# verification (standardwebhooks); it is intentionally NOT listed here and keeps
+# the default behavior.
+
+[functions.sheets-sync-pull]
+verify_jwt = false
+
+[functions.sheets-sync-ack]
+verify_jwt = false

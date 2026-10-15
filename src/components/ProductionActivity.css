@@ -160,6 +160,39 @@
   font-size: 13px;
 }
 
+/* ── Group meta row (batch no, submitted, remaining) ────────── */
+.pa-group-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 24px;
+  padding: 10px 16px;
+  background: #fafaf8;
+  border-bottom: 1px solid #e0dbd4;
+}
+.pa-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pa-meta-k {
+  font-size: 10px;
+  font-weight: 600;
+  color: #888;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.pa-meta-v {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2d2d2d;
+}
+.pa-meta-remaining { color: #2e7d32; }
+.pa-meta-remaining-low { color: #c62828; }
+
+@media (max-width: 640px) {
+  .pa-group-meta { gap: 8px 16px; }
+}
+
 /* ── Table ─────────────────────────────────────────────────── */
 .pa-table-scroll {
   overflow-x: auto;

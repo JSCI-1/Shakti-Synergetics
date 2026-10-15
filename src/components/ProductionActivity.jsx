@@ -53,6 +53,17 @@ function stamp12hr(d = new Date()) {
   return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
 }
 
+// Format a remaining-ms duration as "Xh Ym left" (or "Expiring soon").
+function formatRemaining(ms) {
+  if (ms <= 0) return 'Expired'
+  const totalMin = Math.floor(ms / 60000)
+  const h = Math.floor(totalMin / 60)
+  const m = totalMin % 60
+  if (h === 0 && m === 0) return 'Expiring soon'
+  if (h === 0) return `${m}m left`
+  return `${h}h ${m}m left`
+}
+
 // Group non-expired rows by dryer_type → log_date, keeping each hour's
 // latest values. Returns an array of { dryerType, date, hours }.
 function groupRows(rows) {
@@ -60,9 +71,22 @@ function groupRows(rows) {
   rows.filter(isActive).forEach(r => {
     const key = `${r.dryer_type}|${r.log_date}`
     if (!groups.has(key)) {
-      groups.set(key, { dryerType: r.dryer_type, date: r.log_date, hours: {} })
+      groups.set(key, {
+        dryerType: r.dryer_type,
+        date: r.log_date,
+        hours: {},
+        lastSavedAt: r.last_saved_at,   // most recent submission in this group
+        batchNo: '',
+      })
     }
-    groups.get(key).hours[r.hour] = r.values || {}
+    const g = groups.get(key)
+    g.hours[r.hour] = r.values || {}
+    // Track the newest submission timestamp across all hours in this group
+    if (r.last_saved_at && (!g.lastSavedAt || new Date(r.last_saved_at) > new Date(g.lastSavedAt))) {
+      g.lastSavedAt = r.last_saved_at
+    }
+    // Capture the latest non-empty batch no. from the hour values
+    if (r.values?.batch_no) g.batchNo = r.values.batch_no
   })
 
   return Array.from(groups.values()).sort((a, b) => {
@@ -334,18 +358,41 @@ export default function ProductionActivity() {
         <div className="pa-status">No active entries in the last 24 hours.</div>
       )}
 
-      {groups.map(g => (
-        <div key={`${g.dryerType}|${g.date}`} className={`pa-group pa-group-${g.dryerType}`}>
-          <div className="pa-group-header">
-            <span className="pa-group-title">
-              <span className="pa-group-icon" aria-hidden="true"></span>
-              {groupHeader(g)}
-            </span>
-            <span className="pa-24h-pill">🕐 Showing lasts upto 24 hours only</span>
+      {groups.map(g => {
+        const submittedAt = g.lastSavedAt ? new Date(g.lastSavedAt) : null
+        const remainingMs = submittedAt ? EXPIRY_MS - (Date.now() - submittedAt.getTime()) : 0
+        return (
+          <div key={`${g.dryerType}|${g.date}`} className={`pa-group pa-group-${g.dryerType}`}>
+            <div className="pa-group-header">
+              <span className="pa-group-title">
+                <span className="pa-group-icon" aria-hidden="true"></span>
+                {groupHeader(g)}
+              </span>
+              <span className="pa-24h-pill">🕐 Showing lasts upto 24 hours only</span>
+            </div>
+
+            {/* Entry meta: batch no, submitted time, remaining time */}
+            <div className="pa-group-meta">
+              <span className="pa-meta-item">
+                <span className="pa-meta-k">Batch No.</span>
+                <span className="pa-meta-v">{cellVal(g.batchNo)}</span>
+              </span>
+              <span className="pa-meta-item">
+                <span className="pa-meta-k">Submitted</span>
+                <span className="pa-meta-v">{submittedAt ? stamp12hr(submittedAt) : '—'}</span>
+              </span>
+              <span className="pa-meta-item">
+                <span className="pa-meta-k">Remaining</span>
+                <span className={`pa-meta-v pa-meta-remaining${remainingMs < 60 * 60 * 1000 ? ' pa-meta-remaining-low' : ''}`}>
+                  {formatRemaining(remainingMs)}
+                </span>
+              </span>
+            </div>
+
+            <ActivityTable group={g} />
           </div>
-          <ActivityTable group={g} />
-        </div>
-      ))}
+        )
+      })}
 
       {qcGroups.map(r => (
         <QcCard key={`${r.dryer}|${r.log_date}|${r.grade}`} row={r} />

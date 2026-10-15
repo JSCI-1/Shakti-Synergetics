@@ -4,6 +4,7 @@
 
 import React, { useState, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
+import { useDraft, useUserId } from '../utils/useDraft.js'
 import './SlurryOperator.css'
 
 // ── Constants ──────────────────────────────────────────────
@@ -67,23 +68,23 @@ function emptyMotorForm() {
 
 export default function SlurryOperator() {
 
+  const uid = useUserId()
+
   // ── State ──
-  const [form,   setForm]   = useState(emptyForm())
+  const [form,   setForm,   clearFormDraft]   = useDraft(`draft:${uid}:slurryop:form`,   emptyForm())
   const [saving, setSaving] = useState(false)
   const [saved,  setSaved]  = useState(false)
   const [error,  setError]  = useState('')
 
   const [motorOpen,   setMotorOpen]   = useState(false)
-  const [motorForm,   setMotorForm]   = useState(emptyMotorForm())
+  const [motorForm,   setMotorForm,   clearMotorDraft]   = useDraft(`draft:${uid}:slurryop:motor`,   emptyMotorForm())
   const [motorSaving, setMotorSaving] = useState(false)
   const [motorSaved,  setMotorSaved]  = useState(false)
   const [motorError,  setMotorError]  = useState('')
 
   // Timestamp stores — separate from input values so saves never re-render inputs
-  // millTimestamps[`${mi}_${fi}`] = time string
-  const [millTimestamps,  setMillTimestamps]  = useState({})
-  // motorTimestamps[mi] = time string (set when both amp + stop are filled)
-  const [motorTimestamps, setMotorTimestamps] = useState({})
+  const [millTimestamps,  setMillTimestamps,  clearMillTs]  = useDraft(`draft:${uid}:slurryop:millts`,  {})
+  const [motorTimestamps, setMotorTimestamps, clearMotorTs] = useDraft(`draft:${uid}:slurryop:motorts`, {})
 
   // Toast / error popup
   const [toast,    setToast]    = useState(null)   // { msg, type }
@@ -232,8 +233,8 @@ export default function SlurryOperator() {
       showErrorPopup(err.message)
     } else {
       setSaved(true)
-      setForm(emptyForm())
-      setMillTimestamps({})
+      clearFormDraft()
+      clearMillTs()
     }
   }
 
@@ -263,8 +264,8 @@ export default function SlurryOperator() {
       showErrorPopup(err.message)
     } else {
       setMotorSaved(true)
-      setMotorForm(emptyMotorForm())
-      setMotorTimestamps({})
+      clearMotorDraft()
+      clearMotorTs()
     }
   }
 
@@ -420,7 +421,7 @@ export default function SlurryOperator() {
             {saving ? 'Saving…' : 'Save Job Card / जॉब कार्ड सहेजें'}
           </button>
           <button type="button" className="so-reset-btn"
-            onClick={() => { setForm(emptyForm()); setMillTimestamps({}); setSaved(false); setError('') }}>
+            onClick={() => { clearFormDraft(); clearMillTs(); setSaved(false); setError('') }}>
             Reset / रीसेट
           </button>
         </div>
@@ -523,7 +524,7 @@ export default function SlurryOperator() {
                 {motorSaving ? 'Saving…' : 'Save Motor Status / मोटर स्थिति सहेजें'}
               </button>
               <button type="button" className="so-reset-btn"
-                onClick={() => { setMotorForm(emptyMotorForm()); setMotorTimestamps({}); setMotorSaved(false); setMotorError('') }}>
+                onClick={() => { clearMotorDraft(); clearMotorTs(); setMotorSaved(false); setMotorError('') }}>
                 Reset / रीसेट
               </button>
             </div>
@@ -535,3 +536,5 @@ export default function SlurryOperator() {
     </div>
   )
 }
+
+          

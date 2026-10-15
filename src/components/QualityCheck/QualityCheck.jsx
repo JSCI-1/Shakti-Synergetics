@@ -242,13 +242,25 @@ function collectReportValues() {
   const content = document.getElementById('qc-content')
   if (!content) return out
 
-  // Formula cards — store the computed result (numeric part only)
+  // Formula cards — store BOTH the computed result AND each input variable.
+  // The result is keyed by the card id (e.g. 'sulphurPowder_purity').
+  // Each input var is keyed as '<cardId>__<varKey>' (e.g.
+  // 'sulphurPowder_purity__M1') so purity's M and mesh-size's M never collide,
+  // and the sync pipeline emits an independent field_change (own entry time)
+  // for every input exactly like a spec field.
   content.querySelectorAll('[data-formula-card]').forEach(card => {
     const id = card.getAttribute('data-formula-card')
     if (!id) return
     const resultText = card.querySelector('.qc-calc-value[data-result]')?.textContent.trim() || ''
     const num = resultText.replace(/[^0-9.+-].*$/, '').trim()
     out[id] = num !== '' && num !== '—' ? num : ''
+
+    // Capture each input variable cell as its own value key.
+    card.querySelectorAll('input[data-var-key]').forEach(inp => {
+      const vk = inp.getAttribute('data-var-key')
+      if (!vk) return
+      out[`${id}__${vk}`] = inp.value ?? ''
+    })
   })
 
   // Single-spec blocks (pH, Wettability, Moisture %) — keyed by data-test-id
@@ -677,10 +689,10 @@ export default function QualityCheck({ user }) {
     else if (activeTab === 'ip') setIpDraft(p => ({ ...p, testedBy: v }))
     else setFgDraft(p => ({ ...p, testedBy: v }))
   }
-  const setRmInvoiceNo    = v => setRmDraft(p => ({ ...p, invoiceNo: v }))
-  const setRmBatchNo      = v => setRmDraft(p => ({ ...p, batchNo: v }))
-  const setRmSupplierName = v => setRmDraft(p => ({ ...p, supplierName: v }))
-  const setRmTime         = v => setRmDraft(p => ({ ...p, time: v }))
+  const setRmInvoiceNo    = v => { markIdentityEntry('invoice_no', v);   setRmDraft(p => ({ ...p, invoiceNo: v })) }
+  const setRmBatchNo      = v => { markIdentityEntry('batch_no', v);     setRmDraft(p => ({ ...p, batchNo: v })) }
+  const setRmSupplierName = v => { markIdentityEntry('supplier_name', v); setRmDraft(p => ({ ...p, supplierName: v })) }
+  const setRmTime         = v => { markIdentityEntry('time', v);         setRmDraft(p => ({ ...p, time: v })) }
   const setIpBatchNo      = v => setIpDraft(p => ({ ...p, batchNo: v }))
   const setIpTime         = v => setIpDraft(p => ({ ...p, time: v }))
   const setFgBatchNo      = v => setFgDraft(p => ({ ...p, batchNo: v }))
@@ -713,6 +725,17 @@ export default function QualityCheck({ user }) {
   const setIpMillRows     = fn => setIpDraft(p => ({ ...p, millRows: typeof fn === 'function' ? fn(p.millRows) : fn }))
   const setSuspInputs     = fn => setIpDraft(p => ({ ...p, suspInputs: typeof fn === 'function' ? fn(p.suspInputs) : fn }))
   const setSuspCardMill   = v => setIpDraft(p => ({ ...p, suspCardMill: v }))
+
+  // In-Process formula-card inputs, persisted per formula id so switching the
+  // "Additional Test" dropdown (which remounts the cards) never loses typed
+  // data — switching back restores it. Shape: { [formulaId]: { [varKey]: val } }
+  const ipFormulaInputs      = ipDraft.formulaInputs || {}
+  const getIpFormulaInputs   = fid => ipFormulaInputs[fid] || {}
+  const setIpFormulaInputs   = (fid, next) =>
+    setIpDraft(p => ({
+      ...p,
+      formulaInputs: { ...(p.formulaInputs || {}), [fid]: next },
+    }))
 
   // Brand/type state — stored in draft, not useBrandType hook
   const rmBrand    = rmDraft.brand || ''
@@ -879,6 +902,64 @@ export default function QualityCheck({ user }) {
 
   const setVal = (id, val) => setValues(p => ({ ...p, [id]: val }))
 
+  // ── Per-field FIRST-ENTRY timestamps ────────────────────────────
+  // The RM/IP/FG forms only persist once (on Print/Download), so without this
+  // every field would share the save-moment timestamp. Here we record, per tab,
+  // the real clock time each field FIRST receives a non-empty value as the user
+  // types. A single capture-phase 'input' listener on the QC content area keys
+  // each field exactly as collectReportValues() does, so the times line up with
+  // the saved value keys. These times are sent to the DB on save (inside
+  // values.__ts) and the trigger uses them as field_entry_ts. No UI change.
+  const fieldEntryTimesRef = useRef({})   // { [activeTab]: { [valueKey]: ISO } }
+
+  function fieldKeyForInput(el) {
+    // Match the exact keys collectReportValues() produces.
+    if (el.hasAttribute('data-var-key')) {
+      const card = el.closest('[data-formula-card]')
+      const cardId = card ? card.getAttribute('data-formula-card') : ''
+      return cardId ? `${cardId}__${el.getAttribute('data-var-key')}` : null
+    }
+    if (el.hasAttribute('data-param-id')) return el.getAttribute('data-param-id')
+    if (el.hasAttribute('data-upl-id'))   return el.getAttribute('data-upl-id')
+    const specBlock = el.closest('.qc-single-spec[data-test-id]')
+    if (specBlock) return specBlock.getAttribute('data-test-id')
+    return null
+  }
+
+  useEffect(() => {
+    const content = document.getElementById('qc-content')
+    if (!content) return
+    function onInput(e) {
+      const el = e.target
+      if (!el || (el.tagName !== 'INPUT' && el.tagName !== 'SELECT' && el.tagName !== 'TEXTAREA')) return
+      const key = fieldKeyForInput(el)
+      if (!key) return
+      const val = (el.value ?? '').trim()
+      const bucket = fieldEntryTimesRef.current[activeTab] || (fieldEntryTimesRef.current[activeTab] = {})
+      if (val !== '') {
+        // Record only the FIRST time this field becomes non-empty (original entry).
+        if (!bucket[key]) bucket[key] = new Date().toISOString()
+      }
+    }
+    content.addEventListener('input', onInput, true)   // capture phase
+    content.addEventListener('change', onInput, true)  // selects fire 'change'
+    return () => {
+      content.removeEventListener('input', onInput, true)
+      content.removeEventListener('change', onInput, true)
+    }
+  }, [activeTab])
+
+  // Capture identity-field first-entry times (Batch No., Supplier, Invoice,
+  // Time, Tested By, Date) which live in the BatchHeader, outside #qc-content.
+  // Keyed by the identity keys the trigger/allow-list expect.
+  const identityEntryTimesRef = useRef({})
+  function markIdentityEntry(key, val) {
+    const bucket = identityEntryTimesRef.current[activeTab] || (identityEntryTimesRef.current[activeTab] = {})
+    if ((val ?? '').toString().trim() !== '' && !bucket[key]) {
+      bucket[key] = new Date().toISOString()
+    }
+  }
+
   function handleTabChange(key) {
     setActiveTab(key)
     setResetKey(k => k + 1)
@@ -886,6 +967,10 @@ export default function QualityCheck({ user }) {
 
   function handleReset() {
     setResetKey(k => k + 1)
+    // Clear captured per-field entry times for this tab so a fresh record
+    // starts stamping from scratch.
+    fieldEntryTimesRef.current[activeTab] = {}
+    identityEntryTimesRef.current[activeTab] = {}
     if (activeTab === 'rm') {
       clearRmDraft()
     }
@@ -907,10 +992,116 @@ export default function QualityCheck({ user }) {
     })
   }
 
+  // ───────────────────────────────────────────────────────────
+  // Build the quality_control_records row for the Raw Materials or
+  // In-Process tab. Mirrors the FG row shape: a flat `values` jsonb of
+  // the captured observation values PLUS the section's meta/identity keys
+  // (date, tested_by, batch_no, …) so the existing qc_raw_materials /
+  // qc_in_process views and the Google Sheets sync pick them up with no
+  // further mapping. `captured` is the live-DOM scrape (same values the
+  // printout shows). Returns null if the tab is not rm/ip.
+  // ───────────────────────────────────────────────────────────
+  function buildRmIpRow(captured) {
+    if (activeTab === 'rm') {
+      return {
+        tab: 'rm',
+        date: date || null,
+        tested_by: testedBy || null,
+        values: {
+          ...captured,
+          date: date || null,
+          tested_by: testedBy || null,
+          material: rmSelected || null,
+          brand: rmBrand || null,
+          supplier_name: rmSupplierName || null,
+          invoice_no: rmInvoiceNo || null,
+          batch_no: rmBatchNo || null,
+          time: rmTime || null,
+          // Per-field first-entry times (ISO) → used by the trigger as
+          // field_entry_ts so each field shows its REAL entry time, not the
+          // single save-moment time.
+          __ts: collectFieldEntryTimes(),
+        },
+      }
+    }
+    if (activeTab === 'ip') {
+      return {
+        tab: 'ip',
+        date: date || null,
+        tested_by: testedBy || null,
+        values: {
+          ...captured,
+          date: date || null,
+          tested_by: testedBy || null,
+          material: ipSelected || null,
+          brand: ipBrand || null,
+          batch_no: ipBatchNo || null,
+          time: ipTime || null,
+          // Mill-wise suspensibility rows (array) — stored under the key the
+          // qc_in_process / qc_in_process_mills views already read.
+          ip_mill_rows: Array.isArray(ipMillRows) ? ipMillRows : [],
+          // Per-field first-entry times (ISO) → used by the trigger as
+          // field_entry_ts so each field shows its REAL entry time.
+          __ts: collectFieldEntryTimes(),
+        },
+      }
+    }
+    return null
+  }
+
+  // Merge the captured per-field + identity first-entry times for the active tab
+  // into one { valueKey: ISO } map, to send inside values.__ts on save.
+  function collectFieldEntryTimes() {
+    return {
+      ...(identityEntryTimesRef.current[activeTab] || {}),
+      ...(fieldEntryTimesRef.current[activeTab] || {}),
+    }
+  }
+
   async function handlePrint() {
-    // Save-before-print is scoped to the Finished Goods tab only.
-    // RM / IP printing is left exactly as before (no DB write).
-    if (activeTab !== 'fg') {
+    // Save-before-print now covers all three tabs. The Finished Goods path
+    // keeps its original per-(dryer,grade) behavior below; Raw Materials and
+    // In-Process use the shared buildRmIpRow() shape. The DB table + RLS
+    // (migration 006) already accept tab='rm'/'ip'.
+    if (activeTab === 'rm' || activeTab === 'ip') {
+      if (qcSaving) return   // in-flight guard — ignore repeated clicks
+
+      const captured = collectReportValues()
+
+      // Light validation — require a date or at least one captured value.
+      const hasValue = Object.values(captured).some(v => v !== '' && v != null)
+      if (!date && !hasValue) {
+        setQcError('Enter at least one value before saving.')
+        return
+      }
+
+      const row = buildRmIpRow(captured)
+
+      // Skip an identical immediate re-save (defence against double submit).
+      const sig = JSON.stringify(row.values)
+      if (sig === lastSavedSig.current) {
+        doPrint()
+        return
+      }
+
+      if (!supabaseReady) {
+        setQcError('Supabase not configured. Cannot save report — printing is blocked.')
+        return
+      }
+
+      setQcSaving(true)
+      setQcError('')
+
+      const { error } = await supabase.from('quality_control_records').insert([row])
+
+      setQcSaving(false)
+
+      if (error) {
+        setQcError(error.message || 'Failed to save report.')
+        return   // do NOT print on save failure
+      }
+
+      lastSavedSig.current = sig
       doPrint()
       return
     }
@@ -1060,15 +1251,24 @@ export default function QualityCheck({ user }) {
         </div>
         {IN_PROCESS_PINNED.map(item =>
           item.tests.map(f => (
-            <FormulaCalculator key={`${f.id}-${resetKey}`} formula={f} />
+            <FormulaCalculator
+              key={f.id}
+              formula={f}
+              storedInputs={getIpFormulaInputs(f.id)}
+              onInputsChange={next => setIpFormulaInputs(f.id, next)}
+            />
           ))
         )}
 
-        {/* Additional test dropdown */}
+        {/* Additional test dropdown.
+            NOTE: switching the test no longer bumps resetKey — the cards are
+            now CONTROLLED (values live in ipDraft.formulaInputs), so changing
+            the dropdown simply swaps which card is shown while every test's
+            entered data is preserved and restored on switch-back. */}
         <div className="qc-dropdown-bar" style={{borderTop: '2px solid #e0dbd4', marginTop: '4px'}}>
           <label className="qc-dropdown-label">Additional Test / अतिरिक्त परीक्षण</label>
           <select className="qc-dropdown" value={ipSelected}
-            onChange={e => { setIpSelected(e.target.value); setResetKey(k => k + 1) }}>
+            onChange={e => { setIpSelected(e.target.value) }}>
             {IN_PROCESS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
           </select>
         </div>
@@ -1078,8 +1278,10 @@ export default function QualityCheck({ user }) {
             <div className="qc-mat-title">{ipLabel}</div>
             {test.tests.map(f => (
               <FormulaCalculator
-                key={`${f.id}-${resetKey}-${ipSelected}`}
+                key={f.id}
                 formula={f}
+                storedInputs={getIpFormulaInputs(f.id)}
+                onInputsChange={next => setIpFormulaInputs(f.id, next)}
                 onInputChange={f.calcFn === 'calcSuspensibility' ? setSuspInput : undefined}
               />
             ))}

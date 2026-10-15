@@ -11,11 +11,28 @@ const FN_MAP = {
   calcBulkDensity, calcPurity, calcMeshSize, calcSuspensibility,
 }
 
-export default function FormulaCalculator({ formula, onInputChange, onResult }) {
-  const [inputs, setInputs] = useState({})
+export default function FormulaCalculator({
+  formula,
+  onInputChange,
+  onResult,
+  // Optional CONTROLLED mode: when `storedInputs` + `onInputsChange` are
+  // provided, this card keeps its values in the parent's draft instead of
+  // local state, so they survive a remount (e.g. switching the In-Process
+  // additional test and switching back). When omitted, behavior is unchanged
+  // (local state) for every existing caller.
+  storedInputs,
+  onInputsChange,
+}) {
+  const controlled = typeof onInputsChange === 'function'
+  const [localInputs, setLocalInputs] = useState({})
+  const inputs = controlled ? (storedInputs || {}) : localInputs
 
   const setInput = (key, val) => {
-    setInputs(prev => ({ ...prev, [key]: val }))
+    if (controlled) {
+      onInputsChange({ ...(storedInputs || {}), [key]: val })
+    } else {
+      setLocalInputs(prev => ({ ...prev, [key]: val }))
+    }
     if (onInputChange) onInputChange(key, val)
   }
 
@@ -45,7 +62,10 @@ export default function FormulaCalculator({ formula, onInputChange, onResult }) 
     if (onResult) onResult(calcResult)
   }, [calcResult])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  function handleReset() { setInputs({}) }
+  function handleReset() {
+    if (controlled) onInputsChange({})
+    else setLocalInputs({})
+  }
 
   return (
     // data-formula-card — identified by printReport for DOM reading

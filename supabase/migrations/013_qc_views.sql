@@ -44,6 +44,15 @@ SELECT
   date,
   tested_by,
 
+  -- Raw Material report meta / identity (persisted in values jsonb by the
+  -- Raw Materials save-before-print path in QualityCheck.jsx)
+  values->>'material'       AS rm_material,       -- selected material id
+  values->>'brand'          AS rm_brand,
+  values->>'supplier_name'  AS rm_supplier_name,
+  values->>'invoice_no'     AS rm_invoice_no,
+  values->>'batch_no'       AS rm_batch_no,
+  values->>'time'           AS rm_time,
+
   -- Sulphur Powder
   (values->>'sulphurPowder_purity')::numeric    AS sp_purity_pct,
   (values->>'sulphurPowder_meshSize')::numeric  AS sp_mesh_size_pct,
@@ -91,6 +100,13 @@ SELECT
   date,
   tested_by,
 
+  -- In-Process report meta / identity (persisted in values jsonb by the
+  -- In-Process save-before-print path in QualityCheck.jsx)
+  values->>'material'       AS ip_material,       -- selected in-process test id
+  values->>'brand'          AS ip_brand,
+  values->>'batch_no'       AS ip_batch_no,
+  values->>'time'           AS ip_time,
+
   -- Solid Content (Moisture formula)
   (values->>'ip_moisture_calc')::numeric        AS solid_content_pct,
 
@@ -123,6 +139,7 @@ SELECT
   q.created_at,
   q.date,
   q.tested_by,
+  q.values->>'batch_no'                         AS ip_batch_no,
   (q.values->>'ip_sulphur_calc')::numeric       AS sulphur_content_pct,
   (q.values->>'ip_susp_calc')::numeric          AS suspensibility_pct,
   mill->>'mill'                                 AS mill,
@@ -222,6 +239,13 @@ SELECT
   tested_by,
 
   -- ── RAW MATERIALS ──
+  -- RM report meta / identity (persisted in values jsonb)
+  values->>'material'                           AS rm_material,
+  values->>'brand'                              AS rm_brand,
+  values->>'supplier_name'                      AS rm_supplier_name,
+  values->>'invoice_no'                         AS rm_invoice_no,
+  values->>'batch_no'                           AS qc_batch_no,  -- shared batch_no key (rm/ip)
+  values->>'time'                               AS qc_time,      -- shared time key (rm/ip)
   (values->>'sulphurPowder_purity')::numeric    AS rm_sp_purity_pct,
   (values->>'sulphurPowder_meshSize')::numeric  AS rm_sp_mesh_size_pct,
   (values->>'ligno_ph')::numeric                AS rm_ligno_ph,
@@ -241,6 +265,9 @@ SELECT
   values->>'mm_finish'                          AS rm_mm_finish,
 
   -- ── IN-PROCESS ──
+  -- IP report meta / identity (persisted in values jsonb). batch_no / time
+  -- share the qc_batch_no / qc_time columns above (same jsonb keys).
+  values->>'material'                           AS ip_material,
   (values->>'ip_moisture_calc')::numeric        AS ip_solid_content_pct,
   (values->>'ip_sulphur_calc')::numeric         AS ip_sulphur_content_pct,
   (values->>'ip_susp_calc')::numeric            AS ip_suspensibility_pct,

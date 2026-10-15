@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
+import { useDraft, useUserId } from '../utils/useDraft.js'
 import './BatchTraceability.css'
 
 // Batch Charge In tanks — Attrition Mills + HST only (no FST)
@@ -66,7 +67,8 @@ function emptyForm(sharedBatches) {
 }
 
 export default function BatchTraceability({ sharedBatches = [] }) {
-  const [form, setForm]     = useState(() => emptyForm(sharedBatches))
+  const uid = useUserId()
+  const [form, setForm, clearFormDraft] = useDraft(`draft:${uid}:batch:traceability`, () => emptyForm(sharedBatches))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
@@ -117,7 +119,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
     }])
     setSaving(false)
     if (err) setError(err.message)
-    else { setSaved(true); setForm(emptyForm(sharedBatches)) }
+    else { setSaved(true); clearFormDraft() }
   }
 
   const TC = ({ row, field, ri }) => (
@@ -282,7 +284,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
             {saving ? 'Saving…' : 'Save Record / रिकॉर्ड सहेजें'}
           </button>
           <button type="button" className="bt-reset-btn"
-            onClick={() => { setForm(emptyForm(sharedBatches)); setSaved(false); setError('') }}>
+            onClick={() => { clearFormDraft(); setSaved(false); setError('') }}>
             Reset / रीसेट
           </button>
         </div>

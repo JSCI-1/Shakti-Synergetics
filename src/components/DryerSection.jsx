@@ -162,10 +162,21 @@ function DryerForm({
   onClearDraft,
   onBack,
   userName,
+  isDryerOperator,
 }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+
+  // Auto-fill the Operator box with the logged-in user's name ONLY when they
+  // signed in as a Dryer Operator. An admin (or any other role) viewing the
+  // dryer section must NOT have their name injected — they fill it manually.
+  // Only prefill when the box is still empty so a name the operator typed (or a
+  // restored draft value) is never overwritten, and it never re-runs per render.
+  useEffect(() => {
+    if (!isDryerOperator || !userName) return
+    setForm(p => (p.operator ? p : { ...p, operator: userName }))
+  }, [isDryerOperator, userName])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Per-row shared-save state (SEPARATE from the form-level `error`
   // used by Save Log Sheet, to avoid collision):
@@ -1600,6 +1611,10 @@ function DryerForm({
 export default function DryerSection({ user }) {
   const uid = useUserId()
 
+  // Only a user whose role is exactly "Dryer Operator" gets their name
+  // auto-filled into the Operator box. Admins and other roles do not.
+  const isDryerOperator = user?.role === 'Dryer Operator'
+
   // null → selection screen; 'new' / 'old' → that dryer's form
   const [activeTab, setActiveTab] = useState(null)
 
@@ -1661,6 +1676,7 @@ export default function DryerSection({ user }) {
             onClearDraft={clearFormNewDraft}
             onBack={goBack}
             userName={user?.name ?? ''}
+            isDryerOperator={isDryerOperator}
           />
         </div>
 
@@ -1675,6 +1691,7 @@ export default function DryerSection({ user }) {
             onClearDraft={clearFormOldDraft}
             onBack={goBack}
             userName={user?.name ?? ''}
+            isDryerOperator={isDryerOperator}
           />
         </div>
 
