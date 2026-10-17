@@ -555,6 +555,56 @@ function resetDryerTabsClean() {
 
 
 /**
+ * ONE-SHOT: WIPE and recreate the three QC tabs ("Raw Material" / "In-Process" /
+ * "Finished Goods") clean — correct header on row 1, no data rows. Run this ONCE
+ * from the Apps Script editor to delete the earlier-filled QC data in the SHEET
+ * and start fresh. Does NOT replay.
+ *
+ * This clears only the SHEET. To also delete the earlier data at the SOURCE so
+ * it cannot re-sync, run in the Supabase SQL editor (see manual steps):
+ *     delete from quality_control_records;
+ *     delete from qc_fg_sieve_readings;
+ *     delete from qc_activity_draft;
+ *     delete from sheets_sync_outbox where record_kind in ('qc_rm','qc_ip','qc_fg');
+ *
+ * SAFE: touches ONLY the three QC tabs (the QC spreadsheet). The Dryer book and
+ * its tabs are untouched. Replay mode is explicitly turned OFF so nothing
+ * re-populates on its own.
+ */
+function resetQcTabsClean() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[resetQcTabsClean] Fail-closed: ' + e.message);
+    return;
+  }
+
+  var qcSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_QC);
+  var kinds = ['qc_rm', 'qc_ip', 'qc_fg'];
+  for (var i = 0; i < kinds.length; i++) {
+    var tabName = TAB.QC[kinds[i]];
+    var old = qcSS.getSheetByName(tabName);
+    if (old) { qcSS.deleteSheet(old); }
+    var sh = qcSS.insertSheet(tabName);
+    var layout = buildQcLayout_(kinds[i]);
+    ensureHeader_(sh, layout.header);
+    formatQcTab_(sh);
+    Logger.log('[resetQcTabsClean] Wiped + recreated tab: ' + tabName);
+  }
+
+  // Make sure replay is OFF so the wiped data does not come back.
+  PropertiesService.getScriptProperties().deleteProperty('REPLAY_FORCE_WRITE');
+
+  Logger.log('[resetQcTabsClean] Done. Raw Material / In-Process / Finished Goods are empty. '
+    + 'To also delete the source data so it cannot re-sync, run in Supabase SQL: '
+    + 'delete from quality_control_records; delete from qc_fg_sieve_readings; '
+    + 'delete from qc_activity_draft; '
+    + "delete from sheets_sync_outbox where record_kind in ('qc_rm','qc_ip','qc_fg');");
+}
+
+
+/**
  * ONE-TIME, RAW-MATERIAL-ONLY rebuild — run manually after the RM layout change.
  *
  * ensureHeader_ only FILLS BLANK header cells; it will NOT replace the old,
