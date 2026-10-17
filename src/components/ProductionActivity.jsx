@@ -206,6 +206,14 @@ function QcCard({ row }) {
   const wet = row.wet_sieve_log || []
   const dry = row.dry_sieve_log || []
 
+  // "Went live" = the FIRST moment this FG row became live (went_live_at,
+  // preserved across upserts by migration 029). "Remaining" counts down the
+  // 24-hour live window, the same basis the Dryer cards use (last_saved_at).
+  const wentLiveAt = row.went_live_at ? new Date(row.went_live_at) : null
+  const remainingMs = row.last_saved_at
+    ? EXPIRY_MS - (Date.now() - new Date(row.last_saved_at).getTime())
+    : 0
+
   return (
     <div className="pa-group pa-group-qc">
       <div className="pa-group-header">
@@ -214,6 +222,20 @@ function QcCard({ row }) {
           {header}
         </span>
         <span className="pa-24h-pill">🕐 Showing lasts upto 24 hours only</span>
+      </div>
+
+      {/* Live meta: when this FG row went live + remaining 24h window */}
+      <div className="pa-group-meta">
+        <span className="pa-meta-item">
+          <span className="pa-meta-k">Went live</span>
+          <span className="pa-meta-v">{wentLiveAt ? stamp12hr(wentLiveAt) : '—'}</span>
+        </span>
+        <span className="pa-meta-item">
+          <span className="pa-meta-k">Remaining</span>
+          <span className={`pa-meta-v pa-meta-remaining${remainingMs < 60 * 60 * 1000 ? ' pa-meta-remaining-low' : ''}`}>
+            {formatRemaining(remainingMs)}
+          </span>
+        </span>
       </div>
 
       <div className="pa-qc-body">
@@ -263,7 +285,7 @@ export default function ProductionActivity() {
         .order('log_date', { ascending: false }),
       supabase
         .from('qc_activity_draft')
-        .select('dryer, log_date, grade, product, batch_no, moisture_pct, suspensibility_pct, wet_sieve_log, dry_sieve_log, tested_by, last_saved_at')
+        .select('dryer, log_date, grade, product, batch_no, moisture_pct, suspensibility_pct, wet_sieve_log, dry_sieve_log, tested_by, went_live_at, last_saved_at')
         .gt('last_saved_at', cutoff)
         .order('log_date', { ascending: false }),
     ])

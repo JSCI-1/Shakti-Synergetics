@@ -16,6 +16,15 @@ const TABS = [
   { key: 'fg', label: 'Finished Goods', labelHi: 'तैयार माल'  },
 ]
 
+// ─────────────────────────────────────────────────────────────
+// Finished Goods live push to Production → Activity (qc_activity_draft).
+// ENABLED. The row only goes live once ALL required FG fields are entered
+// (see FG_ACTIVITY_REQUIRED_READY below) — no partial/incomplete row is
+// surfaced. The authoritative save (Print/Download → quality_control_records
+// → Google Sheets) is independent of this feed.
+// ─────────────────────────────────────────────────────────────
+const FG_ACTIVITY_LIVE_PUSH_ENABLED = true
+
 // Which UPL parameter rows a Wet/Dry Sieve formula result can be pushed into
 // (the micron targets shown in the UPL Parameters table), per grade.
 //   OMRI   → Wet Sieve + Dry Sieve
@@ -584,6 +593,13 @@ export default function QualityCheck({ user }) {
     batchNo: '', time: '',
     brand: '',
     millRows: emptyMillRows(), suspInputs: {}, suspCardMill: IP_MILLS[0],
+    // Persisted per-field timestamp bookkeeping (survives reload; cleared on
+    // Reset). tsMap: { [fieldKey]: ISO } is the authoritative entry/change time
+    // for each field; savedValues: { [fieldKey]: normalizedString } is the last
+    // saved value used to decide whether a field actually changed. On each
+    // Print/Download these are recomputed by comparing current vs saved values,
+    // so unchanged fixed tests keep their original timestamp across submits.
+    tsMap: {}, savedValues: {},
   })
   const [fgDraft, setFgDraft, clearFgDraft] = useDraft(`draft:${uid}:qc:fg`, {
     selected: FINISHED_GOODS[0].id,
@@ -714,12 +730,23 @@ export default function QualityCheck({ user }) {
     const cur   = slg[grade] || {}
     return { ...p, sieveLogByGrade: { ...slg, [grade]: { ...cur, [testId]: [ ...(cur[testId] || []), entry ] } } }
   })
-  const removeSieveEntry  = (testId, idx) => setFgDraft(p => {
-    const grade = p.uplGrade || 'normal'
-    const slg   = p.sieveLogByGrade || { normal: p.sieveLog || {} }
-    const cur   = slg[grade] || {}
-    return { ...p, sieveLogByGrade: { ...slg, [grade]: { ...cur, [testId]: (cur[testId] || []).filter((_, i) => i !== idx) } } }
-  })
+  const removeSieveEntry  = (testId, idx) => {
+    // Compute the post-delete list from the CURRENT active-grade log so we can
+    // sync the full updated list to the Google Sheet (handles deletions). The
+    // state update below uses its own functional updater for correctness.
+    const nextLog = ((sieveLog[testId]) || []).filter((_, i) => i !== idx)
+    setFgDraft(p => {
+      const grade = p.uplGrade || 'normal'
+      const slg   = p.sieveLogByGrade || { normal: p.sieveLog || {} }
+      const cur   = slg[grade] || {}
+      return { ...p, sieveLogByGrade: { ...slg, [grade]: { ...cur, [testId]: (cur[testId] || []).filter((_, i) => i !== idx) } } }
+    })
+    // Live push the updated (post-delete) list so the sheet cell drops the
+    // removed reading. Guard: only the two sieve tests sync live.
+    if (testId === 'fg_wetSieve' || testId === 'fg_drySieve') {
+      pushFgSieveReadings(testId, nextLog)
+    }
+  }
   const setUplMenuOpen    = v => setUplMenuOpenLocal(v)  // menu state is NOT persisted (intentional)
 
   const setIpMillRows     = fn => setIpDraft(p => ({ ...p, millRows: typeof fn === 'function' ? fn(p.millRows) : fn }))
@@ -769,6 +796,11 @@ export default function QualityCheck({ user }) {
     return Number.isFinite(n) ? n : null
   }
   const pushQcActivity = useCallback((override = {}) => {
+    // TEMPORARILY DISABLED: skip the live Production → Activity feed while the
+    // Google Sheet mapping is being verified. Flip FG_ACTIVITY_LIVE_PUSH_ENABLED
+    // back to true to resume. The Print/Download → quality_control_records save
+    // path (and the Google Sheets sync) is unaffected by this guard.
+    if (!FG_ACTIVITY_LIVE_PUSH_ENABLED) return
     if (!supabaseReady || !supabase) return
     const d = fgDraft || {}
     const dryer = d.dryer || 'ND1'
@@ -785,6 +817,29 @@ export default function QualityCheck({ user }) {
     const slg = d.sieveLogByGrade || { normal: d.sieveLog || {} }
     const log = slg[grade] || {}
     const product = (FINISHED_GOODS.find(p => p.id === d.selected) || {}).label || null
+
+    // ── Readiness gate (FG only) ───────────────────────────────────────────
+    // The row goes live in Production → Activity ONLY once ALL required FG
+    // fields are entered. Until then nothing is pushed, so no partial/incomplete
+    // row ever appears. Required fields:
+    //   • Manufactured Date (log_date)      • Dryer (ND1/ND2)
+    //   • Grade                             • Product
+    //   • Batch No.                         • Tested By
+    //   • Moisture %   (fg_moisture)        • Suspensibility (fg_susp result)
+    // The repeated Wet/Dry Sieve readings are NOT required — they accumulate
+    // progressively via Record clicks and stay additive once the row is live.
+    const suspReady = override.susp !== undefined ? toNum(override.susp) : toNum(suspResult)
+    const notEmpty = v => v !== null && v !== undefined && String(v).trim() !== ''
+    const FG_ACTIVITY_REQUIRED_READY =
+      notEmpty(logDate) &&
+      notEmpty(dryer) &&
+      notEmpty(grade) &&
+      notEmpty(product) &&
+      notEmpty(d.batchNo) &&
+      notEmpty(d.testedBy || userName) &&
+      notEmpty(curVals.fg_moisture) &&
+      suspReady !== null
+    if (!FG_ACTIVITY_REQUIRED_READY) return   // incomplete → do not go live yet
 
     const row = {
       dryer,
@@ -810,6 +865,66 @@ export default function QualityCheck({ user }) {
         if (error) console.warn('[QC Activity] live push failed:', error.message, error)
       })
   }, [fgDraft, suspResult, userName])
+
+  // ── Live Wet/Dry Sieve readings → Google Sheet (qc_fg_sieve_readings) ──────
+  // SEPARATE from Production → Activity (that is qc_activity_draft and stays
+  // bypassed). This path upserts ONE row per (date, batch, product, grade,
+  // dryer, test) holding the CURRENT full ordered reading list, so each
+  // recorded Wet/Dry Sieve reading reaches the Finished Goods tab AUTOMATICALLY
+  // on the "Record"/delete click — no Print/Download needed. The trigger
+  // (migration 028) enqueues an idempotent outbox event keyed by this business
+  // identity, and Code.gs rebuilds the stacked sieve cell by business key.
+  //
+  // We write the WHOLE current list every time (not a delta), so additions AND
+  // deletions are reflected, and the server-side rebuild is deterministic (no
+  // duplicates on retries). Each reading keeps its own website-recorded iso_time.
+  // Never blocks the UI; errors are logged, not thrown. The authoritative
+  // Print/Download → quality_control_records save is unaffected.
+  const pushFgSieveReadings = useCallback((testId, readingsArr) => {
+    if (!supabaseReady || !supabase) return
+    const d = fgDraft || {}
+    const logDate = d.date
+    if (!logDate) return                 // need a date to key the live row
+    if (testId !== 'fg_wetSieve' && testId !== 'fg_drySieve') return
+    const grade   = d.uplGrade || 'normal'
+    const dryer   = d.dryer || 'ND1'
+    const product = d.selected || null   // product id (e.g. 'sulphur80wdg')
+
+    // Normalize the readings into the stored shape: ordered, with a 1-based
+    // reading_no, micron (targetLabel), result, status, and the genuine
+    // website-recorded iso_time (never an upload time).
+    const arr = Array.isArray(readingsArr) ? readingsArr : []
+    const readings = arr.map((e, i) => ({
+      reading_no: i + 1,
+      result:     e && e.result !== undefined && e.result !== null ? String(e.result) : '',
+      micron:     e && e.targetLabel ? String(e.targetLabel) : '',
+      status:     e && e.status ? String(e.status) : '',
+      iso_time:   e && e.isoTime ? e.isoTime : null,
+      // Designated UPL Extra Parameters result field this reading feeds
+      // (e.g. 'upl_exp_ws_160' / 'upl_omri_ds_500'). Lets the sheet update that
+      // exact UPL parameter's current-result cell + timestamp, not just the log.
+      upl_id:     e && e.uplId ? String(e.uplId) : null,
+    }))
+
+    const row = {
+      log_date:  logDate,
+      batch_no:  d.batchNo || null,
+      product,
+      grade,
+      dryer,
+      test:      testId,
+      readings,
+      tested_by: d.testedBy || userName || null,
+      updated_at: new Date().toISOString(),
+    }
+
+    supabase
+      .from('qc_fg_sieve_readings')
+      .upsert(row, { onConflict: 'log_date,batch_no,product,grade,dryer,test' })
+      .then(({ error }) => {
+        if (error) console.warn('[FG Sieve Sync] live push failed:', error.message, error)
+      })
+  }, [fgDraft, userName])
 
   // Debounced live push when FG batch / moisture / suspensibility / dryer /
   // date / grade change (FG tab only, and only once a date is set).
@@ -848,8 +963,19 @@ export default function QualityCheck({ user }) {
 
   // ── In-Process mill rows ── (now stored in ipDraft.millRows via setIpMillRows alias above)
 
+  // Set a mill cell and, the FIRST time that mill row becomes non-empty, stamp
+  // its own entry time (__ts). Each mill thus carries its OWN original entry
+  // time, so the Google Sheet shows a distinct Timestamp per mill (V1's time is
+  // not copied onto V2…V10). The stamp is set once and preserved on later edits.
   const setIpMillCell = (idx, field, val) =>
-    setIpMillRows(prev => prev.map((r, i) => i === idx ? { ...r, [field]: val } : r))
+    setIpMillRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r
+      const next = { ...r, [field]: val }
+      const hasData = String(next.br ?? '') !== '' || String(next.flowRate ?? '') !== '' ||
+                      String(next.pass ?? '') !== ''
+      if (hasData && !next.__ts) next.__ts = new Date().toISOString()
+      return next
+    }))
 
   // ── Suspensibility card inputs (lifted for mill table) ──
   const setSuspInput = useCallback((key, val) =>
@@ -859,7 +985,12 @@ export default function QualityCheck({ user }) {
     const cardBR = suspInputs.BR ?? ''
     const idx = ipMillRows.findIndex(r => r.mill === suspCardMill)
     if (idx === -1 || !cardBR) return
-    setIpMillRows(prev => prev.map((r, i) => i === idx ? { ...r, br: cardBR } : r))
+    setIpMillRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r
+      const next = { ...r, br: cardBR }
+      if (!next.__ts) next.__ts = new Date().toISOString()   // stamp this mill's own entry time
+      return next
+    }))
   }
 
   // ── Brand/type popup state (transient — not persisted) ──
@@ -897,7 +1028,12 @@ export default function QualityCheck({ user }) {
     const cardBR = suspInputs.BR ?? ''
     const idx = ipMillRows.findIndex(r => r.mill === suspCardMill)
     if (idx === -1 || !cardBR) return
-    setIpMillRows(prev => prev.map((r, i) => i === idx ? { ...r, br: cardBR } : r))
+    setIpMillRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r
+      const next = { ...r, br: cardBR }
+      if (!next.__ts) next.__ts = new Date().toISOString()   // stamp this mill's own entry time
+      return next
+    }))
   }
 
   const setVal = (id, val) => setValues(p => ({ ...p, [id]: val }))
@@ -1001,6 +1137,75 @@ export default function QualityCheck({ user }) {
   // further mapping. `captured` is the live-DOM scrape (same values the
   // printout shows). Returns null if the tab is not rm/ip.
   // ───────────────────────────────────────────────────────────
+  // Normalize a field value for change-detection so equivalent values are not
+  // treated as different (e.g. '5' == '5.0' == 5; trims whitespace; '' for
+  // null/undefined). Numeric strings compare by numeric value; everything else
+  // by trimmed string.
+  function normalizeTsValue(v) {
+    if (v === null || v === undefined) return ''
+    const s = String(v).trim()
+    if (s === '') return ''
+    const n = Number(s)
+    return Number.isFinite(n) && s !== '' ? String(n) : s
+  }
+
+  // Compute the authoritative per-field timestamp map for an In-Process save.
+  // For every field key present in `captured` (plus the identity keys), compare
+  // its normalized current value against the last saved value
+  // (ipDraft.savedValues):
+  //   • unchanged   → keep the existing ipDraft.tsMap[key] (original time)
+  //   • new/changed → use the REAL per-field entry time the capture-phase
+  //                   listener recorded when the user first typed THAT field
+  //                   (fieldEntryTimesRef / identityEntryTimesRef). Fall back to
+  //                   `nowIso` only when no captured time exists (e.g. a value
+  //                   restored from a draft that was never re-typed this session).
+  // This is what makes fields typed at DIFFERENT times show DIFFERENT times,
+  // instead of every field sharing the single Print/Download moment.
+  // Mill rows keep their own per-mill __ts (set in setIpMillCell). Returns the
+  // next { tsMap, savedValues } to both send (__ts) and persist to the draft.
+  function computeIpTimestamps(captured, millRows, nowIso) {
+    const prevTs    = ipDraft.tsMap || {}
+    const prevVals  = ipDraft.savedValues || {}
+    const nextTs     = { ...prevTs }
+    const nextSaved  = { ...prevVals }
+
+    // Real per-field first-entry times captured while the user typed.
+    const fieldTimes    = fieldEntryTimesRef.current[activeTab] || {}
+    const identityTimes = identityEntryTimesRef.current[activeTab] || {}
+    const capturedTimeFor = key =>
+      fieldTimes[key] || identityTimes[key] || null
+
+    // Build the set of value keys to track: captured DOM fields + identity keys.
+    const keys = new Set(Object.keys(captured || {}))
+    Object.keys(identityTimes).forEach(k => keys.add(k))
+
+    keys.forEach(key => {
+      const curNorm = normalizeTsValue(captured[key])
+      if (curNorm === '') {
+        // Field is empty now — drop its tracked value/time (Reset-like per field).
+        delete nextSaved[key]
+        delete nextTs[key]
+        return
+      }
+      const prevNorm = Object.prototype.hasOwnProperty.call(nextSaved, key)
+        ? nextSaved[key] : undefined
+      if (prevNorm === undefined) {
+        // NEWLY entered this cycle → use the real first-typing time if captured,
+        // else the save moment. (The capture listener records the first time the
+        // field became non-empty, so different fields get different times.)
+        nextTs[key] = capturedTimeFor(key) || nowIso
+      } else if (prevNorm !== curNorm) {
+        // GENUINELY CHANGED since last save → new time = the change moment.
+        // (The first-entry capture does not update on edits, so use nowIso.)
+        nextTs[key] = nowIso
+      }
+      // else: unchanged → keep nextTs[key] as-is (original time preserved).
+      nextSaved[key] = curNorm
+    })
+
+    return { tsMap: nextTs, savedValues: nextSaved }
+  }
+
   function buildRmIpRow(captured) {
     if (activeTab === 'rm') {
       return {
@@ -1025,6 +1230,12 @@ export default function QualityCheck({ user }) {
       }
     }
     if (activeTab === 'ip') {
+      // Authoritative per-field timestamps: unchanged fields keep their original
+      // time; new/changed fields get `now`. Persisted in ipDraft so repeated
+      // Print/Download (and changing the additional test) never regenerate a
+      // stable field's timestamp. tsInfo is computed by handlePrint and passed
+      // on ipTsOverride; fall back to the stored map if absent.
+      const tsMap = (buildRmIpRow._ipTsMap) || (ipDraft.tsMap || {})
       return {
         tab: 'ip',
         date: date || null,
@@ -1038,11 +1249,21 @@ export default function QualityCheck({ user }) {
           batch_no: ipBatchNo || null,
           time: ipTime || null,
           // Mill-wise suspensibility rows (array) — stored under the key the
-          // qc_in_process / qc_in_process_mills views already read.
-          ip_mill_rows: Array.isArray(ipMillRows) ? ipMillRows : [],
-          // Per-field first-entry times (ISO) → used by the trigger as
-          // field_entry_ts so each field shows its REAL entry time.
-          __ts: collectFieldEntryTimes(),
+          // qc_in_process / qc_in_process_mills views already read. Enrich each
+          // row with the computed Suspension % (same value the UI shows via
+          // computeRowSusp) so the Google Sheet mill columns match the website
+          // table exactly. 'susp' is additive; existing readers ignore it.
+          // Each row keeps its own per-mill __ts (set in setIpMillCell).
+          ip_mill_rows: Array.isArray(ipMillRows)
+            ? ipMillRows.map(r => {
+                const susp = computeRowSusp(r.br, suspInputs)
+                return { ...r, susp: susp !== null && susp !== undefined ? String(susp) : '' }
+              })
+            : [],
+          // Authoritative per-field entry/change times (ISO). The Apps Script
+          // snapshot renders these directly into each field's Timestamp cell,
+          // so unchanged fields keep their original time across submits.
+          __ts: tsMap,
         },
       }
     }
@@ -1075,7 +1296,19 @@ export default function QualityCheck({ user }) {
         return
       }
 
+      // In-Process: compute authoritative per-field timestamps by comparing the
+      // current values with the last-saved values. Unchanged fields keep their
+      // original time; new/changed fields get `now`. Stash the map so
+      // buildRmIpRow sends it, and remember the next maps to persist on success.
+      let ipTsNext = null
+      if (activeTab === 'ip') {
+        const nowIso = new Date().toISOString()
+        ipTsNext = computeIpTimestamps(captured, ipMillRows, nowIso)
+        buildRmIpRow._ipTsMap = ipTsNext.tsMap
+      }
+
       const row = buildRmIpRow(captured)
+      buildRmIpRow._ipTsMap = null   // clear the one-shot stash
 
       // Skip an identical immediate re-save (defence against double submit).
       const sig = JSON.stringify(row.values)
@@ -1101,6 +1334,12 @@ export default function QualityCheck({ user }) {
         return   // do NOT print on save failure
       }
 
+      // Persist the recomputed In-Process timestamp bookkeeping so the NEXT
+      // submit can preserve unchanged fields' original times.
+      if (activeTab === 'ip' && ipTsNext) {
+        setIpDraft(p => ({ ...p, tsMap: ipTsNext.tsMap, savedValues: ipTsNext.savedValues }))
+      }
+
       lastSavedSig.current = sig
       doPrint()
       return
@@ -1119,6 +1358,35 @@ export default function QualityCheck({ user }) {
       return
     }
 
+    // Repeated Wet/Dry Sieve readings for the ACTIVE grade. Each entry carries
+    // its own recorded time (entry.time, already an IST hh:mm AM/PM string) and
+    // the micron target label it was recorded against. Stored as arrays so the
+    // Google Sheet can lay each reading out as its OWN numbered value+Timestamp
+    // pair — repeated readings are never collapsed into one cell. The ISO entry
+    // times go into values.__ts under synthetic per-reading keys so each reading
+    // column shows its genuine recorded time (not the save moment).
+    const wetSieveLog = Array.isArray(sieveLog.fg_wetSieve) ? sieveLog.fg_wetSieve : []
+    const drySieveLog = Array.isArray(sieveLog.fg_drySieve) ? sieveLog.fg_drySieve : []
+
+    // Per-field FIRST-ENTRY times the capture listener recorded as the user
+    // typed (same source RM uses). Each FG field thus shows its genuine entry
+    // time instead of the single Print/Download moment.
+    const fgEntryTimes = collectFieldEntryTimes()
+
+    // Add a per-reading ISO timestamp for every recorded sieve reading, keyed
+    // so Code.gs can place it next to the matching numbered reading column.
+    // Prefer each entry's own isoTime (captured at Record time); fall back to
+    // the field's first-entry time only when an older entry lacks isoTime.
+    const sieveTs = {}
+    wetSieveLog.forEach((e, i) => {
+      const iso = e && e.isoTime ? e.isoTime : (fgEntryTimes.fg_wetSieve || null)
+      if (iso) sieveTs[`fg_wetSieve_reading_${i + 1}`] = iso
+    })
+    drySieveLog.forEach((e, i) => {
+      const iso = e && e.isoTime ? e.isoTime : (fgEntryTimes.fg_drySieve || null)
+      if (iso) sieveTs[`fg_drySieve_reading_${i + 1}`] = iso
+    })
+
     // One row for quality_control_records. Only the ACTIVE dryer's values are
     // saved per click (values.dryer makes the record unambiguous); this keeps
     // saved == printed since the DOM reflects the active dryer only.
@@ -1136,6 +1404,16 @@ export default function QualityCheck({ user }) {
         product: fgSelected || null,
         grade: uplGrade || null,
         dryer: fgDryer,
+        // Repeated Wet/Dry Sieve readings (arrays; each { result, status, time,
+        // targetLabel, isoTime? }). The Google Sheet expands these into
+        // numbered reading columns so no reading is lost or overwritten.
+        fg_wetSieve_log: wetSieveLog,
+        fg_drySieve_log: drySieveLog,
+        // Per-field first-entry times (ISO) → the trigger uses these as
+        // field_entry_ts so each FG field (inputs + results) shows its REAL
+        // entry time, not the single save-moment time. Includes synthetic
+        // per-reading keys (fg_wetSieve_reading_N / fg_drySieve_reading_N).
+        __ts: { ...fgEntryTimes, ...sieveTs },
       },
     }
 
@@ -1513,18 +1791,47 @@ export default function QualityCheck({ user }) {
             function recordSieve() {
               if (!hasRes) return
               const status = evaluate(res, targetRule) || '—'
-              const time = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+              const now = new Date()
+              const time = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
               const targetLabel = (opts.find(o => o.id === target) || {}).label || ''
-              const entry = { result: String(res), status, time, targetLabel }
+              // isoTime: genuine recording moment (ISO) so the Google Sheet can
+              // render this reading's own Timestamp. `time` stays for the UI log.
+              const nowIso = now.toISOString()
+              // uplId: the designated UPL Extra Parameters result field this
+              // reading feeds (e.g. 'upl_exp_ws_160'). Carried on the entry so the
+              // live sync can update that exact UPL parameter cell + timestamp.
+              const entry = { result: String(res), status, time, isoTime: nowIso, targetLabel, uplId: target }
               addSieveEntry(test.id, entry)
               // Also push into the UPL row so its table status reflects the latest.
               setUplValues(p => ({ ...p, [target]: String(res) }))
+              // The UPL value is set PROGRAMMATICALLY here (not typed), so the
+              // capture-phase input listener never records a first-entry time for
+              // it — which is why e.g. UPL Export "Wet Sieve 160 Micron"
+              // (upl_exp_ws_160) had a blank Timestamp column. Record the genuine
+              // measurement time for the target UPL key here so Print/Download's
+              // values.__ts carries it and the column shows the real time. Each
+              // Record is a fresh measurement moment for that micron, so we stamp
+              // on first entry and refresh on change.
+              if (target) {
+                const fgBucket = fieldEntryTimesRef.current.fg || (fieldEntryTimesRef.current.fg = {})
+                fgBucket[target] = nowIso
+              }
               // Live push to Production → Activity immediately with the fresh log
               // (state updates are async, so pass the updated array as an override).
               const newLog = [ ...((sieveLog[test.id]) || []), entry ]
               pushQcActivity(
                 test.id === 'fg_wetSieve' ? { wetLog: newLog } : { dryLog: newLog }
               )
+              // Live push to the Google Sheet (qc_fg_sieve_readings) — but ONLY
+              // from the SECOND recorded reading onward. The first Record click
+              // just retains the reading locally (no incomplete single-reading
+              // row is created in the sheet). On the second Record the full
+              // record (both readings + original timestamps) syncs at once, and
+              // every later reading updates the SAME business-key row. Pass the
+              // updated array because the draft state update above is async.
+              if (newLog.length >= 2) {
+                pushFgSieveReadings(test.id, newLog)
+              }
             }
 
             return (

@@ -45,6 +45,8 @@ function emptyRow() {
 
     timestamp: '',
     saved: false,
+    // Per-field entry/change times for THIS hour's fields { fieldKey: ISO }.
+    __ts: {},
   }
 }
 
@@ -121,6 +123,11 @@ function emptyForm(dryerType) {
     operator: '',
 
     rows: TIME_SLOTS.map(() => emptyRow()),
+
+    // Per-field entry/change times for the bottom-form + calibration fields
+    // { key: ISO }. Calibration cells use keys 'cal_<sensor>_temp' /
+    // 'cal_<sensor>_sensor' (same keys as the form fields).
+    __ts: {},
   }
 }
 
@@ -190,38 +197,61 @@ function DryerForm({
   const loadedKeyRef = useRef(null)
 
 
+  // Record the genuine per-field entry/change time (ISO) the FIRST time a field
+  // becomes non-empty and again whenever its value genuinely changes — never the
+  // sheet upload time. These maps are sent on save so the Google Sheet shows
+  // each field's own Timestamp and preserves unchanged fields' original times.
+  //   form.__ts          → bottom-form + calibration field times { key: ISO }
+  //   row.__ts (per row) → hourly field times for that hour        { key: ISO }
+  function stampTs(prevVal, nextVal, prevIso) {
+    const was = (prevVal ?? '').toString().trim()
+    const now = (nextVal ?? '').toString().trim()
+    if (now === '') return undefined                 // cleared → drop its time
+    if (was === now && prevIso) return prevIso        // unchanged → keep original
+    return new Date().toISOString()                   // new or changed → now
+  }
+
   const set = (k, v) => {
-    setForm(p => ({
-      ...p,
-      [k]: v,
-    }))
+    setForm(p => {
+      const prevTs = p.__ts || {}
+      const iso = stampTs(p[k], v, prevTs[k])
+      const nextTs = { ...prevTs }
+      if (iso === undefined) delete nextTs[k]; else nextTs[k] = iso
+      return { ...p, [k]: v, __ts: nextTs }
+    })
   }
 
 
   const setRow = (i, field, val) => {
     setForm(p => ({
       ...p,
-      rows: p.rows.map((r, idx) =>
-        idx === i
-          ? {
-              ...r,
-              [field]: val,
-              // Editing a saved hour un-saves it so the ✓ reverts to 💾
-              // and the hour can be re-saved (last-write-wins).
-              saved: false,
-            }
-          : r
-      ),
+      rows: p.rows.map((r, idx) => {
+        if (idx !== i) return r
+        const prevTs = r.__ts || {}
+        const iso = stampTs(r[field], val, prevTs[field])
+        const nextTs = { ...prevTs }
+        if (iso === undefined) delete nextTs[field]; else nextTs[field] = iso
+        return {
+          ...r,
+          [field]: val,
+          __ts: nextTs,
+          // Editing a saved hour un-saves it so the ✓ reverts to 💾
+          // and the hour can be re-saved (last-write-wins).
+          saved: false,
+        }
+      }),
     }))
   }
 
 
   // ── Cross-device load / shift handover ──────────────────────
-  // When the production date changes for this dryer, the shared
-  // Supabase draft (not stale localStorage) is authoritative for the
-  // freshly chosen date: reset rows, then merge in non-expired remote
-  // hours. Merge is non-clobbering — a remote hour fills a local row
-  // ONLY if that local row is still empty-and-unsaved.
+  // When the production date changes for this dryer, MERGE in any non-expired
+  // remote hours WITHOUT destroying the locally-restored draft. This runs on
+  // every mount (e.g. leaving the Dryer section and coming back), so it must be
+  // purely ADDITIVE: a local row that already has data is ALWAYS kept (that is
+  // the operator's earlier work, restored from localStorage). A remote hour
+  // fills a slot ONLY when the local row for that slot is completely empty.
+  // This fixes data vanishing when returning to the Dryer section.
   useEffect(() => {
     if (!supabaseReady || !supabase) return
     if (!form.date) return
@@ -246,30 +276,31 @@ function DryerForm({
       const byHour = {}
       data.forEach(r => { byHour[r.hour] = r })
 
-      // Reset rows for the new date, then overlay remote hours.
-      // (A fresh emptyRow() per slot means "empty-and-unsaved" is well
-      // defined and no stale cross-date saved:true row can leak in.)
+      // Merge: keep every local row that has ANY data; only fill a truly-empty
+      // local slot from a matching remote hour. NEVER blank a populated row.
+      const rowIsEmpty = r =>
+        !r || Object.keys(emptyRow()).every(
+          k => k === 'timestamp' || k === 'saved' || k === '__ts' || (r[k] ?? '') === ''
+        )
+
       setForm(p => ({
         ...p,
         rows: TIME_SLOTS.map((slot, idx) => {
-          const base = emptyRow()
           const prev = p.rows[idx]
-          // Preserve a locally-edited-but-unsaved hour that the operator
-          // typed before this load resolved (don't clobber in-progress work).
-          const localHasUnsaved =
-            prev && !prev.saved &&
-            Object.keys(emptyRow()).some(
-              k => k !== 'timestamp' && k !== 'saved' && (prev[k] ?? '') !== ''
-            )
-          if (localHasUnsaved) return prev
+          // Local row has data → KEEP it as-is (restored draft / in-progress).
+          if (!rowIsEmpty(prev)) return prev
 
           const remote = byHour[slot]
-          if (!remote) return base
+          if (!remote) return prev || emptyRow()   // nothing remote → keep local (empty) row
 
+          const base = emptyRow()
           const v = remote.values || {}
           return {
             ...base,
             ...v,
+            // Preserve per-field entry times from the shared draft so unchanged
+            // fields keep their ORIGINAL timestamp across reloads/handover.
+            __ts: (v && v.__ts && typeof v.__ts === 'object') ? v.__ts : {},
             // remote rows represent an already-shared (saved) hour
             saved: true,
           }
@@ -404,6 +435,23 @@ function DryerForm({
           operator: form.operator,
 
           log_rows: form.rows,
+
+          // Per-field entry/change times for the bottom-form + calibration
+          // fields { key: ISO }. The sheet sync renders each field's own
+          // Timestamp from this and preserves unchanged fields' original time.
+          // (Hourly per-field times ride inside each log_rows[i].__ts.)
+          //
+          // IMPORTANT key remap: the IFBD blower inputs use the form keys
+          // 'ifbd_dp'/'ifbd_mr', but they are SAVED into the DB columns
+          // 'chamber_dp'/'chamber_mr' (above). The sync trigger looks up the
+          // timestamp by the DB column key, so we copy the IFBD times under the
+          // chamber_* keys here — otherwise IFBD DP/MR would show no timestamp.
+          field_ts: (function () {
+            const t = { ...(form.__ts || {}) }
+            if (t.ifbd_dp && !t.chamber_dp) t.chamber_dp = t.ifbd_dp
+            if (t.ifbd_mr && !t.chamber_mr) t.chamber_mr = t.ifbd_mr
+            return t
+          })(),
         },
       ])
 

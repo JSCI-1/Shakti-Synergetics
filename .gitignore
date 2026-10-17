@@ -29,3 +29,8 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local Apps Script rollback backups (not source of truth)
+supabase/google_sheets/apps-script/Code.backup-*.gs
+# Supabase CLI temp
+supabase/.temp/

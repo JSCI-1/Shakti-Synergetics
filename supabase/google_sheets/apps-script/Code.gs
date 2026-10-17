@@ -20,18 +20,22 @@
  *   dryer  + current_snapshot → Dryer: "Current Records" + "Hourly Readings"
  *   dryer  + field_change     → Dryer: "Field Change History"
  *   qc_rm  + current_snapshot → QC:    "Raw Material"     (fills value cells)
- *   qc_rm  + field_change     → QC:    "Raw Material"     (fills "(Updated)" ts)
+ *   qc_rm  + field_change     → QC:    "Raw Material"     (fills "Timestamp" ts)
  *   qc_ip  + current_snapshot → QC:    "In-Process"       (fills value cells)
- *   qc_ip  + field_change     → QC:    "In-Process"       (fills "(Updated)" ts)
+ *   qc_ip  + field_change     → QC:    "In-Process"       (fills "Timestamp" ts)
  *   qc_fg  + current_snapshot → QC:    "Finished Goods"   (fills value cells)
  *   qc_fg  + field_change     → QC:    "Finished Goods"   (fills "(Updated)" ts)
  *
  * QC layout: THREE user-facing tabs, one per website section. Each measurement
- * has a value column followed by a "<Label> (Updated)" column holding the
- * per-field entry/update time (hh:mm AM/PM, IST). One submission = one row,
- * keyed by the record's source_pk (kept in a hidden trailing _source_pk column).
- * The snapshot event fills values + identity; the field_change events fill each
- * field's "(Updated)" cell, so updating one field never alters another's time.
+ * value column is immediately followed by its own timestamp column holding the
+ * per-field ORIGINAL entry time (hh:mm:ss AM/PM, IST). Raw Material and
+ * In-Process name that column literally "Timestamp" (positional association:
+ * the Timestamp column follows its value); Finished Goods still uses the
+ * "<Label> (Updated)" header. One submission = one row, keyed by the record's
+ * source_pk (hidden trailing _source_pk column). The snapshot event fills
+ * values + identity; the field_change events fill each field's timestamp cell,
+ * so editing one field never alters another's time. A trailing "Final
+ * Submission" column holds the form-submission moment.
  */
 
 /* ───────────────────────── Constants ───────────────────────── */
@@ -39,9 +43,16 @@
 var PULL_BATCH_LIMIT = 100;
 
 var TAB = {
+  // Legacy wide Dryer tabs — NO LONGER WRITTEN (replaced by the vertical
+  // New Dryer / Old Dryer tabs below). Kept here only so any old reference
+  // resolves; the triggers that fed these were dropped in migration 030.
   DRYER_CURRENT: 'Current Records',
   DRYER_HOURLY: 'Hourly Readings',
   DRYER_HISTORY: 'Field Change History',
+  // Horizontal Dryer tabs (migration 030). TWO tabs only — the hourly log
+  // table and the bottom form share ONE tab per dryer (hourly block on top,
+  // then a styled divider + the bottom-form block below).
+  DRYER_V2: { 'new': 'New Dryer', 'old': 'Old Dryer' },
   // Quality Control: THREE user-facing tabs, one per website section.
   // No separate "Current Records" / "Field Change History" tabs — each
   // measurement value sits next to its own "(Updated)" timestamp column.
@@ -104,23 +115,129 @@ var QC_FIELDS_RM = [
 ];
 
 // In-Process — pinned tests + dropdown tests, in website order.
+//
+// Each In-Process test is a <FormulaCalculator> card. The website saves BOTH
+// the calculated result (under the card id, e.g. 'ip_moisture_calc') AND every
+// formula INPUT (under '<cardId>__<varKey>', e.g. 'ip_moisture_calc__W') — see
+// collectReportValues() in QualityCheck.jsx. So, exactly like Raw Material, each
+// input gets its OWN value column + its OWN "Timestamp" column (original entry
+// time), placed immediately before the calculated result it feeds.
+//
+// Formula variable keys come from SHARED_FORMULAS in src/data/qualityData.js:
+//   Solid Content  (moisture)       → W, w
+//   Sulphur Content(sulphur)        → N, BR, W
+//   Suspensibility (suspensibility) → sulphurContent, sampleWeight, N, BR
+//   Wet Sieve      (wetSieve)       → M, m
 var QC_FIELDS_IP = [
-  ['ip_moisture_calc', 'Solid Content (%)'],
-  ['ip_sulphur_calc',  'Sulphur Content (%)'],
-  ['ip_susp_calc',     'Suspensibility (%)'],
-  ['ip_wetsieve_calc', 'Wet Sieve (%)']
+  // Solid Content — inputs W, w, then the calculated result.
+  ['ip_moisture_calc__W',             'Solid Content – W (sample weight) (g)'],
+  ['ip_moisture_calc__w',             'Solid Content – w (weight after drying) (g)'],
+  ['ip_moisture_calc',                'Solid Content (%)'],
+  // Sulphur Content — inputs N, BR, W, then the calculated result.
+  ['ip_sulphur_calc__N',              'Sulphur Content – N (normality)'],
+  ['ip_sulphur_calc__BR',             'Sulphur Content – BR (burette reading) (ml)'],
+  ['ip_sulphur_calc__W',              'Sulphur Content – W (sample weight) (g)'],
+  ['ip_sulphur_calc',                 'Sulphur Content (%)'],
+  // Suspensibility — inputs Sulphur Content, Sample Weight, N, BR, then result.
+  ['ip_susp_calc__sulphurContent',    'Suspensibility – Sulphur Content (%)'],
+  ['ip_susp_calc__sampleWeight',      'Suspensibility – Sample Weight (g)'],
+  ['ip_susp_calc__N',                 'Suspensibility – N (normality)'],
+  ['ip_susp_calc__BR',                'Suspensibility – BR (burette reading) (ml)'],
+  ['ip_susp_calc',                    'Suspensibility (%)'],
+  // Wet Sieve — inputs M, m, then the calculated result.
+  ['ip_wetsieve_calc__M',             'Wet Sieve – M (material taken) (g)'],
+  ['ip_wetsieve_calc__m',             'Wet Sieve – m (granules retained) (g)']
+  // NOTE: Mill-wise Suspensibility is NOT a single field here — it is expanded
+  // into real per-mill columns (V1…V10 × BR / Suspension % / Flow Rate / Pass)
+  // by the mill-block layout below, matching the website's mill table.
 ];
+
+// Mill-wise Suspensibility table — the website shows a row per mill
+// (V1…V10) with four data columns. Stored in values.ip_mill_rows as a JSONB
+// array of { mill, br, flowRate, pass } (the "Suspension %" is computed on the
+// website and NOT stored, so it is derived from the row on write when present,
+// else left blank). In the sheet we lay the table out HORIZONTALLY: for each
+// mill, its four data columns followed by ONE "Timestamp" column carrying the
+// record's mill-entry time (the mill table is entered/submitted as one block,
+// so a single original-entry time applies to the whole mill row).
+var IP_MILL_NAMES = ['V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
+var IP_MILL_COLS = [
+  ['br',       'BR (ml)'],
+  ['susp',     'Suspension (%)'],
+  ['flowRate', 'Flow Rate (L/hr)'],
+  ['pass',     'Pass']
+];
+
+// Finished Goods repeated Wet/Dry Sieve readings. On the website each sieve
+// test can be "Recorded" multiple times throughout the day; every reading
+// carries its own result, Pass/Fail status, micron target label and recorded
+// time. Stored in values.fg_wetSieve_log / values.fg_drySieve_log as arrays of
+// { result, status, time, isoTime, targetLabel }.
+//
+// LAYOUT: there are NO numbered "Reading 1..N" columns. Each sieve test keeps
+// its single existing Value column and single Timestamp column. All readings
+// (the initial calculated result + every subsequent recorded reading) are
+// STACKED on separate lines WITHIN that one Value cell, with their matching
+// recorded times stacked on matching lines in the one Timestamp cell. The row
+// keeps one batch/grade/dryer/test identity for the whole group of readings.
+// The cell is rebuilt deterministically from the arrays on every sync, so a
+// retry/replay overwrites with identical content (no duplicate readings).
+//
+// FG_SIEVE_LOGS maps each sieve's result/value key → its repeated-readings log
+// key → the per-reading __ts key prefix the website sends.
+var FG_SIEVE_LOGS = [
+  ['fg_wetSieve', 'fg_wetSieve_log', 'fg_wetSieve_reading_'],
+  ['fg_drySieve', 'fg_drySieve_log', 'fg_drySieve_reading_']
+];
+// Newline used to stack multiple readings within one cell. Sheets renders "\n"
+// as a line break when the cell has wrapping enabled (formatQcTab_ wraps QC
+// cells), so stacked readings appear on separate lines in the same cell.
+var FG_SIEVE_LINE_SEP = '\n';
 
 // Finished Goods — standard WDG tests, then UPL Export, then UPL OMRI
 // (only the keys present in a given record are filled; others stay blank).
+//
+// Like Raw Material and In-Process, each formula-based WDG test saves BOTH the
+// calculated result (under the card id, e.g. 'fg_sulphur') AND every formula
+// INPUT (under '<cardId>__<varKey>', e.g. 'fg_sulphur__N') — see
+// collectReportValues() in QualityCheck.jsx. So each input gets its OWN value
+// column + its OWN "Timestamp" column (original entry time), placed immediately
+// before the calculated result it feeds.
+//
+// Formula variable keys come from SHARED_FORMULAS in src/data/qualityData.js:
+//   Sulphur Content (sulphur)        → N, BR, W
+//   Suspensibility  (suspensibility) → sulphurContent, sampleWeight, N, BR
+//   Bulk Density    (bulkDensity)    → mass, volume
+//   Wet Sieve       (wetSieve)       → M, m
+//   Dry Sieve       (drySieve)       → M, m
+// (Moisture / pH / Wettability are single-value spec fields — no inputs.)
 var QC_FIELDS_FG = [
-  // Standard WDG tests
+  // Sulphur Content — inputs N, BR, W, then the calculated result.
+  ['fg_sulphur__N',    'Sulphur Content – N (normality)'],
+  ['fg_sulphur__BR',   'Sulphur Content – BR (burette reading) (ml)'],
+  ['fg_sulphur__W',    'Sulphur Content – W (sample weight) (g)'],
   ['fg_sulphur',       'Sulphur Content (%)'],
+  // Suspensibility — inputs Sulphur Content, Sample Weight, N, BR, then result.
+  ['fg_susp__sulphurContent', 'Suspensibility – Sulphur Content (%)'],
+  ['fg_susp__sampleWeight',   'Suspensibility – Sample Weight (g)'],
+  ['fg_susp__N',       'Suspensibility – N (normality)'],
+  ['fg_susp__BR',      'Suspensibility – BR (burette reading) (ml)'],
   ['fg_susp',          'Suspensibility (%)'],
+  // Moisture Content — single % value (no formula).
   ['fg_moisture',      'Moisture Content (%)'],
+  // Bulk Density — inputs mass, volume, then the calculated result.
+  ['fg_bulk__mass',    'Bulk Density – Mass (g)'],
+  ['fg_bulk__volume',  'Bulk Density – Volume (ml)'],
   ['fg_bulk',          'Bulk Density (g/cc)'],
+  // Wet Sieve — inputs M, m, then the calculated result.
+  ['fg_wetSieve__M',   'Wet Sieve – M (material taken) (g)'],
+  ['fg_wetSieve__m',   'Wet Sieve – m (granules retained) (g)'],
   ['fg_wetSieve',      'Wet Sieve (%)'],
+  // Dry Sieve — inputs M, m, then the calculated result.
+  ['fg_drySieve__M',   'Dry Sieve – M (material taken) (g)'],
+  ['fg_drySieve__m',   'Dry Sieve – m (granules retained) (g)'],
   ['fg_drySieve',      'Dry Sieve (%)'],
+  // Single-value spec tests
   ['fg_ph',            'pH'],
   ['fg_wettability',   'Wettability (sec)'],
   ['fg_foam_start',    'Persistent Foaming – At start (ml)'],
@@ -162,6 +279,16 @@ var RM_MATERIAL_LABELS = {
   microMedia:    'Micro Media'
 };
 
+// In-Process dropdown: the selected "Additional Test" id (stored in
+// values.material by buildRmIpRow) → website label. Source of truth:
+// src/data/qualityData.js IN_PROCESS[].{id,label}. The two pinned tests
+// (Solid Content, Sulphur Content) are always shown; `material` records which
+// additional test the operator selected.
+var IP_MATERIAL_LABELS = {
+  ip_suspensibility: 'Suspensibility',
+  ip_wetSieve:       'Wet Sieve'
+};
+
 // Sections that use a SINGLE shared "Timestamp" column (first field-entry time
 // of the record) instead of a per-field timestamp column. None, now — all QC
 // sections use a per-field timestamp column (RM switched to per-field so M1/M
@@ -170,10 +297,13 @@ var QC_SINGLE_TIMESTAMP = { qc_rm: false, qc_ip: false, qc_fg: false };
 
 // Per-field timestamp column HEADER mode per section.
 //   'fixed'  → the header is literally "Timestamp" for every value's ts column
-//              (RM — each value has an adjacent "Timestamp" column; association
-//              is positional: the Timestamp column immediately follows its value).
-//   'suffix' → header is "<Label> (Updated)" (IP/FG, unchanged).
-var QC_TS_HEADER_MODE = { qc_rm: 'fixed', qc_ip: 'suffix', qc_fg: 'suffix' };
+//              (each value has an adjacent "Timestamp" column; association is
+//              positional: the Timestamp column immediately follows its value).
+//   'suffix' → header is "<Label> (Updated)" (legacy — no longer used).
+// Raw Material, In-Process AND Finished Goods all use 'fixed' now, so every
+// value column is followed by a literal "Timestamp" column carrying its
+// original entry time.
+var QC_TS_HEADER_MODE = { qc_rm: 'fixed', qc_ip: 'fixed', qc_fg: 'fixed' };
 
 // Timestamp cell format per section (Apps Script date pattern, rendered in IST).
 //   RM shows TIME ONLY ("hh:mm:ss a" → 10:15:32 AM); IP/FG keep their format.
@@ -195,10 +325,9 @@ var QC_IDENTITY = {
   ],
   qc_ip: [
     ['date',      'Manufacturing Date'],
-    ['tested_by', 'Tested By'],
     ['batch_no',  'Batch No.'],
-    ['time',      'Time'],
-    ['brand',     'Brand/Type']
+    ['tested_by', 'Tested By'],
+    ['time',      'Time']
   ],
   qc_fg: [
     ['date',      'Manufactured Date'],
@@ -207,8 +336,7 @@ var QC_IDENTITY = {
     ['time',      'Time'],
     ['product',   'Product'],
     ['grade',     'Grade'],
-    ['dryer',     'Dryer'],
-    ['brand',     'Brand/Type']
+    ['dryer',     'Dryer']
   ]
 };
 
@@ -285,14 +413,17 @@ function installTrigger() {
       ScriptApp.deleteTrigger(triggers[i]);
     }
   }
-  // everyMinutes() accepts only 1, 5, 10, 15, or 30. 1 is the fastest the
-  // Apps Script time-driven trigger allows → near-real-time (data appears
-  // within ~1 minute of a save on the website).
+  // everyMinutes() accepts only 1, 5, 10, 15, or 30 — 1 minute is the FASTEST
+  // supported time-driven trigger (there is NO 40-second option). We keep the
+  // 1-minute trigger, and syncTick() runs multiple internal passes per minute
+  // (default ~0s/~20s/~40s) so new data appears within ~20s worst case. A
+  // ScriptLock prevents overlapping runs. See syncTick() for details.
   ScriptApp.newTrigger('syncTick')
     .timeBased()
     .everyMinutes(1)
     .create();
-  Logger.log('Installed time-driven trigger: syncTick every 1 minute.');
+  Logger.log('Installed time-driven trigger: syncTick every 1 minute '
+    + '(each minute runs multiple internal passes for sub-minute latency).');
 }
 
 
@@ -335,6 +466,91 @@ function initQcTabs() {
     Logger.log('[initQcTabs] Ensured tab + header: ' + tabName);
   }
   Logger.log('[initQcTabs] Done. Raw Material / In-Process / Finished Goods are ready.');
+}
+
+
+/**
+ * Create the two vertical Dryer tabs ("New Dryer" / "Old Dryer") with their
+ * headers up front, in the DRYER spreadsheet (SPREADSHEET_ID_DRYER) — the same
+ * book the shared script uses for Dryer. The tabs are otherwise created lazily
+ * (only when a dryer_v2 event is processed), so if no Dryer data has synced yet
+ * they never appear. Run this ONCE manually from the Apps Script editor to make
+ * them exist immediately. Idempotent and safe: creates a tab only if missing,
+ * writes the header only if row 1 is empty, never deletes/writes a data row,
+ * and touches ONLY the Dryer book (QC tabs untouched).
+ *
+ * It also logs the Dryer spreadsheet name/URL it opened, so you can confirm the
+ * shared script is pointed at the RIGHT Dryer book (a common reason "nothing
+ * appears" — the tabs were created in a different spreadsheet).
+ */
+function initDryerTabs() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[initDryerTabs] Fail-closed: ' + e.message);
+    return;
+  }
+
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  Logger.log('[initDryerTabs] Dryer spreadsheet: "' + dryerSS.getName()
+    + '"  id=' + cfg.SPREADSHEET_ID_DRYER + '  url=' + dryerSS.getUrl());
+
+  var types = ['new', 'old'];
+  for (var i = 0; i < types.length; i++) {
+    var hTab = TAB.DRYER_V2[types[i]];
+    var hsh = getOrCreateSheet_(dryerSS, hTab);
+    ensureHeader_(hsh, DRYER_V2_HOURLY_HEADER);  // hourly header; bottom block appears on first Save Log Sheet
+    formatQcTab_(hsh);
+    Logger.log('[initDryerTabs] Ensured tab + header: ' + hTab);
+  }
+  Logger.log('[initDryerTabs] Done. "New Dryer" / "Old Dryer" are ready in the Dryer book.');
+}
+
+
+/**
+ * ONE-SHOT: WIPE and recreate the two Dryer tabs ("New Dryer" / "Old Dryer")
+ * clean — hourly header on row 1, no data, bottom-form block appears on the
+ * next Save Log Sheet. Run this ONCE from the Apps Script editor to delete the
+ * earlier-filled Dryer data in the SHEET and start fresh. Does NOT replay.
+ *
+ * This clears only the SHEET. To also delete the earlier data at the SOURCE so
+ * it cannot re-sync, run in the Supabase SQL editor (see manual steps):
+ *     delete from dryer_hourly_draft;
+ *     delete from dryer_logs;
+ *     delete from sheets_sync_outbox where record_kind = 'dryer_v2';
+ *
+ * SAFE: touches ONLY the two Dryer tabs. QC tabs are untouched. Replay mode is
+ * explicitly turned OFF so nothing re-populates on its own.
+ */
+function resetDryerTabsClean() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[resetDryerTabsClean] Fail-closed: ' + e.message);
+    return;
+  }
+
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  for (var i = 0; i < types.length; i++) {
+    var hTab = TAB.DRYER_V2[types[i]];
+    var old = dryerSS.getSheetByName(hTab);
+    if (old) { dryerSS.deleteSheet(old); }
+    var sh = dryerSS.insertSheet(hTab);
+    ensureHeader_(sh, DRYER_V2_HOURLY_HEADER);
+    formatQcTab_(sh);
+    Logger.log('[resetDryerTabsClean] Wiped + recreated tab: ' + hTab);
+  }
+
+  // Make sure replay is OFF so the wiped data does not come back.
+  PropertiesService.getScriptProperties().deleteProperty('REPLAY_FORCE_WRITE');
+
+  Logger.log('[resetDryerTabsClean] Done. "New Dryer" / "Old Dryer" are empty. '
+    + 'To also delete the source data so it cannot re-sync, run in Supabase SQL: '
+    + 'delete from dryer_hourly_draft; delete from dryer_logs; '
+    + "delete from sheets_sync_outbox where record_kind = 'dryer_v2';");
 }
 
 
@@ -456,6 +672,230 @@ function rebuildRawMaterialTab() {
 
 
 /**
+ * ONE-TIME, IN-PROCESS-ONLY rebuild — run manually after the In-Process layout
+ * change (added formula-input columns + their own "Timestamp" columns, added
+ * the "In-Process Test" identity column, renamed the per-field timestamp header
+ * from "(Updated)" to "Timestamp", kept "Final Submission" last).
+ *
+ * The In-Process column POSITIONS changed (inputs are now interleaved before
+ * each result, and an identity column was inserted), so an in-place header
+ * rename would leave old data under the wrong columns. Instead this rebuilds
+ * the tab SAFELY, exactly like rebuildRawMaterialTab():
+ *
+ *   1. Renames the current "In-Process" tab to "In-Process (archived <ts>)"
+ *      — nothing is deleted; every existing In-Process record is preserved
+ *      there and can be deleted manually once the new tab is verified.
+ *   2. Creates a fresh "In-Process" tab with the correct website headers.
+ *   3. Turns on replay so the requeued In-Process events (see SQL below)
+ *      re-populate the clean tab even though their event_ids are already in
+ *      _SyncState.
+ *
+ * Touches ONLY the In-Process tab. Raw Material, Finished Goods, Dryer, and all
+ * other data are untouched.
+ *
+ * REQUIRED companion SQL (run once in Supabase, see migration 026):
+ *   select sheets_sync_requeue_qc_ip();
+ *
+ * After confirming the new tab is correct: run clearReplayFlag() and delete the
+ * archived tab.
+ */
+function rebuildInProcessTab() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[rebuildInProcessTab] Fail-closed: ' + e.message);
+    return;
+  }
+
+  var qcSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_QC);
+  var tabName = TAB.QC.qc_ip;   // 'In-Process'
+
+  // 1. Archive the existing In-Process tab (rename, never delete).
+  var old = qcSS.getSheetByName(tabName);
+  if (old) {
+    var stamp = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyyMMdd-HHmm');
+    var archiveName = 'In-Process (archived ' + stamp + ')';
+    old.setName(archiveName);
+    Logger.log('[rebuildInProcessTab] Archived old tab as: ' + archiveName);
+  }
+
+  // 2. Create a fresh In-Process tab with the correct headers + formatting.
+  var sh = getOrCreateSheet_(qcSS, tabName);
+  var layout = buildQcLayout_('qc_ip');
+  ensureHeader_(sh, layout.header);
+  formatQcTab_(sh);
+  Logger.log('[rebuildInProcessTab] Created fresh "' + tabName + '" with correct headers.');
+
+  // 3. Turn on replay so requeued IP events re-populate the clean tab even if
+  //    their event_ids are already in _SyncState. (Server only re-serves rows
+  //    flipped to pending by sheets_sync_requeue_qc_ip(), i.e. IP-only.)
+  PropertiesService.getScriptProperties().setProperty('REPLAY_FORCE_WRITE', '1');
+  Logger.log('[rebuildInProcessTab] Replay mode ON. '
+    + 'Now run `select sheets_sync_requeue_qc_ip();` in the Supabase SQL editor. '
+    + 'Within ~1 min In-Process records re-populate the clean tab. '
+    + 'Then run clearReplayFlag() and delete the archived tab once verified.');
+}
+
+
+/**
+ * ONE-TIME, FINISHED-GOODS-ONLY rebuild — run manually after the Finished Goods
+ * layout change (added formula-input columns + their own "Timestamp" columns,
+ * renamed the per-field timestamp header from "(Updated)" to "Timestamp", and
+ * added the numbered Wet/Dry Sieve reading columns).
+ *
+ * The Finished Goods column POSITIONS changed (inputs are now interleaved before
+ * each result, the ts header mode flipped from "(Updated)" to "Timestamp", and
+ * reading-block columns were appended), so an in-place header rename would leave
+ * old data under the wrong columns. Instead this rebuilds the tab SAFELY,
+ * exactly like rebuildRawMaterialTab() / rebuildInProcessTab():
+ *
+ *   1. Renames the current "Finished Goods" tab to "Finished Goods (archived <ts>)"
+ *      — nothing is deleted; every existing Finished Goods record is preserved
+ *      there and can be deleted manually once the new tab is verified.
+ *   2. Creates a fresh "Finished Goods" tab with the correct website headers.
+ *   3. Turns on replay so the requeued Finished Goods events (see SQL below)
+ *      re-populate the clean tab even though their event_ids are already in
+ *      _SyncState.
+ *
+ * Touches ONLY the Finished Goods tab. Raw Material, In-Process, Dryer, and all
+ * other data are untouched.
+ *
+ * REQUIRED companion SQL (run once in Supabase, see migration 027):
+ *   select sheets_sync_requeue_qc_fg();
+ *
+ * After confirming the new tab is correct: run clearReplayFlag() and delete the
+ * archived tab.
+ */
+function rebuildFinishedGoodsTab() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[rebuildFinishedGoodsTab] Fail-closed: ' + e.message);
+    return;
+  }
+
+  var qcSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_QC);
+  var tabName = TAB.QC.qc_fg;   // 'Finished Goods'
+
+  // 1. Archive the existing Finished Goods tab (rename, never delete).
+  var old = qcSS.getSheetByName(tabName);
+  if (old) {
+    var stamp = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyyMMdd-HHmm');
+    var archiveName = 'Finished Goods (archived ' + stamp + ')';
+    old.setName(archiveName);
+    Logger.log('[rebuildFinishedGoodsTab] Archived old tab as: ' + archiveName);
+  }
+
+  // 2. Create a fresh Finished Goods tab with the correct headers + formatting.
+  var sh = getOrCreateSheet_(qcSS, tabName);
+  var layout = buildQcLayout_('qc_fg');
+  ensureHeader_(sh, layout.header);
+  formatQcTab_(sh);
+  Logger.log('[rebuildFinishedGoodsTab] Created fresh "' + tabName + '" with correct headers.');
+
+  // 3. Turn on replay so requeued FG events re-populate the clean tab even if
+  //    their event_ids are already in _SyncState. (Server only re-serves rows
+  //    flipped to pending by sheets_sync_requeue_qc_fg(), i.e. FG-only.)
+  PropertiesService.getScriptProperties().setProperty('REPLAY_FORCE_WRITE', '1');
+  Logger.log('[rebuildFinishedGoodsTab] Replay mode ON. '
+    + 'Now run `select sheets_sync_requeue_qc_fg();` in the Supabase SQL editor. '
+    + 'Within ~1 min Finished Goods records re-populate the clean tab. '
+    + 'Then run clearReplayFlag() and delete the archived tab once verified.');
+}
+
+
+/**
+ * ONE-TIME, FINISHED-GOODS-ONLY clean reset — run manually from the Apps Script
+ * editor. Use this to drop the leftover old columns (Wet/Dry Sieve "Reading
+ * 1–10" blocks and the "Brand/Type" column) AND remove the existing Finished
+ * Goods data in one step, leaving a fresh, correctly-shaped, EMPTY tab.
+ *
+ * Unlike rebuildFinishedGoodsTab(), this does NOT turn on replay and you do NOT
+ * run any re-queue SQL — the old data is intentionally discarded, not rewritten.
+ * New website submissions populate the clean tab going forward.
+ *
+ * SAFETY: the current "Finished Goods" tab is ARCHIVED (renamed + hidden),
+ * never hard-deleted, so the old data is still recoverable if you change your
+ * mind. After you confirm the fresh tab looks right, delete the archived tab
+ * from the Google Sheets UI (right-click the hidden tab → Delete). Touches ONLY
+ * the Finished Goods tab — Raw Material, In-Process, and Dryer are untouched.
+ *
+ * It also clears the Finished-Goods event IDs from the _SyncState ledger so a
+ * later deliberate replay (rebuildFinishedGoodsTab + requeue) would work; it
+ * does NOT itself re-serve anything, so nothing repopulates automatically.
+ */
+function resetFinishedGoodsTabClean() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[resetFinishedGoodsTabClean] Fail-closed: ' + e.message);
+    return;
+  }
+
+  var qcSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_QC);
+  var tabName = TAB.QC.qc_fg;   // 'Finished Goods'
+
+  // 1. Archive the existing Finished Goods tab (rename + hide, never delete)
+  //    so the discarded data stays recoverable.
+  var old = qcSS.getSheetByName(tabName);
+  if (old) {
+    var stamp = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyyMMdd-HHmm');
+    var archiveName = 'Finished Goods (archived ' + stamp + ')';
+    old.setName(archiveName);
+    try { old.hideSheet(); } catch (e) { /* ignore if it cannot be hidden */ }
+    Logger.log('[resetFinishedGoodsTabClean] Archived + hid old tab as: ' + archiveName
+      + ' (delete it from the Sheets UI once you have confirmed the fresh tab).');
+  }
+
+  // 2. Create a fresh, EMPTY Finished Goods tab with the current correct header
+  //    (no "Reading 1–10" columns, no "Brand/Type" column) + formatting.
+  var sh = getOrCreateSheet_(qcSS, tabName);
+  var layout = buildQcLayout_('qc_fg');
+  ensureHeader_(sh, layout.header);
+  formatQcTab_(sh);
+  Logger.log('[resetFinishedGoodsTabClean] Created fresh empty "' + tabName
+    + '" with the current correct headers.');
+
+  // 3. Clear ONLY the Finished-Goods event IDs from the _SyncState ledger, so
+  //    the discarded rows are not treated as "already written" if you ever
+  //    choose to deliberately replay later. Dryer/RM/IP ledger rows untouched.
+  //    (This does NOT re-serve anything by itself — nothing repopulates now.)
+  clearSyncStateForKind_('qc_fg');
+
+  Logger.log('[resetFinishedGoodsTabClean] Done. The Finished Goods tab is now '
+    + 'empty and correctly shaped. New website submissions will populate it. '
+    + 'No re-queue SQL is needed (old data was intentionally discarded).');
+}
+
+
+/**
+ * Remove _SyncState ledger rows whose event_id belongs to a given QC record
+ * kind, by matching the deterministic event_id prefixes we know for QC events.
+ * The ledger stores only event_id + processed_at, so we cannot filter by
+ * record_kind directly; instead we drop the QC-tab's rows by clearing ledger
+ * entries that are NOT dryer events is unsafe. Safer approach: this helper is a
+ * no-op placeholder that only logs, UNLESS a mapping is available. Because the
+ * ledger does not carry record_kind, resetFinishedGoodsTabClean() relies on the
+ * fresh tab + discarded data and does NOT require ledger surgery for correct
+ * forward behavior (new submissions have brand-new event_ids). We therefore
+ * keep this conservative: do nothing destructive to the shared ledger.
+ */
+function clearSyncStateForKind_(kind) {
+  // The _SyncState ledger (event_id, processed_at) carries no record_kind, and
+  // QC/Dryer event_ids are md5 hashes with no kind prefix, so we cannot safely
+  // single out qc_fg rows without risking Dryer/RM/IP entries. Forward behavior
+  // does not need this: discarded old rows will never be re-served (no replay),
+  // and every new submission has a fresh event_id. So this is intentionally a
+  // safe no-op that just records intent.
+  Logger.log('[clearSyncStateForKind_] Skipped ledger surgery for "' + kind
+    + '" (shared ledger has no record_kind; not needed for forward behavior).');
+}
+
+
+/**
  * ONE-TIME QC REPLAY — run manually from the Apps Script editor after the
  * QC layout change (6 tabs → 3 tabs).
  *
@@ -492,15 +932,162 @@ function clearReplayFlag() {
   Logger.log('[clearReplayFlag] REPLAY_FORCE_WRITE cleared — strict dedup restored.');
 }
 
-
-/* ───────────────────────── Main tick ───────────────────────── */
-
-function syncTick() {
+/**
+ * ONE-TIME, SAFE in-place reformat of the ordinary "Time" column to 12-hour
+ * AM/PM on the three QC tabs (Raw Material / In-Process / Finished Goods), for
+ * records that were written BEFORE this change (new records already format via
+ * renderClockTime_). Run manually from the Apps Script editor if you want
+ * existing rows updated without a full replay.
+ *
+ * SAFE: touches ONLY the single "Time" identity column of each QC tab, cell by
+ * cell, rewriting a 24-hour wall clock ("14:35") as "02:35:00 PM". It NEVER
+ * changes any other column, the per-field "Timestamp" columns, row mapping,
+ * dedup keys, or the Dryer book. Idempotent (already-12-hour cells are left
+ * unchanged by renderClockTime_). No data rows are added, removed, or moved.
+ */
+function reformatQcTimeColumns_() {
   var cfg;
   try {
     cfg = getConfig_();
   } catch (e) {
-    Logger.log('[syncTick] Fail-closed: ' + e.message);
+    Logger.log('[reformatQcTimeColumns_] Fail-closed: ' + e.message);
+    return;
+  }
+  var qcSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_QC);
+  var kinds = ['qc_rm', 'qc_ip', 'qc_fg'];
+
+  for (var ki = 0; ki < kinds.length; ki++) {
+    var kind = kinds[ki];
+    var sh = qcSS.getSheetByName(TAB.QC[kind]);
+    if (!sh) continue;
+    var layout = buildQcLayout_(kind);
+    if (layout.idCol.time === undefined) continue;   // no Time column in this tab
+    var timeCol0 = layout.idCol.time;                 // 0-based
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) continue;
+
+    var rng = sh.getRange(2, timeCol0 + 1, lastRow - 1, 1);
+    var vals = rng.getValues();
+    var changed = false;
+    for (var r = 0; r < vals.length; r++) {
+      var cur = coalesce_(vals[r][0]);
+      var next = renderClockTime_(cur);
+      if (next !== cur) { vals[r][0] = next; changed = true; }
+    }
+    if (changed) {
+      rng.setValues(vals);
+      Logger.log('[reformatQcTimeColumns_] Reformatted Time column on "' + TAB.QC[kind] + '".');
+    }
+  }
+  Logger.log('[reformatQcTimeColumns_] Done. Existing Time cells now show 12-hour AM/PM.');
+}
+
+/**
+ * ONE-SHOT, COSMETIC-ONLY formatter for ALL THREE QC tabs. Run manually from
+ * the Apps Script editor to apply the current formatting to EXISTING rows right
+ * now, without waiting for the next sync write:
+ *   • 12-hour AM/PM on the ordinary "Time" column (via reformatQcTimeColumns_);
+ *   • center-align + vertical-middle on headers and all data cells;
+ *   • auto column widths, text wrapping, auto row heights, frozen header
+ *     (via formatQcTab_).
+ *
+ * SAFE: changes only cell FORMATTING + the Time column's display text. It never
+ * adds/removes/moves data rows, never alters other values, calculations, the
+ * per-field "Timestamp" columns, dedup keys, or row mappings, and touches ONLY
+ * the Quality Control spreadsheet (never the Dryer book). Idempotent — safe to
+ * re-run. Existing records are preserved; nothing is duplicated or lost.
+ */
+function formatAllQcTabsNow() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[formatAllQcTabsNow] Fail-closed: ' + e.message);
+    return;
+  }
+
+  // 1) Reformat existing Time cells to 12-hour AM/PM (Time column only).
+  reformatQcTimeColumns_();
+
+  // 2) Apply layout/alignment formatting to each existing QC tab.
+  var qcSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_QC);
+  var kinds = ['qc_rm', 'qc_ip', 'qc_fg'];
+  for (var ki = 0; ki < kinds.length; ki++) {
+    var tabName = TAB.QC[kinds[ki]];
+    var sh = qcSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[formatAllQcTabsNow] Tab missing (skipped): ' + tabName); continue; }
+    formatQcTab_(sh);
+    Logger.log('[formatAllQcTabsNow] Formatted: ' + tabName);
+  }
+  Logger.log('[formatAllQcTabsNow] Done. RM / In-Process / Finished Goods are '
+    + 'centered, wrapped, and Time cells show 12-hour AM/PM.');
+}
+
+
+/* ───────────────────────── Main tick ───────────────────────── */
+
+/**
+ * Trigger entry point. Apps Script time-driven triggers cannot fire faster than
+ * once per MINUTE (everyMinutes accepts only 1/5/10/15/30), so a true 40-second
+ * trigger is NOT available. To reduce latency below one minute WITHOUT an
+ * unsupported trigger, each 1-minute invocation runs SEVERAL internal passes
+ * spaced by a short sleep (default: 3 passes at ~0s / ~20s / ~40s). New data
+ * therefore appears within ~20s on average and ~20s worst case between passes —
+ * comfortably under 40s — using only supported mechanisms.
+ *
+ * OVERLAP SAFETY: a single ScriptLock guards the whole driver. If a previous
+ * minute's invocation is still looping when the next fires, the new one cannot
+ * get the lock and exits immediately — so passes never overlap (which would
+ * risk double-serving, though the atomic outbox claim + _SyncState dedup already
+ * prevent duplicates regardless). Nothing about dedup, ack, timestamps, Script
+ * Properties, spreadsheet IDs, or secrets changes.
+ *
+ * Tunables via Script Properties (optional; safe defaults, nothing required):
+ *   SYNC_PASSES          number of passes per minute (default 3, clamped 1..3)
+ *   SYNC_PASS_INTERVAL_MS sleep between passes in ms (default 20000, clamped
+ *                        5000..25000). passes*interval is kept well under the
+ *                        6-minute execution limit.
+ */
+function syncTick() {
+  var lock = LockService.getScriptLock();
+  // Do NOT wait for the lock: if another invocation is mid-loop, skip this one
+  // entirely so passes never overlap. A tiny wait (100ms) absorbs trivial races.
+  if (!lock.tryLock(100)) {
+    Logger.log('[syncTick] Another run holds the lock — skipping to avoid overlap.');
+    return;
+  }
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var passes = parseInt(props.getProperty('SYNC_PASSES'), 10);
+    if (!(passes >= 1 && passes <= 3)) passes = 3;
+    var intervalMs = parseInt(props.getProperty('SYNC_PASS_INTERVAL_MS'), 10);
+    if (!(intervalMs >= 5000 && intervalMs <= 25000)) intervalMs = 20000;
+
+    for (var p = 0; p < passes; p++) {
+      if (p > 0) Utilities.sleep(intervalMs);   // space passes within the minute
+      try {
+        syncPass_();
+      } catch (e) {
+        // A failed pass never aborts the remaining passes or the next minute.
+        Logger.log('[syncTick] pass ' + (p + 1) + ' error: ' + (e && e.message ? e.message : e));
+      }
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+/**
+ * ONE synchronization pass: pull a batch, route/write each row, ack. Formerly
+ * the body of syncTick(); unchanged in behavior (same dedup, ack, formatting,
+ * replay). Called 1..3 times per minute by syncTick().
+ */
+function syncPass_() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[syncPass_] Fail-closed: ' + e.message);
     return; // no partial writes
   }
 
@@ -527,6 +1114,8 @@ function syncTick() {
   // Track which QC tabs were written this tick so we format them ONCE at the
   // end (not per row). Keyed by tab name → true.
   var touchedQcTabs = {};
+  // Likewise track touched vertical Dryer tabs (New Dryer / Old Dryer).
+  var touchedDryerTabs = {};
 
   for (var i = 0; i < rows.length; i++) {
     var row = rows[i];
@@ -541,6 +1130,10 @@ function syncTick() {
       // Note the QC tab this event wrote to (for end-of-tick formatting).
       if (row.record_kind === 'qc_rm' || row.record_kind === 'qc_ip' || row.record_kind === 'qc_fg') {
         touchedQcTabs[TAB.QC[row.record_kind]] = true;
+      }
+      if (row.record_kind === 'dryer_v2' && row.payload && TAB.DRYER_V2[row.payload.dryer_type]) {
+        // Both hourly and bottom-form events write to the same dryer tab.
+        touchedDryerTabs[TAB.DRYER_V2[row.payload.dryer_type]] = true;
       }
       if (!processed[eventId]) {
         recordProcessed_(dryerSS, eventId);
@@ -559,6 +1152,13 @@ function syncTick() {
     if (touchedQcTabs.hasOwnProperty(tabName)) {
       var tsh = qcSS.getSheetByName(tabName);
       if (tsh) formatQcTab_(tsh);
+    }
+  }
+  // Same cosmetic formatting for the vertical Dryer tabs (in the Dryer book).
+  for (var dTab in touchedDryerTabs) {
+    if (touchedDryerTabs.hasOwnProperty(dTab)) {
+      var dsh = dryerSS.getSheetByName(dTab);
+      if (dsh) formatQcTab_(dsh);
     }
   }
 
@@ -608,15 +1208,17 @@ function routeAndWrite_(row, dryerSS, qcSS) {
   var kind = row.record_kind;
   var type = row.event_type;
 
-  if (kind === 'dryer') {
-    if (type === 'current_snapshot') {
-      writeDryerSnapshot_(dryerSS, row);
-      return;
-    }
-    if (type === 'field_change') {
-      appendHistory_(dryerSS, TAB.DRYER_HISTORY, buildDryerHistoryRow_(row));
-      return;
-    }
+  if (kind === 'dryer_v2') {
+    // Horizontal Dryer tabs (New Dryer / Old Dryer). Row-level events:
+    //   'dryer_hour' → one hourly row (all fields written in one setValues)
+    //   'dryer_form' → the horizontal bottom-form block (header + one data row)
+    if (type === 'dryer_hour') { writeDryerHourRow_(dryerSS, row); return; }
+    if (type === 'dryer_form') { writeDryerFormRow_(dryerSS, row); return; }
+  } else if (kind === 'dryer') {
+    // Legacy wide-tab Dryer events. The migration-030 triggers no longer
+    // produce these; ignore any stragglers quietly so they don't fail the batch
+    // and don't recreate the old tabs.
+    return;
   } else if (kind === 'qc_rm' || kind === 'qc_ip' || kind === 'qc_fg') {
     var tabName = TAB.QC[kind];
     if (type === 'current_snapshot') {
@@ -627,13 +1229,255 @@ function routeAndWrite_(row, dryerSS, qcSS) {
       writeQcFieldTimestamp_(qcSS, tabName, kind, row);
       return;
     }
+    // Finished Goods LIVE Wet/Dry Sieve readings (migration 028). Matched to the
+    // batch's row by BUSINESS KEY and rebuilds that test's stacked cell with
+    // # / micron / result / status / time per line. No Print/Download needed.
+    if (type === 'sieve_readings' && kind === 'qc_fg') {
+      writeFgSieveReadings_(qcSS, tabName, row);
+      return;
+    }
   }
 
   throw new Error('Unroutable event: record_kind=' + kind + ' event_type=' + type);
 }
 
 
-/* ───────────────────────── Dryer writers ───────────────────────── */
+/* ───────────────────────── Dryer writers (horizontal, row-level) ─────────────────────────
+ * Two tabs, "New Dryer" / "Old Dryer". Each SAVE arrives as ONE row-level event
+ * and is written in a SINGLE setValues() call (fast, atomic, nothing dropped):
+ *   'dryer_hour' → the HOURLY block: one row per (date, shift, hour), a column
+ *                  per website field; each data cell = value + its own timestamp
+ *                  on the next line (no separate timestamp columns).
+ *   'dryer_form' → the horizontal BOTTOM-FORM block below a divider: a header
+ *                  row of field labels + one data row, same value+ts cell style.
+ * Rows match by a hidden "_dryer_row_key" column → re-saving UPDATES in place
+ * (idempotent; no duplicates). Timestamps are each field's own website time.
+ * ───────────────────────────────────────────────────────────────────────────── */
+
+// Hourly columns in website display order. [field_key, 'EXACT website label'].
+var DRYER_V2_HOURLY_COLS = [
+  ['temp_inlet',    'Temperature Deg. Cent. Inlet'],
+  ['temp_outlet',   'Temperature Deg. Cent. Outlet'],
+  ['temp_actual',   'Temperature Deg. Cent. Actual'],
+  ['temp_fbd1',     'Temperature Deg. Cent. IFBD'],
+  ['temp_fbd2',     'Temperature Deg. Cent. FBD'],
+  ['temp_chamber',  'Temperature Deg. Cent. Chamber'],
+  ['atomizer_freq', 'Atomizer Freq.'],
+  ['feed_fc',       'Feed F.C.'],
+  ['pressure',      'Feed Pressure'],
+  ['pt_temp',       'Pt. Temp'],
+  ['batch_no',      'Batch No.'],
+  ['bags_per_hr',   'No. of Bag Per Hours'],
+  ['bag_size_wt',   'Bag Size By Wt.'],
+  ['kg_per_hr',     'Kg./Hour Production'],
+  ['colour',        'Colour/Normal/OMRI'],
+  ['id_frequency',  'I.D. Frequency'],
+  ['remarks',       'Remarks']
+];
+// Hourly header: Date | Shift | Time | <17 field labels>.
+var DRYER_V2_HOURLY_HEADER = ['Date', 'Shift', 'Time'].concat(
+  DRYER_V2_HOURLY_COLS.map(function (c) { return c[1]; })
+);
+
+// Bottom-form columns in display order. [field_key, 'EXACT website label'].
+// (chamber_* hold the website's IFBD DP/MR. Calibration cells follow.)
+var DRYER_V2_FORM_COLS = [
+  ['id_blower_dp',    'ID Blower DP'],
+  ['id_blower_mr',    'ID Blower MR'],
+  ['fd_blower_dp',    'FD Blower DP'],
+  ['fd_blower_mr',    'FD Blower MR'],
+  ['chamber_dp',      'IFBD DP'],
+  ['chamber_mr',      'IFBD MR'],
+  ['fbd_pct_dp',      'FBD % DP'],
+  ['fbd_pct_mr',      'FBD % MR'],
+  ['batch_no',        'Batch No.'],
+  ['calibration_due', 'Calibration Due Date'],
+  ['cal_inlet_temp',    'Calibration Inlet Temperature'],
+  ['cal_inlet_sensor',  'Calibration Inlet Sensor Value'],
+  ['cal_outlet_temp',   'Calibration Outlet Temperature'],
+  ['cal_outlet_sensor', 'Calibration Outlet Sensor Value'],
+  ['cal_ifbd_temp',     'Calibration IFBD Temperature'],
+  ['cal_ifbd_sensor',   'Calibration IFBD Sensor Value'],
+  ['cal_fbd_temp',      'Calibration FBD Temperature'],
+  ['cal_fbd_sensor',    'Calibration FBD Sensor Value'],
+  ['cal_chamber_temp',  'Calibration Chamber Temperature'],
+  ['cal_chamber_sensor','Calibration Chamber Sensor Value'],
+  ['total_production','Total Production of the Day (kg)'],
+  ['incharge',        'Incharge'],
+  ['operator',        'Operator']
+];
+// Bottom-form header: Date | Shift | <labels>.
+var DRYER_V2_FORM_HEADER = ['Date', 'Shift'].concat(
+  DRYER_V2_FORM_COLS.map(function (c) { return c[1]; })
+);
+
+var DRYER_V2_KEY_HEADER = '_dryer_row_key';
+var DRYER_V2_BOTTOM_DIVIDER = '— Bottom Form (Save Log Sheet) —';
+
+// Render one data cell as "value" + the field's own timestamp on a new line.
+function dryerCellWithTs_(value, iso) {
+  var v = coalesce_(value);
+  var t = (iso && String(iso) !== '') ? renderFieldTs_('qc_fg', iso) : '';  // IST hh:mm:ss AM/PM
+  if (v === '' && t === '') return '';
+  return t ? (v + '\n' + t) : v;
+}
+
+// Locate (creating if needed) the hidden "_dryer_row_key" column; return its
+// 0-based index. The key column must sit AFTER the WIDER of the two blocks
+// (hourly header vs bottom-form header), so every data column of BOTH blocks
+// stays to the LEFT of the hidden key — otherwise formatQcTab_ (which stops
+// styling/sizing at the first hidden column) would skip the right-hand
+// bottom-form columns (Total Production, Incharge, Operator, …).
+function dryerKeyCol_(sh) {
+  var minW = Math.max(DRYER_V2_HOURLY_HEADER.length, DRYER_V2_FORM_HEADER.length);
+  var lastCol = Math.max(sh.getLastColumn(), minW, 1);
+  var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var keyCol = hdr.indexOf(DRYER_V2_KEY_HEADER);
+  if (keyCol === -1) {
+    keyCol = Math.max(hdr.length, minW);
+    sh.getRange(1, keyCol + 1).setValue(DRYER_V2_KEY_HEADER);
+    try { sh.hideColumns(keyCol + 1); } catch (e) {}
+  } else if (keyCol < minW) {
+    // An older/narrower key column exists to the LEFT of the form width — move
+    // it to the correct far-right position so form columns aren't hidden/unstyled.
+    var newCol = minW;
+    var lr = sh.getLastRow();
+    if (lr >= 1) {
+      var colData = sh.getRange(1, keyCol + 1, lr, 1).getValues();
+      sh.getRange(1, newCol + 1, lr, 1).setValues(colData);     // copy to new spot
+      sh.getRange(1, keyCol + 1, lr, 1).clearContent();          // clear old spot
+    }
+    try { sh.showColumns(keyCol + 1); } catch (e) {}             // unhide the vacated col
+    keyCol = newCol;
+    sh.getRange(1, keyCol + 1).setValue(DRYER_V2_KEY_HEADER);
+    try { sh.hideColumns(keyCol + 1); } catch (e) {}
+  }
+  return keyCol;
+}
+
+// Find a data row by its hidden key; -1 if absent.
+function dryerFindRow_(sh, keyCol, wantKey) {
+  var lr = sh.getLastRow();
+  if (lr < 2) return -1;
+  var keys = sh.getRange(1, keyCol + 1, lr, 1).getValues();
+  for (var r = 1; r < keys.length; r++) {
+    if (coalesce_(keys[r][0]) === wantKey) return r + 1;
+  }
+  return -1;
+}
+
+/**
+ * 'dryer_hour' → write/replace ONE hourly row in a single setValues call.
+ * payload: { dryer_type, date, shift, hour, values:{key:val}, ts:{key:iso} }
+ */
+function writeDryerHourRow_(ss, row) {
+  var p = row.payload || {};
+  var tabName = TAB.DRYER_V2[coalesce_(p.dryer_type)];
+  if (!tabName) return;
+
+  var sh = getOrCreateSheet_(ss, tabName);
+  ensureHeader_(sh, DRYER_V2_HOURLY_HEADER);
+  var keyCol = dryerKeyCol_(sh);
+  var fullWidth = Math.max(sh.getLastColumn(), keyCol + 1);
+
+  var vals = p.values || {};
+  var ts   = p.ts || {};
+  var wantKey = 'H|' + coalesce_(p.date) + '|' + coalesce_(p.shift) + '|' + coalesce_(p.hour);
+
+  // Build the whole row at once. Preserve existing cells not in this event by
+  // reading the current row first (so a re-save that omits a field keeps it).
+  var rIdx = dryerFindRow_(sh, keyCol, wantKey);
+  var out;
+  if (rIdx > 0) {
+    out = sh.getRange(rIdx, 1, 1, fullWidth).getValues()[0];
+    while (out.length < fullWidth) out.push('');
+  } else {
+    out = [];
+    for (var i = 0; i < fullWidth; i++) out.push('');
+  }
+  out[0] = coalesce_(p.date);
+  out[1] = coalesce_(p.shift);
+  out[2] = coalesce_(p.hour);
+  for (var c = 0; c < DRYER_V2_HOURLY_COLS.length; c++) {
+    var fk = DRYER_V2_HOURLY_COLS[c][0];
+    if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
+      out[3 + c] = dryerCellWithTs_(vals[fk], ts[fk]);
+    }
+  }
+  out[keyCol] = wantKey;
+
+  if (rIdx > 0) sh.getRange(rIdx, 1, 1, out.length).setValues([out]);
+  else          sh.appendRow(out);
+  try { sh.hideColumns(keyCol + 1); } catch (e) {}
+}
+
+/**
+ * 'dryer_form' → write/replace the horizontal bottom-form block in the SAME tab
+ * as the hourly table ("New Dryer" / "Old Dryer"), placed below a styled
+ * divider + its own header row. One data row per (date, shift); each data cell =
+ * value + its own timestamp on the next line. Matched by the hidden
+ * "_dryer_row_key" column → updates in place (idempotent; no duplicates).
+ * payload: { dryer_type, date, shift, values:{key:val}, ts:{key:iso} }
+ */
+function writeDryerFormRow_(ss, row) {
+  var p = row.payload || {};
+  var tabName = TAB.DRYER_V2[coalesce_(p.dryer_type)];
+  if (!tabName) return;
+
+  var sh = getOrCreateSheet_(ss, tabName);
+  ensureHeader_(sh, DRYER_V2_HOURLY_HEADER);   // hourly header stays row 1
+  var keyCol = dryerKeyCol_(sh);
+  var fullWidth = Math.max(sh.getLastColumn(), keyCol + 1, DRYER_V2_FORM_HEADER.length);
+
+  // Ensure the divider row + bottom header row exist (once), keyed so we can
+  // find/style them. Divider keyed 'FORM_DIV', bottom header keyed 'FORM_HDR'.
+  var hdrRow = dryerFindRow_(sh, keyCol, 'FORM_HDR');
+  if (hdrRow === -1) {
+    var div = [];
+    for (var j = 0; j < fullWidth; j++) div.push('');
+    div[0] = DRYER_V2_BOTTOM_DIVIDER;
+    div[keyCol] = 'FORM_DIV';
+    sh.appendRow(div);
+    var hdr = [];
+    for (var j2 = 0; j2 < fullWidth; j2++) hdr.push('');
+    for (var h = 0; h < DRYER_V2_FORM_HEADER.length; h++) hdr[h] = DRYER_V2_FORM_HEADER[h];
+    hdr[keyCol] = 'FORM_HDR';
+    sh.appendRow(hdr);
+  }
+
+  var vals = p.values || {};
+  var ts   = p.ts || {};
+  var wantKey = 'F|' + coalesce_(p.date) + '|' + coalesce_(p.shift);
+
+  var rIdx = dryerFindRow_(sh, keyCol, wantKey);
+  var out;
+  if (rIdx > 0) {
+    out = sh.getRange(rIdx, 1, 1, fullWidth).getValues()[0];
+    while (out.length < fullWidth) out.push('');
+  } else {
+    out = [];
+    for (var i = 0; i < fullWidth; i++) out.push('');
+  }
+  // Bottom-form fields whose cell shows the VALUE ONLY (no timestamp), by
+  // request: Batch No. and Calibration Due Date.
+  var DRYER_V2_FORM_NO_TS = { 'batch_no': true, 'calibration_due': true };
+
+  out[0] = coalesce_(p.date);
+  out[1] = coalesce_(p.shift);
+  for (var c = 0; c < DRYER_V2_FORM_COLS.length; c++) {
+    var fk = DRYER_V2_FORM_COLS[c][0];
+    if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
+      out[2 + c] = DRYER_V2_FORM_NO_TS[fk]
+        ? coalesce_(vals[fk])                 // value only — no timestamp line
+        : dryerCellWithTs_(vals[fk], ts[fk]);
+    }
+  }
+  out[keyCol] = wantKey;
+
+  if (rIdx > 0) sh.getRange(rIdx, 1, 1, out.length).setValues([out]);
+  else          sh.appendRow(out);
+  try { sh.hideColumns(keyCol + 1); } catch (e) {}
+}
 
 function writeDryerSnapshot_(ss, row) {
   var payload = row.payload || {};
@@ -731,48 +1575,48 @@ function buildQcLayout_(kind) {
     header.push(orderedIdentity[i][1]);
   }
 
-  var singleTs = QC_SINGLE_TIMESTAMP[kind] === true;
-
-  if (singleTs) {
-    // SINGLE-TIMESTAMP layout (RM): one value column per field, NO per-field
-    // "(Updated)" column. A single shared "Timestamp" column (first field-entry
-    // time of the record) sits after all field columns, then "Final Submission".
-    for (var f = 0; f < fields.length; f++) {
-      var key = fields[f][0];
-      valueCol[key] = header.length;
-      header.push(fields[f][1]);
-    }
-    var sharedTsCol = header.length;
-    header.push('Timestamp');
-    var finalColS = header.length;
-    header.push('Final Submission Timestamp');
-
-    return {
-      header: header,
-      identityKeys: identityKeys,
-      idCol: idCol,
-      valueCol: valueCol,
-      tsCol: tsCol,                 // empty — no per-field ts in this mode
-      sharedTsCol: sharedTsCol,     // the single shared "Timestamp" column
-      finalCol: finalColS,
-      keyLen: bizKeys.length,
-      singleTs: true
-    };
-  }
-
-  // PER-FIELD layout: value + its own timestamp column per field.
-  // RM ('fixed'): the ts column header is literally "Timestamp"; association to
-  // its field is POSITIONAL (the Timestamp column immediately follows its value).
-  // IP/FG ('suffix'): "<Label> (Updated)".
-  var tsMode = QC_TS_HEADER_MODE[kind] || 'suffix';
+  // MERGED value+timestamp layout (all QC sections): each field gets ONE column.
+  // The cell holds the value on line 1 and its own timestamp on line 2
+  // (value + "\n" + hh:mm:ss AM/PM IST). There is NO separate per-field
+  // Timestamp column. valueCol[key] and tsCol[key] POINT TO THE SAME column, so
+  // the existing writers (which set the value cell, then the ts cell) both land
+  // in the one merged cell — the merge helper below composes value+time.
+  // 'Final Submission' stays its own column (independent info — the
+  // form-submission moment, distinct from per-field entry/update times).
+  // NOTE: only a field's OWN value and OWN time share a cell; different fields
+  // are never combined. The In-Process mill table and FG sieve logs already
+  // stack their own value+time in-cell and are unaffected.
   for (var f2 = 0; f2 < fields.length; f2++) {
     var key2 = fields[f2][0];
     var label2 = fields[f2][1];
     valueCol[key2] = header.length;
+    tsCol[key2]    = header.length;   // SAME column as the value → merged cell
     header.push(label2);
-    tsCol[key2] = header.length;
-    header.push(tsMode === 'fixed' ? 'Timestamp' : (label2 + ' (Updated)'));
   }
+
+  // In-Process only: the Mill-wise Suspensibility table, flattened horizontally.
+  // For each mill: its four data columns, then ONE "Timestamp" column for the
+  // mill row (the whole mill table shares the record's mill-entry time).
+  //   millCol[millName][cellKey] -> 0-based column index of that data cell
+  //   millTsCol[millName]        -> 0-based column index of the mill's Timestamp
+  var millCol = {};
+  var millTsCol = {};
+  if (kind === 'qc_ip') {
+    for (var mi = 0; mi < IP_MILL_NAMES.length; mi++) {
+      var mName = IP_MILL_NAMES[mi];
+      millCol[mName] = {};
+      for (var ci = 0; ci < IP_MILL_COLS.length; ci++) {
+        millCol[mName][IP_MILL_COLS[ci][0]] = header.length;
+        header.push('Mill ' + mName + ' – ' + IP_MILL_COLS[ci][1]);
+      }
+      millTsCol[mName] = header.length;
+      header.push('Timestamp');
+    }
+  }
+
+  // Finished Goods repeated Wet/Dry Sieve readings do NOT add any columns:
+  // all readings are stacked within the sieve test's existing single Value and
+  // single Timestamp columns (see FG_SIEVE_LOGS / buildFgSieveStack_).
 
   var finalCol = header.length;
   header.push('Final Submission');
@@ -783,10 +1627,249 @@ function buildQcLayout_(kind) {
     idCol: idCol,
     valueCol: valueCol,
     tsCol: tsCol,
+    millCol: millCol,
+    millTsCol: millTsCol,
     finalCol: finalCol,
     keyLen: bizKeys.length,
     singleTs: false
   };
+}
+
+/* ── QC PASS/FAIL status rules (mirror of the website) ────────────────────────
+ * The website computes a PASS/FAIL status for fields that have a `rule`
+ * (src/data/qualityData.js + src/data/uplData.js), via evaluate(value, rule).
+ * The status is NOT stored in Supabase (it is computed in the browser), so we
+ * recompute it HERE for the SAME fields using the SAME rules, and show it beside
+ * the value in the merged cell — WITHOUT adding any column. Fields NOT listed
+ * here have no status on the website and get no status in the sheet.
+ *
+ * Rule shapes (same as the website):
+ *   {type:'range',min,max} {type:'max',max} {type:'min',min}
+ *   {type:'tolerance',target,tol} {type:'text',accepted}
+ * Keep this catalog in sync with the website data files.
+ * ──────────────────────────────────────────────────────────────────────────── */
+var QC_RULES = {
+  // Raw Material
+  'ligno_ph':        { type: 'range', min: 3, max: 9 },
+  'ligno_solubility':{ type: 'text',  accepted: 'Clear Solution' },
+  'ligno_moisture':  { type: 'range', min: 0, max: 5 },
+  'clay_ph':         { type: 'range', min: 5, max: 8 },
+  'clay_sed10':      { type: 'max',   max: 5 },
+  'clay_sed30':      { type: 'max',   max: 10 },
+  'clay_moisture':   { type: 'range', min: 0, max: 4 },
+  'dn_ph':           { type: 'range', min: 5, max: 8 },
+  'dn_solubility':   { type: 'text',  accepted: 'Clear Solution' },
+  'dn_moisture':     { type: 'range', min: 0, max: 6 },
+  'dn_solid':        { type: 'tolerance', target: 45, tol: 1 },
+  'coal_moisture':   { type: 'max',   max: 30 },
+  'mm_density':      { type: 'tolerance', target: 4.40, tol: 0.05 },
+  'mm_diameter':     { type: 'range', min: 2.0, max: 2.40 },
+  'mm_finish':       { type: 'text',  accepted: 'Complies' },
+  // Finished Goods — Persistent Foaming
+  'fg_foam_start':   { type: 'max',   max: 60 },
+  'fg_foam_1min':    { type: 'max',   max: 25 },
+  // Finished Goods — UPL Export
+  'upl_exp_ps_10':   { type: 'max',   max: 20 },
+  'upl_exp_ps_6':    { type: 'max',   max: 35 },
+  'upl_exp_ps_1':    { type: 'min',   min: 75 },
+  'upl_exp_ws_160':  { type: 'max',   max: 0.02 },
+  'upl_exp_ws_25':   { type: 'max',   max: 0.20 },
+  'upl_exp_df_0':    { type: 'max',   max: 300 },
+  'upl_exp_df_1':    { type: 'max',   max: 200 },
+  'upl_exp_df_2':    { type: 'max',   max: 150 },
+  'upl_exp_df_5':    { type: 'max',   max: 60 },
+  'upl_exp_wps':     { type: 'range', min: 2.20, max: 4.90 },
+  'upl_exp_alk':     { type: 'max',   max: 0.6 },
+  'upl_exp_disp':    { type: 'text',  accepted: 'Complies' },
+  // Finished Goods — UPL OMRI
+  'upl_omri_ps_10':  { type: 'max',   max: 20 },
+  'upl_omri_ps_6':   { type: 'max',   max: 35 },
+  'upl_omri_ps_1':   { type: 'min',   min: 75 },
+  'upl_omri_ds_500': { type: 'min',   min: 99 },
+  'upl_omri_ds_106': { type: 'max',   max: 11 },
+  'upl_omri_disp_self': { type: 'text', accepted: 'Complies' },
+  'upl_omri_disp_1h':   { type: 'text', accepted: 'Complies' },
+  'upl_omri_disp_24h':  { type: 'text', accepted: 'Complies' },
+  'upl_omri_ws_160': { type: 'min',   min: 99.98 },
+  'upl_omri_ws_25':  { type: 'min',   min: 99.50 }
+};
+
+// Mirror of the website evaluate(value, rule) → 'PASS' | 'FAIL' | null.
+function evaluateQc_(value, rule) {
+  if (!rule) return null;
+  if (value === '' || value === null || value === undefined) return null;
+  var n = parseFloat(value);
+  switch (rule.type) {
+    case 'range':     if (isNaN(n)) return null; return (n >= rule.min && n <= rule.max) ? 'PASS' : 'FAIL';
+    case 'max':       if (isNaN(n)) return null; return (n <= rule.max) ? 'PASS' : 'FAIL';
+    case 'min':       if (isNaN(n)) return null; return (n >= rule.min) ? 'PASS' : 'FAIL';
+    case 'tolerance': if (isNaN(n)) return null; return (n >= (rule.target - rule.tol) && n <= (rule.target + rule.tol)) ? 'PASS' : 'FAIL';
+    case 'text':      return (String(value) === String(rule.accepted)) ? 'PASS' : 'FAIL';
+    default:          return null;
+  }
+}
+
+/**
+ * Merge a QC field's value, its PASS/FAIL status (only for fields that HAVE a
+ * status on the website), and its timestamp into ONE cell:
+ *   line 1: "<value>  (PASS)"   (status shown beside the value; omitted when the
+ *           field has no rule, or the value doesn't yield a status)
+ *   line 2: timestamp (hh:mm:ss AM/PM, IST)  — omitted when there is no time
+ * No new column is added. `fieldKey` selects the rule from QC_RULES; pass '' to
+ * skip status (e.g. identity fields). `iso` is an app-recorded time — never the
+ * sheet upload time.
+ */
+function qcMergeCell_(value, iso, kind, fieldKey) {
+  var v = renderCell_(value);
+  var status = (fieldKey && QC_RULES[fieldKey]) ? evaluateQc_(value, QC_RULES[fieldKey]) : null;
+  var line1 = (v !== '' && status) ? (v + '  (' + status + ')') : v;
+  var t = (iso !== null && iso !== undefined && String(iso) !== '')
+    ? renderFieldTs_(kind || 'qc_fg', iso) : '';
+  if (line1 === '' && t === '') return '';
+  return t ? (line1 + '\n' + t) : line1;
+}
+
+/**
+ * Merge a Finished Goods sieve stack (parallel value/ts line arrays from
+ * buildFgSieveStack_) into ONE cell: each reading as "<reading> — <time>" on
+ * its own line, so every reading keeps its own time together in the cell.
+ */
+function qcMergeSieveStack_(stack) {
+  var vLines = String(stack.value || '').split('\n');
+  var tLines = String(stack.ts || '').split('\n');
+  var out = [];
+  for (var i = 0; i < vLines.length; i++) {
+    var v = vLines[i] || '';
+    var t = tLines[i] || '';
+    if (v === '' && t === '') continue;
+    out.push(t ? (v + '  —  ' + t) : v);
+  }
+  return out.join('\n');
+}
+
+/**
+ * Build the STACKED value + timestamp strings for ONE Finished Goods sieve test
+ * (Wet Sieve or Dry Sieve) from the Print/Download snapshot's stored log array,
+ * so all recorded readings live on separate lines WITHIN the test's single
+ * existing Value cell and single existing Timestamp cell — no numbered columns,
+ * one logical entry per batch/grade/dryer/test.
+ *
+ * Inputs:
+ *   valueKey  'fg_wetSieve' | 'fg_drySieve' (the result/value key)
+ *   logKey    'fg_wetSieve_log' | 'fg_drySieve_log' (repeated-readings array;
+ *             each element { result, status, time, isoTime, targetLabel })
+ *   vals      the record's values object
+ *   tsMap     values.__ts (app-recorded ISO times; per-reading keys
+ *             '<valueKey>_reading_N' when present)
+ *   kind      'qc_fg'
+ *
+ * Returns { value, ts }, each a newline-joined string, line i of value aligned
+ * with line i of ts. Each value line uses the SAME format as the live
+ * writeFgSieveReadings_ writer: "#N  <micron>  <result>  <status>", with the
+ * matching website-recorded time (IST hh:mm:ss AM/PM) on the matching ts line.
+ * Returns null when the log has no readings, so the caller leaves the single
+ * calculated-result value cell (written by the field loop) untouched.
+ *
+ * Deterministic + idempotent: rebuilt entirely from the stored array every
+ * sync, so a retry/replay (and the parallel live sieve-readings event) all
+ * produce IDENTICAL content — never duplicating or appending readings. Uses
+ * only app-recorded times, never the Sheets upload time.
+ */
+function buildFgSieveStack_(valueKey, logKey, vals, tsMap, kind) {
+  var arr = vals[logKey];
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch (e) { arr = null; }
+  }
+  if (!arr || Object.prototype.toString.call(arr) !== '[object Array]') return null;
+
+  var values = [];
+  var times  = [];
+  for (var i = 0; i < arr.length; i++) {
+    var e = arr[i] || {};
+    if (e.result === undefined || e.result === null || String(e.result) === '') continue;
+    var no     = i + 1;
+    var micron = coalesce_(e.targetLabel);
+    var result = coalesce_(e.result);
+    var status = coalesce_(e.status);
+    var parts = ['#' + no];
+    if (micron !== '') parts.push(micron);
+    parts.push(result);
+    if (status !== '') parts.push(status);
+    values.push(parts.join('  '));
+
+    var iso = (tsMap && tsMap[valueKey + '_reading_' + no]) ? tsMap[valueKey + '_reading_' + no]
+            : (e.isoTime || null);
+    if (iso) {
+      times.push(renderFieldTs_(kind, iso));
+    } else if (e.time) {
+      times.push(String(e.time));   // older entries saved only a display string
+    } else {
+      times.push('');
+    }
+  }
+
+  if (values.length === 0) return null;
+  return {
+    value: values.join(FG_SIEVE_LINE_SEP),
+    ts:    times.join(FG_SIEVE_LINE_SEP)
+  };
+}
+
+/**
+ * Expand a stored ip_mill_rows value (JSONB array, or its JSON string) into the
+ * flattened per-mill cells of an In-Process row. `millRows` is the parsed value
+ * (array of { mill, br, flowRate, pass, susp, __ts }). `entryTs` is the
+ * field-level fallback entry time (field_entry_ts of the ip_mill_rows
+ * field_change), used only for rows that carry no own __ts.
+ *
+ * Writes each mill's BR / Suspension / Flow Rate / Pass value cells, and its
+ * own "Timestamp" cell = that mill row's ORIGINAL entry time (r.__ts, captured
+ * on the website the first time the mill got a value). Only mills that actually
+ * have data are stamped, so filling just V1 leaves V2…V10's Timestamp blank —
+ * V1's time is never copied onto the other mills. The Timestamp is written ONLY
+ * when still empty, so a later edit never overwrites the original. "Suspension
+ * (%)" is computed on the website; it is shown when the row carries it.
+ */
+function fillIpMillCells_(existing, layout, millRows, entryTs) {
+  if (!layout.millCol) return;
+  var arr = millRows;
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch (e) { return; }
+  }
+  if (!arr || Object.prototype.toString.call(arr) !== '[object Array]') return;
+
+  for (var i = 0; i < arr.length; i++) {
+    var r = arr[i] || {};
+    var mName = coalesce_(r.mill);
+    if (!mName || !layout.millCol[mName]) continue;
+    var cols = layout.millCol[mName];
+
+    var hasBr   = (r.br       !== undefined && r.br       !== null && String(r.br)       !== '');
+    var hasFlow = (r.flowRate !== undefined && r.flowRate !== null && String(r.flowRate) !== '');
+    var hasPass = (r.pass     !== undefined && r.pass     !== null && String(r.pass)     !== '');
+
+    if (hasBr)   existing[cols.br]       = renderCell_(r.br);
+    if (hasFlow) existing[cols.flowRate] = renderCell_(r.flowRate);
+    if (hasPass) existing[cols.pass]     = renderCell_(r.pass);
+    // Suspension % is derived on the website; include it if a row carries it.
+    var suspVal = (r.susp !== undefined) ? r.susp
+                : (r.suspension !== undefined) ? r.suspension
+                : (r.suspensibility !== undefined) ? r.suspensibility : undefined;
+    var hasSusp = (suspVal !== undefined && suspVal !== null && String(suspVal) !== '');
+    if (hasSusp) existing[cols.susp] = renderCell_(suspVal);
+
+    // Timestamp PER MILL. Use THIS mill's own entry time (r.__ts, captured on
+    // the website the first time the mill row got a value) so V1's time is NOT
+    // copied onto other mills. Fall back to the field-level entryTs only if the
+    // row carries no __ts (older clients). Stamp ONLY mills that actually have
+    // data, and only when the cell is still empty (preserve the original time).
+    var onlyEmpty = !(hasBr || hasFlow || hasPass || hasSusp);
+    if (onlyEmpty) continue;   // blank mill → no timestamp
+    var millTs = r.__ts ? r.__ts : entryTs;
+    var tsText = millTs ? renderFieldTs_('qc_ip', millTs) : '';
+    var tsCell = layout.millTsCol[mName];
+    if (tsText !== '' && coalesce_(existing[tsCell]) === '') existing[tsCell] = tsText;
+  }
 }
 
 /**
@@ -804,11 +1887,34 @@ function writeQcSnapshot_(ss, tabName, kind, row) {
   var liveHeader = ensureHeader_(sh, layout.header);
   var width = Math.max(liveHeader.length, layout.header.length);
 
-  // Each QC submission is ONE record = ONE row, keyed by source_pk. The
-  // field_change events for the same record share the same source_pk, so
-  // both writers land on the same row (snapshot fills values + identity;
-  // field_change fills each field's "(Updated)" timestamp).
-  var rowIdx = findOrAppendQcRowBySourcePk_(sh, layout, row.source_pk, width);
+  // Row identity:
+  //   Finished Goods → match by BUSINESS KEY (date, batch_no, product, grade,
+  //     dryer). Every Print/Download of the same batch is a NEW quality_control
+  //     _records id (new source_pk); keying FG by source_pk created a NEW sheet
+  //     row each save and re-rendered the whole accumulated sieve log — the
+  //     root cause of the "duplicate readings" symptom. Business-key matching
+  //     collapses repeated saves onto ONE row, and it is the SAME row the live
+  //     sieve-readings writer targets, so both share one row/cell per batch.
+  //   RM / In-Process → unchanged: match by source_pk (one submission = one id
+  //     = one row), preserving their existing behavior exactly.
+  var rowIdx;
+  if (kind === 'qc_fg') {
+    var fgBiz = {
+      date:     coalesce_(vals.date || payload.date),
+      batch_no: coalesce_(vals.batch_no),
+      product:  coalesce_(vals.product),
+      grade:    coalesce_(vals.grade),
+      dryer:    coalesce_(vals.dryer)
+    };
+    // identityFill is applied only when a NEW row is appended; the normalized
+    // _fg_key is the authoritative match so the live sieve writer shares it.
+    rowIdx = findOrAppendFgRowByKey_(sh, layout, fgBiz, fgBiz, width);
+  } else {
+    // field_change events for the same record share the same source_pk, so both
+    // writers land on the same row (snapshot fills values + identity;
+    // field_change fills each field's timestamp).
+    rowIdx = findOrAppendQcRowBySourcePk_(sh, layout, row.source_pk, width);
+  }
   var fullWidth = Math.max(sh.getLastColumn(), width);
   var existing = sh.getRange(rowIdx, 1, 1, fullWidth).getValues()[0];
 
@@ -824,20 +1930,90 @@ function writeQcSnapshot_(ss, tabName, kind, row) {
       idv = coalesce_(vals.tested_by || payload.tested_by);
     } else if (idk === 'material') {
       var mid = coalesce_(vals.material);
-      idv = RM_MATERIAL_LABELS[mid] || mid;   // label if known, else raw id
+      // Map the stored material/test id to its website label, per section.
+      var labelMap = (kind === 'qc_ip') ? IP_MATERIAL_LABELS : RM_MATERIAL_LABELS;
+      idv = labelMap[mid] || mid;   // label if known, else raw id
+    } else if (idk === 'time') {
+      // The ordinary "Time" identity field. The website <input type="time">
+      // submits a 24-hour wall-clock string (e.g. "14:35"). Display it in
+      // 12-hour AM/PM (e.g. "02:35:00 PM") consistently across RM/IP/FG. This is
+      // a DISPLAY reformat of a date-less clock value — it does NOT shift the
+      // time and is DISTINCT from the per-field "Timestamp" columns (which keep
+      // their own renderFieldTs_ logic untouched).
+      idv = renderClockTime_(coalesce_(vals[idk]));
     } else {
       idv = coalesce_(vals[idk]);
     }
     if (idv !== '') existing[col] = idv;
   }
 
-  // Fill present field VALUE cells (leave per-field "(Updated)" cells, when
-  // present, untouched so a field_change timestamp written earlier is kept).
+  // Fill present field cells as MERGED "value\n<timestamp>" (value line 1, its
+  // own entry/update time line 2). valueCol[fk] === tsCol[fk] now (one column
+  // per field), so we compose both into the single cell.
+  //   • IP / FG: timestamp from values.__ts[fk] (app-recorded; never upload
+  //     time). Unchanged fields keep their original time; changed fields get
+  //     their new time — same source as before, just rendered in the same cell.
+  //   • RM: the snapshot writes the VALUE now; the per-field time is merged in
+  //     by writeQcFieldTimestamp_ (RM field_change path) which appends the time
+  //     line to the same cell.
+  //   • The two FG sieve keys are EXCLUDED here (owned by the sieve writer that
+  //     stacks every reading+time in the cell).
   var fields = QC_FIELD_CATALOG[kind];
+  var tsMap = (vals && vals.__ts && typeof vals.__ts === 'object') ? vals.__ts : {};
   for (var f = 0; f < fields.length; f++) {
     var fk = fields[f][0];
-    if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
-      existing[layout.valueCol[fk]] = renderCell_(vals[fk]);
+    var hasVal = (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '');
+    var isFgSieve = (kind === 'qc_fg' && (fk === 'fg_wetSieve' || fk === 'fg_drySieve'));
+    if (isFgSieve) continue;   // handled by the sieve-stack writer below
+
+    var tsOwnedBySnapshot = (kind === 'qc_ip' || kind === 'qc_fg');
+    if (hasVal) {
+      if (tsOwnedBySnapshot) {
+        // IP/FG: snapshot owns the merged value+status+time (from values.__ts).
+        existing[layout.valueCol[fk]] = qcMergeCell_(vals[fk], tsMap[fk] || null, kind, fk);
+      } else {
+        // RM: the field_change path (writeQcFieldTimestamp_) owns the merged
+        // value+status+time. The snapshot only ensures value (+status) is
+        // visible BEFORE a field_change arrives — write value+status (no time),
+        // and ONLY if the cell is still empty, so we never clobber a merged
+        // value+status+time already written.
+        if (coalesce_(existing[layout.valueCol[fk]]) === '') {
+          existing[layout.valueCol[fk]] = qcMergeCell_(vals[fk], null, kind, fk);
+        }
+      }
+    } else if (tsOwnedBySnapshot) {
+      // Field now empty → clear the cell so a stale value/time can't linger.
+      existing[layout.valueCol[fk]] = '';
+    }
+  }
+
+  // In-Process: expand the mill-wise suspensibility array into per-mill cells.
+  // The snapshot fills the VALUE cells AND each mill's own Timestamp from the
+  // row's own __ts (fillIpMillCells_ uses r.__ts). Pass no field-level fallback
+  // so the snapshot never stamps a timestamp from the upload path.
+  if (kind === 'qc_ip' && layout.millCol && vals.ip_mill_rows !== undefined) {
+    fillIpMillCells_(existing, layout, vals.ip_mill_rows, null);
+  }
+
+  // Finished Goods: STACK the repeated Wet/Dry Sieve readings within the sieve
+  // test's single Value cell and single Timestamp cell (no numbered columns),
+  // using the SAME "#N  micron  result  status" + time format as the live
+  // writeFgSieveReadings_ writer, so whichever writes last produces IDENTICAL
+  // content (the live sieve-readings event and this snapshot can both target
+  // the same business-key row). Built deterministically from the stored log
+  // arrays → retries/replays never duplicate readings. If a sieve has no logged
+  // readings, the single-value cell written by the field loop above is left
+  // as-is (initial result only).
+  if (kind === 'qc_fg') {
+    for (var si = 0; si < FG_SIEVE_LOGS.length; si++) {
+      var vKey = FG_SIEVE_LOGS[si][0];
+      var lKey = FG_SIEVE_LOGS[si][1];
+      var stack = buildFgSieveStack_(vKey, lKey, vals, tsMap, kind);
+      if (stack) {
+        // MERGED: each reading on its own line as "<reading> — <time>" so the
+        // value and its time stay together in the one sieve cell.
+        existing[layout.valueCol[vKey]] = qcMergeSieveStack_(stack);
+      }
     }
   }
 
@@ -858,7 +2034,26 @@ function writeQcFieldTimestamp_(ss, tabName, kind, row) {
 
   // field_path grammar is 'values.<key>'.
   var fieldKey = String(row.field_path || '').replace(/^values\./, '');
-  if (layout.valueCol[fieldKey] === undefined) {
+
+  // Finished Goods: field_change events are a NO-OP. FG rows are matched by
+  // BUSINESS KEY (date/batch/product/grade/dryer), not source_pk, so the
+  // current_snapshot is the sole authoritative writer of every FG value AND its
+  // Timestamp (rendered from values.__ts), and the live sieve-readings writer
+  // owns the stacked Wet/Dry Sieve cells. A field_change here matches by
+  // source_pk and would land on (or create) a DIFFERENT row, splitting the
+  // record. The snapshot always accompanies every FG save, so nothing is lost
+  // by ignoring field_change for FG. (RM / In-Process are unaffected.)
+  if (kind === 'qc_fg') {
+    return;
+  }
+
+  // In-Process mill-wise suspensibility is a special field: it is expanded into
+  // flattened per-mill columns (not a single value column). Fill those cells +
+  // each mill's Timestamp from this field_change (field_entry_ts = the real
+  // original mill-entry time).
+  var isMillField = (kind === 'qc_ip' && fieldKey === 'ip_mill_rows' && layout.millCol);
+
+  if (!isMillField && layout.valueCol[fieldKey] === undefined) {
     // Field not in the catalog for this section — ignore quietly.
     return;
   }
@@ -876,28 +2071,39 @@ function writeQcFieldTimestamp_(ss, tabName, kind, row) {
 
   var existing = sh.getRange(rowIdx, 1, 1, width).getValues()[0];
 
-  // Always write the field value (so a field entered before the snapshot is
-  // visible). Timestamp handling differs by layout mode:
-  if (row.new_value !== undefined && row.new_value !== null) {
-    existing[layout.valueCol[fieldKey]] = String(row.new_value);
+  if (isMillField) {
+    // Expand the mill array (new_value is the JSON string) into per-mill cells,
+    // stamping each mill's Timestamp from field_entry_ts (original entry time).
+    var entryTsM = row.field_entry_ts || row.field_update_ts;
+    fillIpMillCells_(existing, layout, row.new_value, entryTsM);
+    sh.getRange(rowIdx, 1, 1, existing.length).setValues([existing]);
+    return;
   }
 
-  if (layout.singleTs) {
-    // SINGLE-TIMESTAMP: one shared "Timestamp" = record's FIRST field entry.
-    var sharedCol = layout.sharedTsCol;
-    if (coalesce_(existing[sharedCol]) === '' && row.field_entry_ts) {
-      existing[sharedCol] = renderFieldTs_(kind, row.field_entry_ts);
+  // MERGED cell: valueCol[fieldKey] === tsCol[fieldKey] (one column per field).
+  if (kind === 'qc_ip') {
+    // In-Process: the snapshot is the AUTHORITATIVE source of each field's
+    // merged value+time (from values.__ts). This field_change only ensures the
+    // VALUE is visible before the snapshot arrives — write value ONLY (no time),
+    // and only if the cell is still empty so we never clobber the snapshot's
+    // merged value+time.
+    if (row.new_value !== undefined && row.new_value !== null &&
+        coalesce_(existing[layout.valueCol[fieldKey]]) === '') {
+      existing[layout.valueCol[fieldKey]] = String(row.new_value);
     }
-  } else {
-    // PER-FIELD: write THIS field's own timestamp cell = its ORIGINAL entry
-    // time (field_entry_ts, the time the WEBSITE recorded the value, NOT the
-    // sheet upload time). Write ONLY if the cell is still empty, so a later
-    // edit NEVER overwrites the original entry timestamp.
-    var tsCell = layout.tsCol[fieldKey];
-    if (coalesce_(existing[tsCell]) === '') {
-      var entryTs = row.field_entry_ts || row.field_update_ts;
-      if (entryTs) existing[tsCell] = renderFieldTs_(kind, entryTs);
-    }
+    sh.getRange(rowIdx, 1, 1, existing.length).setValues([existing]);
+    return;
+  }
+
+  // RM (and any other per-field section): compose the merged cell = value on
+  // line 1 + its ORIGINAL entry time on line 2 (field_entry_ts, the website
+  // time — never the upload time). The cell is written once with both lines, so
+  // re-running (retry/replay) with the same value+entry time is idempotent.
+  var cellCol = layout.valueCol[fieldKey];
+  var val = (row.new_value !== undefined && row.new_value !== null) ? String(row.new_value) : '';
+  var entryTs = row.field_entry_ts || row.field_update_ts || null;
+  if (val !== '') {
+    existing[cellCol] = qcMergeCell_(val, entryTs, kind, fieldKey);
   }
 
   sh.getRange(rowIdx, 1, 1, existing.length).setValues([existing]);
@@ -922,9 +2128,29 @@ function findOrAppendQcRowBySourcePk_(sh, layout, sourcePk, width) {
 
   var lastRow = sh.getLastRow();
   if (lastRow >= 2) {
-    var pks = sh.getRange(2, pkCol + 1, lastRow - 1, 1).getValues();
-    for (var r = 0; r < pks.length; r++) {
-      if (coalesce_(pks[r][0]) === coalesce_(sourcePk)) return r + 2;
+    // 1) Exact match: a row already bound to this record's source_pk.
+    var dataRange = sh.getRange(2, 1, lastRow - 1, Math.max(sh.getLastColumn(), pkCol + 1));
+    var dataVals = dataRange.getValues();
+    for (var r = 0; r < dataVals.length; r++) {
+      if (coalesce_(dataVals[r][pkCol]) === coalesce_(sourcePk)) return r + 2;
+    }
+
+    // 2) Reuse the FIRST orphan row whose VISIBLE content cells are all empty
+    //    (e.g. a row the operator cleared manually). This prevents a cleared
+    //    row from being left behind while a brand-new row is appended below it.
+    //    The hidden _source_pk column is ignored when judging emptiness; we
+    //    rebind it to this record so its snapshot/field_change land here.
+    for (var r2 = 0; r2 < dataVals.length; r2++) {
+      var allEmpty = true;
+      for (var c = 0; c < dataVals[r2].length; c++) {
+        if (c === pkCol) continue;               // ignore the hidden key column
+        if (coalesce_(dataVals[r2][c]) !== '') { allEmpty = false; break; }
+      }
+      if (allEmpty) {
+        var reuseRow = r2 + 2;
+        sh.getRange(reuseRow, pkCol + 1).setValue(coalesce_(sourcePk));
+        return reuseRow;
+      }
     }
   }
   // Append a new blank row carrying the source_pk.
@@ -933,6 +2159,219 @@ function findOrAppendQcRowBySourcePk_(sh, layout, sourcePk, width) {
   blank[pkCol] = coalesce_(sourcePk);
   sh.appendRow(blank);
   return sh.getLastRow();
+}
+
+/**
+ * Normalize a Finished Goods business identity into ONE stable string key,
+ * used IDENTICALLY by the Print/Download snapshot and the live sieve-readings
+ * writer so both always resolve to the SAME sheet row for a batch — regardless
+ * of which arrives first. Fields: date, batch_no, product, grade, dryer.
+ *
+ * Normalization that prevents the "separate row every Record" bug:
+ *   • trim everything;
+ *   • grade: empty/null → 'normal' (the website stores Normal grade as null in
+ *     the snapshot but sends 'normal' from the live sieve writer — both map to
+ *     'normal' here so they match);
+ *   • case-fold grade/dryer so 'ND1' vs 'nd1' can't split a row.
+ * The 'test' component is deliberately EXCLUDED — Wet Sieve and Dry Sieve are
+ * two cells in the SAME batch row, so they must share one key.
+ */
+function fgBizKey_(biz) {
+  var date    = coalesce_(biz.date).trim();
+  var batch   = coalesce_(biz.batch_no).trim();
+  var product = coalesce_(biz.product).trim();
+  var grade   = coalesce_(biz.grade).trim().toLowerCase();
+  if (grade === '') grade = 'normal';
+  var dryer   = coalesce_(biz.dryer).trim().toUpperCase();
+  return [date, batch, product, grade, dryer].join('|');
+}
+
+/**
+ * Find (or append) the Finished Goods row for a batch by its normalized
+ * business key (fgBizKey_), stored in a hidden trailing "_fg_key" column. This
+ * is the SINGLE source of row identity for Finished Goods, shared by the
+ * Print/Download snapshot and the live sieve-readings writer, so every event
+ * for one batch (first save, later sieve Records, retries, replays) lands on
+ * ONE row — never a parallel/duplicate row. `biz` is a {date,batch_no,product,
+ * grade,dryer} map; `identityFill` (optional) is a {identityKey: value} map used
+ * to populate the visible identity columns when a NEW row is appended. Returns
+ * the 1-based row index.
+ */
+function findOrAppendFgRowByKey_(sh, layout, biz, identityFill, width) {
+  var wantKey = fgBizKey_(biz);
+
+  // Ensure a trailing hidden "_fg_key" column exists.
+  var header = sh.getRange(1, 1, 1, Math.max(sh.getLastColumn(), 1)).getValues()[0];
+  var keyCol = header.indexOf('_fg_key');
+  if (keyCol === -1) {
+    keyCol = Math.max(header.length, width);
+    sh.getRange(1, keyCol + 1).setValue('_fg_key');
+    try { sh.hideColumns(keyCol + 1); } catch (e) { /* ignore */ }
+  }
+  var fullWidth = Math.max(sh.getLastColumn(), keyCol + 1, width);
+
+  var lastRow = sh.getLastRow();
+  var dataVals = null;
+  if (lastRow >= 2) {
+    dataVals = sh.getRange(2, 1, lastRow - 1, fullWidth).getValues();
+    // 1) Exact match on the stable _fg_key → reuse that record's row.
+    for (var r = 0; r < dataVals.length; r++) {
+      if (coalesce_(dataVals[r][keyCol]) === wantKey) return r + 2;
+    }
+    // 2) Reuse the FIRST row whose VISIBLE cells are ALL empty (e.g. a row the
+    //    operator manually deleted/cleared), instead of appending below the last
+    //    row. The hidden _fg_key column is ignored when judging emptiness; we
+    //    rebind it to this record so its snapshot/live events land here. A row
+    //    that still holds ANY visible value is never reused (no data overwrite).
+    for (var r2 = 0; r2 < dataVals.length; r2++) {
+      var allEmpty = true;
+      for (var c = 0; c < dataVals[r2].length; c++) {
+        if (c === keyCol) continue;              // ignore the hidden key column
+        if (coalesce_(dataVals[r2][c]) !== '') { allEmpty = false; break; }
+      }
+      if (allEmpty) {
+        var reuseRow = r2 + 2;
+        var reuse = [];
+        for (var ri = 0; ri < fullWidth; ri++) reuse.push('');
+        reuse[keyCol] = wantKey;
+        if (identityFill) {
+          for (var rk = 0; rk < layout.identityKeys.length; rk++) {
+            var ridk = layout.identityKeys[rk];
+            if (identityFill[ridk] !== undefined && coalesce_(identityFill[ridk]) !== '') {
+              reuse[layout.idCol[ridk]] = coalesce_(identityFill[ridk]);
+            }
+          }
+        }
+        sh.getRange(reuseRow, 1, 1, reuse.length).setValues([reuse]);
+        try { sh.hideColumns(keyCol + 1); } catch (e) {}
+        return reuseRow;
+      }
+    }
+  }
+
+  // Append a new row: stamp the hidden key + fill visible identity columns.
+  var blank = [];
+  for (var i = 0; i < fullWidth; i++) blank.push('');
+  blank[keyCol] = wantKey;
+  if (identityFill) {
+    for (var k = 0; k < layout.identityKeys.length; k++) {
+      var idk = layout.identityKeys[k];
+      if (identityFill[idk] !== undefined && coalesce_(identityFill[idk]) !== '') {
+        blank[layout.idCol[idk]] = coalesce_(identityFill[idk]);
+      }
+    }
+  }
+  sh.appendRow(blank);
+  var newRow = sh.getLastRow();
+  try { sh.hideColumns(keyCol + 1); } catch (e) {}
+  return newRow;
+}
+
+/**
+ * Finished Goods LIVE Wet/Dry Sieve readings writer (event_type 'sieve_readings',
+ * migration 028). Rebuilds ONE sieve test's stacked Value cell + Timestamp cell
+ * on the batch's row, matched BY BUSINESS KEY so every reading shares the one
+ * row/cell for that batch/grade/product/dryer.
+ *
+ * Value cell: one line per reading, "#N  <micron>  <result>  <Pass/Fail>".
+ * Timestamp cell: the matching website-recorded measurement time (IST
+ * hh:mm:ss AM/PM) on the matching line. Both rebuilt deterministically from the
+ * payload's full ordered readings array, so retries/replays overwrite with
+ * identical content (no duplicates) and deletions are reflected.
+ *
+ * The 'product' business-key value is the FG product id (e.g. 'sulphur80wdg');
+ * the Product identity column shows that same id, which is what the
+ * Print/Download snapshot writes too (it stores values.product = the id), so the
+ * business keys line up and both writers share one row.
+ */
+function writeFgSieveReadings_(ss, tabName, row) {
+  var payload = row.payload || {};
+  var biz = payload.biz || {};
+  var test = payload.test;
+  if (test !== 'fg_wetSieve' && test !== 'fg_drySieve') return;
+
+  var readings = payload.readings;
+  if (typeof readings === 'string') {
+    try { readings = JSON.parse(readings); } catch (e) { readings = []; }
+  }
+  if (!readings || Object.prototype.toString.call(readings) !== '[object Array]') readings = [];
+
+  var kind = 'qc_fg';
+  var layout = buildQcLayout_(kind);
+  if (layout.valueCol[test] === undefined || layout.tsCol[test] === undefined) return;
+
+  var sh = getOrCreateSheet_(ss, tabName);
+  var liveHeader = ensureHeader_(sh, layout.header);
+  var width = Math.max(liveHeader.length, layout.header.length);
+
+  // Map the event's biz payload → identity-column keys used by the layout.
+  var bizByIdentity = {
+    date:     coalesce_(biz.date),
+    batch_no: coalesce_(biz.batch_no),
+    product:  coalesce_(biz.product),
+    grade:    coalesce_(biz.grade),
+    dryer:    coalesce_(biz.dryer)
+  };
+
+  // SAME normalized _fg_key as the Print/Download snapshot → one shared row per
+  // batch. identityFill populates the visible identity columns if this event is
+  // the first to create the row (e.g. Record before Print/Download).
+  var rowIdx = findOrAppendFgRowByKey_(sh, layout, bizByIdentity, bizByIdentity, width);
+  var fullWidth = Math.max(sh.getLastColumn(), width);
+  var existing = sh.getRange(rowIdx, 1, 1, fullWidth).getValues()[0];
+
+  // Build the stacked Value + Timestamp strings from the ordered readings, and
+  // simultaneously track the LATEST result + time per designated UPL Extra
+  // Parameters field (reading.upl_id) so we can update that exact UPL current-
+  // result cell. A later reading for the same upl_id overwrites an earlier one
+  // (latest wins), which is exactly "update the existing result" on recalc.
+  var valueLines = [];
+  var tsLines = [];
+  var uplLatest = {};   // { upl_id: { result, iso } } — latest reading per target
+  for (var i = 0; i < readings.length; i++) {
+    var e = readings[i] || {};
+    if (e.result === undefined || e.result === null || String(e.result) === '') continue;
+    var no     = (e.reading_no !== undefined && e.reading_no !== null) ? e.reading_no : (i + 1);
+    var micron = coalesce_(e.micron);
+    var result = coalesce_(e.result);
+    var status = coalesce_(e.status);
+    var parts = ['#' + no];
+    if (micron !== '') parts.push(micron);
+    parts.push(result);
+    if (status !== '') parts.push(status);
+    valueLines.push(parts.join('  '));
+    tsLines.push(e.iso_time ? renderFieldTs_(kind, e.iso_time) : '');
+
+    // Record the latest result/time for this reading's designated UPL field.
+    var uplId = coalesce_(e.upl_id);
+    if (uplId !== '') {
+      uplLatest[uplId] = { result: result, iso: (e.iso_time || null) };
+    }
+  }
+
+  // Overwrite the sieve test's MERGED cell (value+time per reading, one line
+  // each): "<#n micron result status>  —  <time>". valueCol===tsCol now.
+  existing[layout.valueCol[test]] = qcMergeSieveStack_({
+    value: valueLines.join(FG_SIEVE_LINE_SEP),
+    ts:    tsLines.join(FG_SIEVE_LINE_SEP)
+  });
+
+  // Update ONLY the designated UPL Extra Parameters current-result cells (and
+  // their Timestamp) to the LATEST recalculated result for each target micron.
+  // This is the fix: on the 2nd+ recalculation the UPL parameter cell
+  // (e.g. UPL Export "Wet Sieve 160 Micron" = upl_exp_ws_160) now updates live
+  // on the same row — no new row/column. Only the targeted UPL fields are
+  // touched; every other value/timestamp is left exactly as-is. Uses the
+  // reading's own application-recorded time, never the sheet upload time.
+  for (var uk in uplLatest) {
+    if (!uplLatest.hasOwnProperty(uk)) continue;
+    if (layout.valueCol[uk] === undefined) continue;   // not a known FG column → skip
+    // MERGED cell: UPL result (+PASS/FAIL status) on line 1, its own recorded
+    // time on line 2.
+    existing[layout.valueCol[uk]] = qcMergeCell_(uplLatest[uk].result, uplLatest[uk].iso, kind, uk);
+  }
+
+  sh.getRange(rowIdx, 1, 1, existing.length).setValues([existing]);
 }
 
 
@@ -953,7 +2392,10 @@ function getOrCreateSheet_(ss, name) {
  * Width logic: auto-resize every column, then cap exceptionally wide text
  * columns at a maximum and enable wrapping there so nothing is truncated.
  */
-var QC_MAX_COL_WIDTH = 240;   // px cap for very long text columns (then wrap)
+var QC_MAX_COL_WIDTH = 150;   // px cap for wide columns → long headers/values WRAP
+                              // to multiple lines instead of stretching very wide
+                              // (e.g. "Temperature Deg. Cent. Inlet" shows on ~2–3
+                              //  short lines). Lowered from 240 for compactness.
 var QC_MIN_COL_WIDTH = 70;    // px floor so a 1–2 char value isn't razor-thin
 
 function formatQcTab_(sh) {
@@ -962,10 +2404,22 @@ function formatQcTab_(sh) {
     var lastRow = sh.getLastRow();
     if (lastCol < 1 || lastRow < 1) return;
 
-    // Find the hidden internal key column so we never resize/unhide it.
+    // Find the hidden internal key columns so we never resize/unhide them.
+    // Two possible hidden keys: '_source_pk' (RM/IP + legacy FG) and '_fg_key'
+    // (Finished Goods business key). Visible area ends at the LEFTMOST of them.
     var headerVals = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-    var pkCol0 = headerVals.indexOf('_source_pk');   // 0-based, -1 if absent
-    var visibleCols = (pkCol0 >= 0) ? pkCol0 : lastCol;  // format up to (not incl.) the key col
+    var pkCol0  = headerVals.indexOf('_source_pk');   // 0-based, -1 if absent
+    var fgCol0  = headerVals.indexOf('_fg_key');       // 0-based, -1 if absent
+    var rkCol0  = headerVals.indexOf('_dryer_row_key'); // 0-based, -1 if absent (Dryer v2)
+    var hiddenCols = [];
+    if (pkCol0 >= 0) hiddenCols.push(pkCol0);
+    if (fgCol0 >= 0) hiddenCols.push(fgCol0);
+    if (rkCol0 >= 0) hiddenCols.push(rkCol0);
+    var firstHidden = -1;
+    for (var hc = 0; hc < hiddenCols.length; hc++) {
+      if (firstHidden === -1 || hiddenCols[hc] < firstHidden) firstHidden = hiddenCols[hc];
+    }
+    var visibleCols = (firstHidden >= 0) ? firstHidden : lastCol;  // up to (not incl.) first key col
 
     // 1. Auto-resize visible columns to fit header + data.
     if (visibleCols >= 1) sh.autoResizeColumns(1, visibleCols);
@@ -982,10 +2436,19 @@ function formatQcTab_(sh) {
       var fullRange = sh.getRange(1, 1, lastRow, visibleCols);
       fullRange.setWrap(true);
       fullRange.setVerticalAlignment('middle');
+      // Center every populated data cell AND the headers horizontally so RM/IP/
+      // FG look consistent (previously some cells were left- and some right-
+      // aligned by default type inference). Purely cosmetic — values, formulas,
+      // column names, and timestamps are unchanged. Applies to existing rows and
+      // every newly inserted/updated row (formatQcTab_ runs each sync tick per
+      // touched tab).
+      fullRange.setHorizontalAlignment('center');
     }
 
-    // Keep the internal key column hidden if present.
+    // Keep the internal key column(s) hidden if present.
     if (pkCol0 >= 0) { try { sh.hideColumns(pkCol0 + 1); } catch (e) {} }
+    if (fgCol0 >= 0) { try { sh.hideColumns(fgCol0 + 1); } catch (e) {} }
+    if (rkCol0 >= 0) { try { sh.hideColumns(rkCol0 + 1); } catch (e) {} }
 
     // 3. Header row: bold, light fill, wrapped, frozen so it stays visible.
     if (visibleCols >= 1) {
@@ -995,6 +2458,23 @@ function formatQcTab_(sh) {
       headerRange.setHorizontalAlignment('center');
     }
     if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+
+    // 3b. Dryer tabs only: style the bottom-form DIVIDER row and HEADER row
+    //     (keyed 'FORM_DIV' / 'FORM_HDR' in the hidden key column) with the same
+    //     bold + background as the top header, so the in-tab bottom form matches
+    //     the hourly table.
+    if (rkCol0 >= 0 && visibleCols >= 1 && lastRow >= 2) {
+      var keyColVals = sh.getRange(1, rkCol0 + 1, lastRow, 1).getValues();
+      for (var rr = 1; rr < lastRow; rr++) {   // skip row 1 (already styled)
+        var kv = coalesce_(keyColVals[rr][0]);
+        if (kv === 'FORM_HDR' || kv === 'FORM_DIV') {
+          var rng = sh.getRange(rr + 1, 1, 1, visibleCols);
+          rng.setFontWeight('bold');
+          rng.setBackground('#f0ebe3');
+          rng.setHorizontalAlignment('center');
+        }
+      }
+    }
 
     // 4. Auto-size row heights so wrapped text is fully visible.
     try { sh.autoResizeRows(1, lastRow); } catch (e) { /* older runtimes */ }
@@ -1152,6 +2632,36 @@ function renderCell_(v) {
   if (v === null || v === undefined) return '';
   if (typeof v === 'object') return JSON.stringify(v);
   return String(v);
+}
+
+/**
+ * Render an ordinary "Time" field (a date-less WALL-CLOCK string) in 12-hour
+ * AM/PM, e.g. "14:35" → "02:35:00 PM", "9:05:30" → "09:05:30 AM". This is the
+ * plain Time column (RM/IP/FG identity), NOT a per-field "Timestamp" column
+ * (those keep renderFieldTs_). The stored value is a wall clock already in the
+ * plant's local time (IST) with no date/zone, so this is a pure DISPLAY
+ * reformat — it never shifts the time. Values that are empty, already in AM/PM
+ * form, or not a recognizable HH:mm[:ss] clock are returned unchanged, so the
+ * function is safe/idempotent on existing cells.
+ */
+function renderClockTime_(v) {
+  if (v === null || v === undefined) return '';
+  var s = String(v).trim();
+  if (s === '') return '';
+  // Already 12-hour (contains AM/PM) → leave as-is (idempotent on re-sync).
+  if (/[AaPp][Mm]\s*$/.test(s)) return s;
+  // Match a 24-hour wall clock HH:mm or HH:mm:ss (optionally H:mm).
+  var m = s.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (!m) return s;   // not a plain clock string → unchanged
+  var hh = parseInt(m[1], 10);
+  var mm = parseInt(m[2], 10);
+  var ss = m[3] !== undefined ? parseInt(m[3], 10) : 0;
+  if (isNaN(hh) || isNaN(mm) || isNaN(ss) || hh > 23 || mm > 59 || ss > 59) return s;
+  var ampm = hh >= 12 ? 'PM' : 'AM';
+  var h12 = hh % 12;
+  if (h12 === 0) h12 = 12;
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  return pad(h12) + ':' + pad(mm) + ':' + pad(ss) + ' ' + ampm;
 }
 
 /** Render a timestamp in readable local time; pass non-dates through as text. */

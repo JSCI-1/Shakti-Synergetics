@@ -1,9 +1,13 @@
 # Google Sheets Sync — Deploy Notes
 
 One-way **Supabase → Google Sheets** sync for the Dryer Operator and Quality
-Control (Finished Goods live; Raw Material / In-Process built but dormant)
-modules. Supabase stays authoritative; the sync never blocks or fails a save,
-and failed syncs are retriable.
+Control (Finished Goods, Raw Material, and In-Process all live) modules.
+Supabase stays authoritative; the sync never blocks or fails a save, and failed
+syncs are retriable.
+
+> Migrations now run `001 … 026`. Later QC migrations (024/025/026) re-define
+> the shared QC trigger with `create or replace` and add per-section re-queue
+> helpers; always apply them in numeric order, after 021/022.
 
 > Global constraint for this workflow: **no `git push`, no PR, no commit, no
 > branch, no worktree.** Everything here is a local, uncommitted change. The
