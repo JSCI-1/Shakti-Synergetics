@@ -42,7 +42,7 @@ const OTHER_COLUMNS = [
 
 const DRYER_LABEL = { new: 'New Dryer', old: 'Old Dryer' }
 const GRADE_LABEL = { normal: 'Normal', export: 'UPL Export', omri: 'UPL OMRI', colour: 'Colour' }
-const EXPIRY_MS = 24 * 60 * 60 * 1000
+const EXPIRY_MS = 36 * 60 * 60 * 1000   // entries stay live for 36 hours from their last save
 
 function isActive(row) {
   if (!row?.last_saved_at) return false
@@ -221,10 +221,10 @@ function QcCard({ row }) {
           <span className="pa-group-icon" aria-hidden="true">🧪</span>
           {header}
         </span>
-        <span className="pa-24h-pill">🕐 Showing lasts upto 24 hours only</span>
+        <span className="pa-24h-pill">🕐 Showing lasts upto 36 hours only</span>
       </div>
 
-      {/* Live meta: when this FG row went live + remaining 24h window */}
+      {/* Live meta: when this FG row went live + remaining 36h window */}
       <div className="pa-group-meta">
         <span className="pa-meta-item">
           <span className="pa-meta-k">Went live</span>
@@ -264,7 +264,7 @@ export default function ProductionActivity() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [lastUpdated, setLastUpdated] = useState(null)
-  // tick re-renders periodically so entries that cross the 24h line
+  // tick re-renders periodically so entries that cross the 36h line
   // drop out of the view even without a new Realtime event.
   const [, setTick] = useState(0)
   const channelRef = useRef(null)
@@ -390,7 +390,7 @@ export default function ProductionActivity() {
                 <span className="pa-group-icon" aria-hidden="true"></span>
                 {groupHeader(g)}
               </span>
-              <span className="pa-24h-pill">🕐 Showing lasts upto 24 hours only</span>
+              <span className="pa-24h-pill">🕐 Showing lasts upto 36 hours only</span>
             </div>
 
             {/* Entry meta: batch no, submitted time, remaining time */}

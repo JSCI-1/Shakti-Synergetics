@@ -263,7 +263,7 @@ function DryerForm({
     let cancelled = false
 
     ;(async () => {
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+      const cutoff = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
       const { data, error: err } = await supabase
         .from('dryer_hourly_draft')
         .select('hour, shift, values, operator')
