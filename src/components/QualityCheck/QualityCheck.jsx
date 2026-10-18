@@ -819,16 +819,16 @@ export default function QualityCheck({ user }) {
     const product = (FINISHED_GOODS.find(p => p.id === d.selected) || {}).label || null
 
     // ── Readiness gate (FG only) ───────────────────────────────────────────
-    // The row goes live in Production → Activity ONLY once ALL required FG
+    // The row goes live in Production → Activity ONLY once the required FG
     // fields are entered. Until then nothing is pushed, so no partial/incomplete
     // row ever appears. Required fields:
     //   • Manufactured Date (log_date)      • Dryer (ND1/ND2)
     //   • Grade                             • Product
     //   • Batch No.                         • Tested By
-    //   • Moisture %   (fg_moisture)        • Suspensibility (fg_susp result)
-    // The repeated Wet/Dry Sieve readings are NOT required — they accumulate
-    // progressively via Record clicks and stay additive once the row is live.
-    const suspReady = override.susp !== undefined ? toNum(override.susp) : toNum(suspResult)
+    //   • Moisture %   (fg_moisture)
+    // Suspensibility is NOT required — the record goes live even when it is
+    // blank (it fills in later and is additive, like the sieve readings).
+    // The repeated Wet/Dry Sieve readings are likewise NOT required.
     const notEmpty = v => v !== null && v !== undefined && String(v).trim() !== ''
     const FG_ACTIVITY_REQUIRED_READY =
       notEmpty(logDate) &&
@@ -837,8 +837,7 @@ export default function QualityCheck({ user }) {
       notEmpty(product) &&
       notEmpty(d.batchNo) &&
       notEmpty(d.testedBy || userName) &&
-      notEmpty(curVals.fg_moisture) &&
-      suspReady !== null
+      notEmpty(curVals.fg_moisture)
     if (!FG_ACTIVITY_REQUIRED_READY) return   // incomplete → do not go live yet
 
     const row = {
