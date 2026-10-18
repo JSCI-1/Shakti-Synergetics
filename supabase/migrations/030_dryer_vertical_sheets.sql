@@ -55,7 +55,7 @@ declare
   v_keys text[] := array[
     'temp_inlet','temp_outlet','temp_actual','temp_fbd1','temp_fbd2','temp_chamber',
     'atomizer_freq','feed_fc','pressure','pt_temp','batch_no','bags_per_hr',
-    'bag_size_wt','kg_per_hr','colour','id_frequency','remarks'
+    'bag_size_wt','kg_per_hr','colour','id_frequency','remarks','operator_name'
   ];
   v_k        text;
   v_vals     jsonb := '{}'::jsonb;

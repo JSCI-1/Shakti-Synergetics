@@ -37,6 +37,7 @@ const OTHER_COLUMNS = [
   { key: 'colour',        label: 'Colour/Normal/OMRI',  hi: 'रंग/सामान्य' },
   { key: 'id_frequency',  label: 'I.D. Frequency',      hi: 'आईडी फ्रीक्वेंसी' },
   { key: 'remarks',       label: 'Remarks',             hi: 'टिप्पणी' },
+  { key: 'operator_name', label: 'Operator Name',       hi: 'ऑपरेटर का नाम' },
   { key: 'timestamp',     label: 'Timestamp',           hi: 'समय टिकट' },
 ]
 
@@ -77,6 +78,7 @@ function groupRows(rows) {
         hours: {},
         lastSavedAt: r.last_saved_at,   // most recent submission in this group
         batchNo: '',
+        shift: '',
       })
     }
     const g = groups.get(key)
@@ -87,6 +89,8 @@ function groupRows(rows) {
     }
     // Capture the latest non-empty batch no. from the hour values
     if (r.values?.batch_no) g.batchNo = r.values.batch_no
+    // Capture the shift for this group (row-level column on dryer_hourly_draft)
+    if (r.shift) g.shift = r.shift
   })
 
   return Array.from(groups.values()).sort((a, b) => {
@@ -398,6 +402,10 @@ export default function ProductionActivity() {
               <span className="pa-meta-item">
                 <span className="pa-meta-k">Batch No.</span>
                 <span className="pa-meta-v">{cellVal(g.batchNo)}</span>
+              </span>
+              <span className="pa-meta-item">
+                <span className="pa-meta-k">Shift</span>
+                <span className="pa-meta-v">{cellVal(g.shift)}</span>
               </span>
               <span className="pa-meta-item">
                 <span className="pa-meta-k">Submitted</span>

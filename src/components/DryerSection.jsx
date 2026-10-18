@@ -43,6 +43,10 @@ function emptyRow() {
     id_frequency: '',
     remarks: '',
 
+    // Name of the logged-in operator who pressed Save for THIS hour. Captured
+    // in saveRow() from the signed-in user; shown after Remarks, before Timestamp.
+    operator_name: '',
+
     timestamp: '',
     saved: false,
     // Per-field entry/change times for THIS hour's fields { fieldKey: ISO }.
@@ -336,6 +340,9 @@ function DryerForm({
     const row = form.rows[i]
     const { timestamp: _ts, saved: _sv, ...fields } = row
     const ts = stamp12hr()
+    // The operator who pressed Save for THIS hour = the logged-in user's name
+    // (falls back to the form's Operator box, then the row's existing value).
+    const savedBy = userName || form.operator || fields.operator_name || ''
 
     setRowSaving(prev => ({ ...prev, [i]: true }))
 
@@ -348,8 +355,9 @@ function DryerForm({
           hour,
           shift: form.shift || null,
           operator: form.operator || userName || null,
-          // timestamp is display-only (en-IN); never used for expiry/order
-          values: { ...fields, timestamp: ts },
+          // timestamp is display-only (en-IN); never used for expiry/order.
+          // operator_name = who pressed Save for this hour (per-row).
+          values: { ...fields, operator_name: savedBy, timestamp: ts },
           updated_at: new Date().toISOString(),
           last_saved_at: new Date().toISOString(),
         },
@@ -368,11 +376,11 @@ function DryerForm({
       return
     }
 
-    // Success — stamp timestamp + mark saved locally.
+    // Success — stamp timestamp + operator name + mark saved locally.
     setForm(p => ({
       ...p,
       rows: p.rows.map((r, idx) =>
-        idx === i ? { ...r, timestamp: ts, saved: true } : r
+        idx === i ? { ...r, operator_name: savedBy, timestamp: ts, saved: true } : r
       ),
     }))
   }
@@ -753,6 +761,11 @@ function DryerForm({
                   className="dr-col-remarks"
                 />
 
+                {/* Operator Name (read-only; who pressed Save for this hour) */}
+                <col
+                  className="dr-col-text"
+                />
+
                 <col
                   className="dr-col-timestamp"
                 />
@@ -960,6 +973,19 @@ function DryerForm({
 
                     <span className="dr-hi">
                       टिप्पणी
+                    </span>
+
+                  </th>
+
+
+                  <th rowSpan={2}>
+
+                    Operator Name
+
+                    <br />
+
+                    <span className="dr-hi">
+                      ऑपरेटर का नाम
                     </span>
 
                   </th>
@@ -1183,6 +1209,20 @@ function DryerForm({
                       'remarks',
                       i
                     )}
+
+
+                    {/* Operator Name — read-only; the logged-in user who pressed
+                        Save for this hour (set in saveRow). Shown after Remarks,
+                        before Timestamp. */}
+                    <td className="dr-td-operator">
+                      {form.rows[i].operator_name ? (
+                        <span className="dr-operator-badge">
+                          {form.rows[i].operator_name}
+                        </span>
+                      ) : (
+                        <span className="dr-ts-empty">—</span>
+                      )}
+                    </td>
 
 
                     {/* Timestamp */}

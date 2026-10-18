@@ -1322,9 +1322,10 @@ var DRYER_V2_HOURLY_COLS = [
   ['kg_per_hr',     'Kg./Hour Production'],
   ['colour',        'Colour/Normal/OMRI'],
   ['id_frequency',  'I.D. Frequency'],
-  ['remarks',       'Remarks']
+  ['remarks',       'Remarks'],
+  ['operator_name', 'Operator Name']   // who pressed Save for this hour
 ];
-// Hourly header: Date | Shift | Time | <17 field labels>.
+// Hourly header: Date | Shift | Time | <field labels>.
 var DRYER_V2_HOURLY_HEADER = ['Date', 'Shift', 'Time'].concat(
   DRYER_V2_HOURLY_COLS.map(function (c) { return c[1]; })
 );
