@@ -1365,6 +1365,58 @@ var DRYER_V2_FORM_HEADER = ['Date', 'Shift'].concat(
 var DRYER_V2_KEY_HEADER = '_dryer_row_key';
 var DRYER_V2_BOTTOM_DIVIDER = '— Bottom Form (Save Log Sheet) —';
 
+/**
+ * ONE-SHOT, NON-DESTRUCTIVE: insert the "Operator Name" hourly column into the
+ * EXISTING "New Dryer" / "Old Dryer" tabs WITHOUT clearing any data. Run this
+ * ONCE from the Apps Script editor when the tabs already hold real data and the
+ * new column is missing (ensureHeader_ only fills blank header cells, so it
+ * can't add a column to a populated header).
+ *
+ * It inserts ONE blank column immediately AFTER the "Remarks" header cell —
+ * Google Sheets shifts every existing cell to the right automatically, so no
+ * value is lost or misaligned — then labels the new column "Operator Name".
+ * Idempotent: if an "Operator Name" column already exists, the tab is skipped.
+ * Existing rows show blank in that column until their next save/replay fills it.
+ * Touches ONLY the two Dryer tabs; QC and everything else are untouched.
+ */
+function addDryerOperatorNameColumn() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[addDryerOperatorNameColumn] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[addDryerOperatorNameColumn] Tab missing (skip): ' + tabName); continue; }
+
+    var lastCol = Math.max(sh.getLastColumn(), 1);
+    var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+
+    // Already present? skip (idempotent).
+    if (hdr.indexOf('Operator Name') !== -1) {
+      Logger.log('[addDryerOperatorNameColumn] Already present: ' + tabName);
+      continue;
+    }
+    // Find the "Remarks" header; insert the new column right after it.
+    var remarksIdx = hdr.indexOf('Remarks');   // 0-based
+    if (remarksIdx === -1) {
+      Logger.log('[addDryerOperatorNameColumn] No "Remarks" column on ' + tabName + ' — skipped.');
+      continue;
+    }
+    var insertAfter1 = remarksIdx + 1;          // 1-based column of Remarks
+    sh.insertColumnAfter(insertAfter1);         // shifts Timestamp+ right; data preserved
+    sh.getRange(1, insertAfter1 + 1).setValue('Operator Name');
+    formatQcTab_(sh);                           // re-apply widths/wrap/centering/hidden-key
+    Logger.log('[addDryerOperatorNameColumn] Inserted "Operator Name" after Remarks on ' + tabName);
+  }
+  Logger.log('[addDryerOperatorNameColumn] Done. Existing data preserved; new column added.');
+}
+
 // Render one data cell as "value" + the field's own timestamp on a new line.
 function dryerCellWithTs_(value, iso) {
   var v = coalesce_(value);
