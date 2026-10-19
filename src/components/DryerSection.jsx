@@ -31,6 +31,7 @@ function emptyRow() {
 
     atomizer_freq: '',
     feed_fc: '',
+    c_pressure: '',    // C.Pressure — between Feed F.C. and Feed Pressure
     pressure: '',
     pt_temp: '',
 
@@ -47,12 +48,24 @@ function emptyRow() {
     // in saveRow() from the signed-in user; shown after Remarks, before Timestamp.
     operator_name: '',
 
+    // Maintenance — two INDEPENDENT options, each selectable on its own, each
+    // recording its OWN timestamp when selected. Shown after Operator Name.
+    //   { shifter_screen: '<ISO>'|'' , atomizer_water: '<ISO>'|'' }
+    // A non-empty ISO = that option is selected (with that selection time).
+    maintenance: { shifter_screen: '', atomizer_water: '' },
+
     timestamp: '',
     saved: false,
     // Per-field entry/change times for THIS hour's fields { fieldKey: ISO }.
     __ts: {},
   }
 }
+
+// Maintenance options (label + the row.maintenance key that stores its ISO time).
+const MAINTENANCE_OPTIONS = [
+  { key: 'shifter_screen', label: 'Shifter-Screen Cleaning' },
+  { key: 'atomizer_water', label: 'Running the Atomizer on Water' },
+]
 
 
 /* Calibration sensors */
@@ -243,6 +256,22 @@ function DryerForm({
           // and the hour can be re-saved (last-write-wins).
           saved: false,
         }
+      }),
+    }))
+  }
+
+
+  // Toggle a maintenance option for hour i. Selecting stamps that option's OWN
+  // timestamp (now); unselecting clears it. Both options are independent — the
+  // user can select one, the other, or both. Editing un-saves the hour.
+  const toggleMaintenance = (i, optKey) => {
+    setForm(p => ({
+      ...p,
+      rows: p.rows.map((r, idx) => {
+        if (idx !== i) return r
+        const m = { ...(r.maintenance || { shifter_screen: '', atomizer_water: '' }) }
+        m[optKey] = m[optKey] ? '' : new Date().toISOString()   // toggle: set now / clear
+        return { ...r, maintenance: m, saved: false }
       }),
     }))
   }
@@ -715,12 +744,17 @@ function DryerForm({
                 />
 
 
-                {/* Other columns */}
+                {/* Other columns: atomizer, feed_fc, C.Pressure, pressure, pt_temp */}
 
                 <col
                   className="dr-col-normal"
                 />
 
+                <col
+                  className="dr-col-normal"
+                />
+
+                {/* C.Pressure */}
                 <col
                   className="dr-col-normal"
                 />
@@ -764,6 +798,11 @@ function DryerForm({
                 {/* Operator Name (read-only; who pressed Save for this hour) */}
                 <col
                   className="dr-col-text"
+                />
+
+                {/* Maintenance (two selectable options with their own times) */}
+                <col
+                  className="dr-col-maint"
                 />
 
                 <col
@@ -856,6 +895,19 @@ function DryerForm({
 
                     <span className="dr-hi">
                       फीड एफ.सी.
+                    </span>
+
+                  </th>
+
+
+                  <th rowSpan={2}>
+
+                    C.Pressure
+
+                    <br />
+
+                    <span className="dr-hi">
+                      सी. दबाव
                     </span>
 
                   </th>
@@ -986,6 +1038,19 @@ function DryerForm({
 
                     <span className="dr-hi">
                       ऑपरेटर का नाम
+                    </span>
+
+                  </th>
+
+
+                  <th rowSpan={2}>
+
+                    Maintenance
+
+                    <br />
+
+                    <span className="dr-hi">
+                      रखरखाव
                     </span>
 
                   </th>
@@ -1163,6 +1228,11 @@ function DryerForm({
                     )}
 
                     {renderNC(
+                      'c_pressure',
+                      i
+                    )}
+
+                    {renderNC(
                       'pressure',
                       i
                     )}
@@ -1195,10 +1265,19 @@ function DryerForm({
                       i
                     )}
 
-                    {renderTC(
-                      'colour',
-                      i
-                    )}
+                    {/* Colour/Normal/OMRI — per-row dropdown */}
+                    <td>
+                      <select
+                        className="dr-cell-input"
+                        value={form.rows[i].colour}
+                        onChange={e => setRow(i, 'colour', e.target.value)}
+                      >
+                        <option value="">—</option>
+                        <option value="Colour">Colour</option>
+                        <option value="OMRI">OMRI</option>
+                        <option value="Normal">Normal</option>
+                      </select>
+                    </td>
 
                     {renderTC(
                       'id_frequency',
@@ -1222,6 +1301,31 @@ function DryerForm({
                       ) : (
                         <span className="dr-ts-empty">—</span>
                       )}
+                    </td>
+
+
+                    {/* Maintenance — two independent options; selecting one stamps
+                        its own time shown beside it. Both can be selected. */}
+                    <td className="dr-td-maint">
+                      {MAINTENANCE_OPTIONS.map(opt => {
+                        const iso = (form.rows[i].maintenance || {})[opt.key] || ''
+                        const selected = !!iso
+                        return (
+                          <label key={opt.key} className="dr-maint-opt">
+                            <input
+                              type="checkbox"
+                              checked={selected}
+                              onChange={() => toggleMaintenance(i, opt.key)}
+                            />
+                            <span className="dr-maint-label">{opt.label}</span>
+                            {selected && (
+                              <span className="dr-maint-time">
+                                {new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+                              </span>
+                            )}
+                          </label>
+                        )
+                      })}
                     </td>
 
 

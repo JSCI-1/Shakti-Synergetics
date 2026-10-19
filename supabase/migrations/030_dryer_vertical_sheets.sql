@@ -54,8 +54,8 @@ as $$
 declare
   v_keys text[] := array[
     'temp_inlet','temp_outlet','temp_actual','temp_fbd1','temp_fbd2','temp_chamber',
-    'atomizer_freq','feed_fc','pressure','pt_temp','batch_no','bags_per_hr',
-    'bag_size_wt','kg_per_hr','colour','id_frequency','remarks','operator_name'
+    'atomizer_freq','feed_fc','c_pressure','pressure','pt_temp','batch_no','bags_per_hr',
+    'bag_size_wt','kg_per_hr','colour','id_frequency','remarks','operator_name','maintenance'
   ];
   v_k        text;
   v_vals     jsonb := '{}'::jsonb;
@@ -70,6 +70,19 @@ begin
                     then NEW.values->'__ts' else '{}'::jsonb end;
 
     foreach v_k in array v_keys loop
+      -- 'maintenance' is a JSONB OBJECT ({shifter_screen, atomizer_water}), not
+      -- a scalar. Carry the whole object through (when any option is selected)
+      -- so the Apps Script can render the selected options + their own times.
+      if v_k = 'maintenance' then
+        if jsonb_typeof(NEW.values->'maintenance') = 'object'
+           and (coalesce(NEW.values->'maintenance'->>'shifter_screen','') <> ''
+                or coalesce(NEW.values->'maintenance'->>'atomizer_water','') <> '') then
+          v_vals := v_vals || jsonb_build_object('maintenance', NEW.values->'maintenance');
+          v_fp   := v_fp || 'maintenance=' || (NEW.values->'maintenance')::text || ';';
+          v_any  := true;
+        end if;
+        continue;
+      end if;
       if nullif(trim(coalesce(NEW.values->>v_k, '')), '') is not null then
         v_vals := v_vals || jsonb_build_object(v_k, NEW.values->>v_k);
         v_ts   := v_ts   || jsonb_build_object(v_k, coalesce(v_tsobj->>v_k, ''));

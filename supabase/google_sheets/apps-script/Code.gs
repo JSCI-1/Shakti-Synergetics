@@ -49,10 +49,13 @@ var TAB = {
   DRYER_CURRENT: 'Current Records',
   DRYER_HOURLY: 'Hourly Readings',
   DRYER_HISTORY: 'Field Change History',
-  // Horizontal Dryer tabs (migration 030). TWO tabs only — the hourly log
-  // table and the bottom form share ONE tab per dryer (hourly block on top,
-  // then a styled divider + the bottom-form block below).
-  DRYER_V2: { 'new': 'New Dryer', 'old': 'Old Dryer' },
+  // Horizontal Dryer tabs (migration 030). The hourly log table and the bottom
+  // form (Save Log Sheet) live in SEPARATE tabs per dryer, so each has its own
+  // columns/widths:
+  //   DRYER_V2      → hourly table ("New Dryer" / "Old Dryer")
+  //   DRYER_V2_FORM → bottom form  ("New Dryer – Form" / "Old Dryer – Form")
+  DRYER_V2:      { 'new': 'New Dryer',        'old': 'Old Dryer' },
+  DRYER_V2_FORM: { 'new': 'New Dryer – Form', 'old': 'Old Dryer – Form' },
   // Quality Control: THREE user-facing tabs, one per website section.
   // No separate "Current Records" / "Field Change History" tabs — each
   // measurement value sits next to its own "(Updated)" timestamp column.
@@ -498,13 +501,20 @@ function initDryerTabs() {
 
   var types = ['new', 'old'];
   for (var i = 0; i < types.length; i++) {
+    // Hourly table tab.
     var hTab = TAB.DRYER_V2[types[i]];
     var hsh = getOrCreateSheet_(dryerSS, hTab);
-    ensureHeader_(hsh, DRYER_V2_HOURLY_HEADER);  // hourly header; bottom block appears on first Save Log Sheet
+    ensureHeader_(hsh, DRYER_V2_HOURLY_HEADER);
     formatQcTab_(hsh);
     Logger.log('[initDryerTabs] Ensured tab + header: ' + hTab);
+    // Bottom-form tab (separate).
+    var fTab = TAB.DRYER_V2_FORM[types[i]];
+    var fsh = getOrCreateSheet_(dryerSS, fTab);
+    ensureHeader_(fsh, DRYER_V2_FORM_HEADER);
+    formatQcTab_(fsh);
+    Logger.log('[initDryerTabs] Ensured tab + header: ' + fTab);
   }
-  Logger.log('[initDryerTabs] Done. "New Dryer" / "Old Dryer" are ready in the Dryer book.');
+  Logger.log('[initDryerTabs] Done. New/Old Dryer hourly + form tabs are ready.');
 }
 
 
@@ -536,12 +546,20 @@ function resetDryerTabsClean() {
   var types = ['new', 'old'];
   for (var i = 0; i < types.length; i++) {
     var hTab = TAB.DRYER_V2[types[i]];
-    var old = dryerSS.getSheetByName(hTab);
-    if (old) { dryerSS.deleteSheet(old); }
-    var sh = dryerSS.insertSheet(hTab);
-    ensureHeader_(sh, DRYER_V2_HOURLY_HEADER);
-    formatQcTab_(sh);
+    var oldH = dryerSS.getSheetByName(hTab);
+    if (oldH) { dryerSS.deleteSheet(oldH); }
+    var hsh = dryerSS.insertSheet(hTab);
+    ensureHeader_(hsh, DRYER_V2_HOURLY_HEADER);
+    formatQcTab_(hsh);
     Logger.log('[resetDryerTabsClean] Wiped + recreated tab: ' + hTab);
+
+    var fTab = TAB.DRYER_V2_FORM[types[i]];
+    var oldF = dryerSS.getSheetByName(fTab);
+    if (oldF) { dryerSS.deleteSheet(oldF); }
+    var fsh = dryerSS.insertSheet(fTab);
+    ensureHeader_(fsh, DRYER_V2_FORM_HEADER);
+    formatQcTab_(fsh);
+    Logger.log('[resetDryerTabsClean] Wiped + recreated tab: ' + fTab);
   }
 
   // Make sure replay is OFF so the wiped data does not come back.
@@ -983,6 +1001,29 @@ function clearReplayFlag() {
 }
 
 /**
+ * ONE-TIME: replay the Dryer ('dryer_v2') events so existing New/Old Dryer
+ * records (e.g. a bottom-form "Save Log Sheet" record already synced) re-write
+ * into the CURRENT tab layout — including the new separate "… – Form" tabs.
+ *
+ * Turns ON replay mode so re-served events are written even though they were
+ * processed before. The server only re-serves events whose outbox status was
+ * flipped back to 'pending', and sheets_sync_requeue_dryer_v2() flips ONLY
+ * Dryer events, so QC is never touched. Hourly events replay idempotently
+ * (same rows); form events now land in the new "… – Form" tabs.
+ *
+ * AFTER running this, run ONE line in the Supabase SQL editor:
+ *     select sheets_sync_requeue_dryer_v2();
+ * Within ~40s the Dryer records re-populate. Then run clearReplayFlag().
+ */
+function replayDryerEvents() {
+  PropertiesService.getScriptProperties().setProperty('REPLAY_FORCE_WRITE', '1');
+  Logger.log('[replayDryerEvents] Replay mode ON. '
+    + 'Next: run `select sheets_sync_requeue_dryer_v2();` in the Supabase SQL editor. '
+    + 'Within ~40s Dryer records re-write (bottom form → "… – Form" tabs). '
+    + 'Then run clearReplayFlag() to restore strict dedup.');
+}
+
+/**
  * ONE-TIME, SAFE in-place reformat of the ordinary "Time" column to 12-hour
  * AM/PM on the three QC tabs (Raw Material / In-Process / Finished Goods), for
  * records that were written BEFORE this change (new records already format via
@@ -1181,9 +1222,13 @@ function syncPass_() {
       if (row.record_kind === 'qc_rm' || row.record_kind === 'qc_ip' || row.record_kind === 'qc_fg') {
         touchedQcTabs[TAB.QC[row.record_kind]] = true;
       }
-      if (row.record_kind === 'dryer_v2' && row.payload && TAB.DRYER_V2[row.payload.dryer_type]) {
-        // Both hourly and bottom-form events write to the same dryer tab.
-        touchedDryerTabs[TAB.DRYER_V2[row.payload.dryer_type]] = true;
+      if (row.record_kind === 'dryer_v2' && row.payload) {
+        var dt = row.payload.dryer_type;
+        if (row.event_type === 'dryer_form' && TAB.DRYER_V2_FORM[dt]) {
+          touchedDryerTabs[TAB.DRYER_V2_FORM[dt]] = true;
+        } else if (TAB.DRYER_V2[dt]) {
+          touchedDryerTabs[TAB.DRYER_V2[dt]] = true;
+        }
       }
       if (!processed[eventId]) {
         recordProcessed_(dryerSS, eventId);
@@ -1314,6 +1359,7 @@ var DRYER_V2_HOURLY_COLS = [
   ['temp_chamber',  'Temperature Deg. Cent. Chamber'],
   ['atomizer_freq', 'Atomizer Freq.'],
   ['feed_fc',       'Feed F.C.'],
+  ['c_pressure',    'C.Pressure'],     // between Feed F.C. and Feed Pressure
   ['pressure',      'Feed Pressure'],
   ['pt_temp',       'Pt. Temp'],
   ['batch_no',      'Batch No.'],
@@ -1323,7 +1369,8 @@ var DRYER_V2_HOURLY_COLS = [
   ['colour',        'Colour/Normal/OMRI'],
   ['id_frequency',  'I.D. Frequency'],
   ['remarks',       'Remarks'],
-  ['operator_name', 'Operator Name']   // who pressed Save for this hour
+  ['operator_name', 'Operator Name'],  // who pressed Save for this hour
+  ['maintenance',   'Maintenance']     // selected options + their own times
 ];
 // Hourly header: Date | Shift | Time | <field labels>.
 var DRYER_V2_HOURLY_HEADER = ['Date', 'Shift', 'Time'].concat(
@@ -1417,6 +1464,100 @@ function addDryerOperatorNameColumn() {
   Logger.log('[addDryerOperatorNameColumn] Done. Existing data preserved; new column added.');
 }
 
+/**
+ * ONE-SHOT, NON-DESTRUCTIVE: insert the two NEW hourly columns into the EXISTING
+ * "New Dryer" / "Old Dryer" tabs WITHOUT clearing any data:
+ *   • "C.Pressure"  — inserted right AFTER "Feed F.C."
+ *   • "Maintenance" — inserted right AFTER "Operator Name"
+ * Each uses insertColumnAfter (Google Sheets shifts existing cells right, so no
+ * value is lost or misaligned). Idempotent: a column already present is skipped.
+ * Existing rows show blank in the new columns until their next save/replay.
+ * Touches ONLY the two Dryer hourly tabs. Run ONCE from the Apps Script editor.
+ *
+ * NOTE: run addDryerOperatorNameColumn() FIRST if the "Operator Name" column is
+ * not yet present (Maintenance anchors on it). If "Operator Name" is missing,
+ * Maintenance falls back to being inserted after "Remarks".
+ */
+function addDryerNewHourlyColumns() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[addDryerNewHourlyColumns] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+
+  // Insert a single named column after the column whose header === afterLabel
+  // (or after fallbackLabel if the first is absent). No-op if newLabel exists.
+  function insertAfter_(sh, tabName, newLabel, afterLabel, fallbackLabel) {
+    var lastCol = Math.max(sh.getLastColumn(), 1);
+    var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (hdr.indexOf(newLabel) !== -1) {
+      Logger.log('[addDryerNewHourlyColumns] "' + newLabel + '" already present: ' + tabName);
+      return;
+    }
+    var anchor = hdr.indexOf(afterLabel);
+    if (anchor === -1 && fallbackLabel) anchor = hdr.indexOf(fallbackLabel);
+    if (anchor === -1) {
+      Logger.log('[addDryerNewHourlyColumns] No anchor (' + afterLabel + ') on '
+        + tabName + ' — "' + newLabel + '" skipped.');
+      return;
+    }
+    var after1 = anchor + 1;                 // 1-based column of the anchor
+    sh.insertColumnAfter(after1);            // shifts everything right; data preserved
+    sh.getRange(1, after1 + 1).setValue(newLabel);
+    Logger.log('[addDryerNewHourlyColumns] Inserted "' + newLabel + '" after "'
+      + (hdr[anchor]) + '" on ' + tabName);
+  }
+
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[addDryerNewHourlyColumns] Tab missing (skip): ' + tabName); continue; }
+
+    // Insert Maintenance first (anchored after Operator Name / fallback Remarks),
+    // then C.Pressure (anchored after Feed F.C.). Order does not matter because
+    // each re-reads the header fresh and skips if already present.
+    insertAfter_(sh, tabName, 'Maintenance', 'Operator Name', 'Remarks');
+    insertAfter_(sh, tabName, 'C.Pressure',  'Feed F.C.', null);
+
+    formatQcTab_(sh);   // re-apply widths/wrap/centering/hidden-key
+  }
+  Logger.log('[addDryerNewHourlyColumns] Done. Existing data preserved; C.Pressure + Maintenance added.');
+}
+
+// Maintenance option labels (keys match the website row.maintenance object).
+var DRYER_MAINT_LABELS = [
+  ['shifter_screen', 'Shifter-Screen Cleaning'],
+  ['atomizer_water', 'Running the Atomizer on Water']
+];
+
+/**
+ * Render the Maintenance cell from the stored object
+ *   { shifter_screen: '<ISO>'|'', atomizer_water: '<ISO>'|'' }
+ * (or its JSON string). Each SELECTED option (non-empty ISO) becomes one line:
+ *   "<Option label> — <hh:mm:ss AM/PM IST>".
+ * Unselected options are omitted. Empty when nothing is selected.
+ */
+function renderDryerMaintenance_(m) {
+  if (typeof m === 'string') {
+    try { m = JSON.parse(m); } catch (e) { return m ? String(m) : ''; }
+  }
+  if (!m || typeof m !== 'object') return '';
+  var lines = [];
+  for (var i = 0; i < DRYER_MAINT_LABELS.length; i++) {
+    var key = DRYER_MAINT_LABELS[i][0];
+    var label = DRYER_MAINT_LABELS[i][1];
+    var iso = m[key];
+    if (iso && String(iso) !== '') {
+      lines.push(label + '  —  ' + renderFieldTs_('qc_fg', iso));
+    }
+  }
+  return lines.join('\n');
+}
+
 // Render one data cell as "value" + the field's own timestamp on a new line.
 function dryerCellWithTs_(value, iso) {
   var v = coalesce_(value);
@@ -1503,6 +1644,14 @@ function writeDryerHourRow_(ss, row) {
   out[2] = coalesce_(p.hour);
   for (var c = 0; c < DRYER_V2_HOURLY_COLS.length; c++) {
     var fk = DRYER_V2_HOURLY_COLS[c][0];
+    if (fk === 'maintenance') {
+      // Maintenance is an object { shifter_screen: '<ISO>'|'', atomizer_water:
+      // '<ISO>'|'' } — render each SELECTED option on its own line with its own
+      // recorded time: "Shifter-Screen Cleaning — 03:12:40 PM".
+      var mCell = renderDryerMaintenance_(vals[fk]);
+      if (mCell !== '') out[3 + c] = mCell;
+      continue;
+    }
     if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
       out[3 + c] = dryerCellWithTs_(vals[fk], ts[fk]);
     }
@@ -1515,38 +1664,37 @@ function writeDryerHourRow_(ss, row) {
 }
 
 /**
- * 'dryer_form' → write/replace the horizontal bottom-form block in the SAME tab
- * as the hourly table ("New Dryer" / "Old Dryer"), placed below a styled
- * divider + its own header row. One data row per (date, shift); each data cell =
- * value + its own timestamp on the next line. Matched by the hidden
- * "_dryer_row_key" column → updates in place (idempotent; no duplicates).
+ * 'dryer_form' → write/replace the bottom-form row in its OWN tab
+ * ("New Dryer – Form" / "Old Dryer – Form"), separate from the hourly table so
+ * it has its own columns/widths. Header on row 1 (Date | Shift | <labels>), one
+ * data row per (date, shift); each data cell = value + its own timestamp on the
+ * next line (Batch No. and Calibration Due Date show value only). Matched by a
+ * hidden "_dryer_row_key" column → updates in place (idempotent; no duplicates).
  * payload: { dryer_type, date, shift, values:{key:val}, ts:{key:iso} }
  */
 function writeDryerFormRow_(ss, row) {
   var p = row.payload || {};
-  var tabName = TAB.DRYER_V2[coalesce_(p.dryer_type)];
+  var tabName = TAB.DRYER_V2_FORM[coalesce_(p.dryer_type)];
   if (!tabName) return;
 
   var sh = getOrCreateSheet_(ss, tabName);
-  ensureHeader_(sh, DRYER_V2_HOURLY_HEADER);   // hourly header stays row 1
-  var keyCol = dryerKeyCol_(sh);
-  var fullWidth = Math.max(sh.getLastColumn(), keyCol + 1, DRYER_V2_FORM_HEADER.length);
+  ensureHeader_(sh, DRYER_V2_FORM_HEADER);   // the FORM header is row 1 here
 
-  // Ensure the divider row + bottom header row exist (once), keyed so we can
-  // find/style them. Divider keyed 'FORM_DIV', bottom header keyed 'FORM_HDR'.
-  var hdrRow = dryerFindRow_(sh, keyCol, 'FORM_HDR');
-  if (hdrRow === -1) {
-    var div = [];
-    for (var j = 0; j < fullWidth; j++) div.push('');
-    div[0] = DRYER_V2_BOTTOM_DIVIDER;
-    div[keyCol] = 'FORM_DIV';
-    sh.appendRow(div);
-    var hdr = [];
-    for (var j2 = 0; j2 < fullWidth; j2++) hdr.push('');
-    for (var h = 0; h < DRYER_V2_FORM_HEADER.length; h++) hdr[h] = DRYER_V2_FORM_HEADER[h];
-    hdr[keyCol] = 'FORM_HDR';
-    sh.appendRow(hdr);
+  // Hidden key column for THIS tab (independent of the hourly tab).
+  var minW = DRYER_V2_FORM_HEADER.length;
+  var lastCol = Math.max(sh.getLastColumn(), minW, 1);
+  var hdr0 = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var keyCol = hdr0.indexOf(DRYER_V2_KEY_HEADER);
+  if (keyCol === -1) {
+    keyCol = Math.max(hdr0.length, minW);
+    sh.getRange(1, keyCol + 1).setValue(DRYER_V2_KEY_HEADER);
+    try { sh.hideColumns(keyCol + 1); } catch (e) {}
   }
+  var fullWidth = Math.max(sh.getLastColumn(), keyCol + 1);
+
+  // Bottom-form fields whose cell shows the VALUE ONLY (no timestamp), by
+  // request: Batch No. and Calibration Due Date.
+  var DRYER_V2_FORM_NO_TS = { 'batch_no': true, 'calibration_due': true };
 
   var vals = p.values || {};
   var ts   = p.ts || {};
@@ -1561,10 +1709,6 @@ function writeDryerFormRow_(ss, row) {
     out = [];
     for (var i = 0; i < fullWidth; i++) out.push('');
   }
-  // Bottom-form fields whose cell shows the VALUE ONLY (no timestamp), by
-  // request: Batch No. and Calibration Due Date.
-  var DRYER_V2_FORM_NO_TS = { 'batch_no': true, 'calibration_due': true };
-
   out[0] = coalesce_(p.date);
   out[1] = coalesce_(p.shift);
   for (var c = 0; c < DRYER_V2_FORM_COLS.length; c++) {
