@@ -28,6 +28,7 @@ const TEMP_COLUMNS = [...TEMP_GROUP_1, ...TEMP_GROUP_2]
 const OTHER_COLUMNS = [
   { key: 'atomizer_freq', label: 'Atomizer Freq.',      hi: 'एटमाइज़र फ्रीक्वेंसी' },
   { key: 'feed_fc',       label: 'Feed F.C.',           hi: 'फीड एफ.सी.' },
+  { key: 'c_pressure',    label: 'C.Pressure',          hi: 'सी. दबाव' },
   { key: 'pressure',      label: 'Feed Pressure',       hi: 'फीड दबाव' },
   { key: 'pt_temp',       label: 'Pt. Temp',            hi: 'पीटी. तापमान' },
   { key: 'batch_no',      label: 'Batch No.',           hi: 'बैच नं.' },
@@ -38,6 +39,7 @@ const OTHER_COLUMNS = [
   { key: 'id_frequency',  label: 'I.D. Frequency',      hi: 'आईडी फ्रीक्वेंसी' },
   { key: 'remarks',       label: 'Remarks',             hi: 'टिप्पणी' },
   { key: 'operator_name', label: 'Operator Name',       hi: 'ऑपरेटर का नाम' },
+  { key: 'maintenance',   label: 'Maintenance',         hi: 'रखरखाव' },
   { key: 'timestamp',     label: 'Timestamp',           hi: 'समय टिकट' },
 ]
 
@@ -87,10 +89,25 @@ function groupRows(rows) {
     if (r.last_saved_at && (!g.lastSavedAt || new Date(r.last_saved_at) > new Date(g.lastSavedAt))) {
       g.lastSavedAt = r.last_saved_at
     }
-    // Capture the latest non-empty batch no. from the hour values
-    if (r.values?.batch_no) g.batchNo = r.values.batch_no
-    // Capture the shift for this group (row-level column on dryer_hourly_draft)
-    if (r.shift) g.shift = r.shift
+    // Batch No.: show the value from the MOST RECENTLY SAVED hour (by
+    // last_saved_at), so the group header reflects the latest batch — not an
+    // arbitrary row's value (rows arrive in no guaranteed order). Only a
+    // non-empty batch overrides, and only when its save time is newer.
+    if (r.values?.batch_no) {
+      const rSaved = r.last_saved_at ? new Date(r.last_saved_at).getTime() : 0
+      if (g._batchSavedAt === undefined || rSaved >= g._batchSavedAt) {
+        g.batchNo = r.values.batch_no
+        g._batchSavedAt = rSaved
+      }
+    }
+    // Shift: likewise take the most-recently-saved hour's shift.
+    if (r.shift) {
+      const rSaved2 = r.last_saved_at ? new Date(r.last_saved_at).getTime() : 0
+      if (g._shiftSavedAt === undefined || rSaved2 >= g._shiftSavedAt) {
+        g.shift = r.shift
+        g._shiftSavedAt = rSaved2
+      }
+    }
   })
 
   return Array.from(groups.values()).sort((a, b) => {
@@ -108,6 +125,33 @@ function groupHeader(g) {
 }
 
 const cellVal = v => (v !== undefined && v !== null && v !== '' ? v : '—')
+
+// Maintenance option labels (match the website row.maintenance object keys).
+const MAINT_OPTS = [
+  ['shifter_screen', 'Shifter-Screen Cleaning'],
+  ['atomizer_water', 'Running the Atomizer on Water'],
+]
+
+// Render the Maintenance cell: each SELECTED option (non-empty ISO) on its own
+// line with its recorded time (IST hh:mm:ss AM/PM). '—' when nothing selected.
+function renderMaintenanceCell(m) {
+  if (typeof m === 'string') {
+    try { m = JSON.parse(m) } catch { return '—' }
+  }
+  if (!m || typeof m !== 'object') return '—'
+  const lines = []
+  MAINT_OPTS.forEach(([k, label]) => {
+    const iso = m[k]
+    if (iso) {
+      const t = new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+      lines.push(`${label} — ${t}`)
+    }
+  })
+  if (!lines.length) return '—'
+  return (
+    <span style={{ whiteSpace: 'pre-line', fontSize: '10px' }}>{lines.join('\n')}</span>
+  )
+}
 
 function ActivityTable({ group }) {
   // Only render hours that actually have a shared entry, in chronological order.
@@ -155,7 +199,11 @@ function ActivityTable({ group }) {
               <tr key={h}>
                 <td className="pa-td-time">{h}</td>
                 {TEMP_COLUMNS.map(c => <td key={c.key}>{cellVal(v[c.key])}</td>)}
-                {OTHER_COLUMNS.map(c => <td key={c.key}>{cellVal(v[c.key])}</td>)}
+                {OTHER_COLUMNS.map(c => (
+                  <td key={c.key}>
+                    {c.key === 'maintenance' ? renderMaintenanceCell(v[c.key]) : cellVal(v[c.key])}
+                  </td>
+                ))}
               </tr>
             )
           })}
