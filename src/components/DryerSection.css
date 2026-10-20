@@ -958,6 +958,11 @@
 
   border-right: 1px solid #d8d0c8;
 
+  /* Horizontal separator between WRAPPED rows (Batch/Calibration row, the
+     full-width Total row, and the Incharge/Operator row). Without this the
+     wrapped rows ran together with no visible divider. */
+  border-bottom: 1px solid #d8d0c8;
+
   display: flex;
 
   flex-direction: column;
@@ -966,6 +971,13 @@
 }
 
 .dr-footer-field:last-child {
+  border-right: none;
+}
+
+/* The full-width Total band has no neighbour to its right → drop the dangling
+   vertical separator so the line doesn't float at the row's edge. Its top/
+   bottom horizontal borders (from .dr-footer-field + the row above) frame it. */
+.dr-footer-total {
   border-right: none;
 }
 
@@ -1578,4 +1590,82 @@ details[open] .dr-cal-summary::after {
   border-radius: 4px;
   border: 1px solid #a5d6a7;
   white-space: nowrap;
+}
+
+/* ════════════════════════════════════
+   Total Production of the Day — formula bar
+   fine powder + crust(papadi) + startup + packed production = Total
+   ════════════════════════════════════ */
+.dr-footer-total {
+  flex: 1 1 100%;
+}
+
+.dr-total-formula {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.dr-total-part {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: #faf7f2;
+  border: 1.5px solid #c9b79f;
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 90px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.dr-total-part-label {
+  font-size: 10px;
+  color: #8a7f70;
+  white-space: nowrap;
+}
+
+.dr-total-input {
+  width: 80px;
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  border: none;
+  background: transparent;
+  color: #6b4a2b;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.dr-total-input::-webkit-outer-spin-button,
+.dr-total-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+.dr-total-op {
+  font-size: 18px;
+  font-weight: 700;
+  color: #b85c2c;
+  padding-bottom: 10px;
+}
+
+.dr-total-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: #b85c2c;
+  border-radius: 8px;
+  padding: 6px 14px;
+  min-width: 90px;
+}
+
+.dr-total-result-label {
+  font-size: 10px;
+  color: #f3dccb;
+}
+
+.dr-total-result-value {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
 }

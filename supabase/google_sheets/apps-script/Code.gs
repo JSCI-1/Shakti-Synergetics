@@ -1400,6 +1400,10 @@ var DRYER_V2_FORM_COLS = [
   ['cal_fbd_sensor',    'Calibration FBD Sensor Value'],
   ['cal_chamber_temp',  'Calibration Chamber Temperature'],
   ['cal_chamber_sensor','Calibration Chamber Sensor Value'],
+  ['fine_powder',       'Fine Powder (kg)'],
+  ['crust_papadi',      'Crust (Papadi) (kg)'],
+  ['startup',           'Startup (kg)'],
+  ['packed_production', 'Packed Production (kg)'],
   ['total_production','Total Production of the Day (kg)'],
   ['incharge',        'Incharge'],
   ['operator',        'Operator']
@@ -1526,6 +1530,72 @@ function addDryerNewHourlyColumns() {
     formatQcTab_(sh);   // re-apply widths/wrap/centering/hidden-key
   }
   Logger.log('[addDryerNewHourlyColumns] Done. Existing data preserved; C.Pressure + Maintenance added.');
+}
+
+/**
+ * ONE-SHOT, NON-DESTRUCTIVE: insert the four production-breakdown columns into
+ * the EXISTING bottom-form tabs "New Dryer – Form" / "Old Dryer – Form" WITHOUT
+ * clearing any data:
+ *   "Fine Powder (kg)", "Crust (Papadi) (kg)", "Startup (kg)",
+ *   "Packed Production (kg)"
+ * — all inserted immediately BEFORE "Total Production of the Day (kg)", in that
+ * left-to-right order (matching DRYER_V2_FORM_COLS so the writer stays aligned).
+ * Uses insertColumnBefore (Google Sheets shifts existing cells right, so no
+ * value is lost or misaligned). Idempotent: a column already present is skipped.
+ * Existing rows show blank in the new columns until their next save/replay.
+ * Touches ONLY the two form tabs. Run ONCE from the Apps Script editor.
+ */
+function addDryerFormProductionColumns() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[addDryerFormProductionColumns] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  // In final display order (left → right). Each is inserted BEFORE the Total.
+  var newCols = [
+    'Fine Powder (kg)',
+    'Crust (Papadi) (kg)',
+    'Startup (kg)',
+    'Packed Production (kg)'
+  ];
+  var TOTAL_LABEL = 'Total Production of the Day (kg)';
+
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2_FORM[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[addDryerFormProductionColumns] Tab missing (skip): ' + tabName); continue; }
+
+    // Insert each new column just BEFORE the Total column, in order. Re-read the
+    // header each time so positions stay correct as columns shift right.
+    for (var n = 0; n < newCols.length; n++) {
+      var newLabel = newCols[n];
+      var lastCol = Math.max(sh.getLastColumn(), 1);
+      var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+      if (hdr.indexOf(newLabel) !== -1) {
+        Logger.log('[addDryerFormProductionColumns] "' + newLabel + '" already present: ' + tabName);
+        continue;
+      }
+      var totalIdx = hdr.indexOf(TOTAL_LABEL);   // 0-based
+      if (totalIdx === -1) {
+        Logger.log('[addDryerFormProductionColumns] No "' + TOTAL_LABEL + '" on '
+          + tabName + ' — "' + newLabel + '" skipped.');
+        continue;
+      }
+      var totalCol1 = totalIdx + 1;              // 1-based column of Total
+      sh.insertColumnBefore(totalCol1);          // shifts Total+ right; data preserved
+      sh.getRange(1, totalCol1).setValue(newLabel);
+      Logger.log('[addDryerFormProductionColumns] Inserted "' + newLabel
+        + '" before Total on ' + tabName);
+    }
+
+    formatQcTab_(sh);   // re-apply widths/wrap/centering/hidden-key
+  }
+  Logger.log('[addDryerFormProductionColumns] Done. Existing data preserved; '
+    + '4 production-breakdown columns added before Total Production.');
 }
 
 // Maintenance option labels (keys match the website row.maintenance object).

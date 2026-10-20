@@ -67,6 +67,19 @@ const MAINTENANCE_OPTIONS = [
   { key: 'atomizer_water', label: 'Running the Atomizer on Water' },
 ]
 
+// Total Production of the Day (kg) = fine powder + crust(papadi) + startup +
+// packed production. Returns a number (sum of the parsed parts; blanks = 0).
+function computeTotalProduction(form) {
+  var parts = ['fine_powder', 'crust_papadi', 'startup', 'packed_production']
+  var sum = 0
+  var any = false
+  parts.forEach(function (k) {
+    var n = parseFloat(form[k])
+    if (Number.isFinite(n)) { sum += n; any = true }
+  })
+  return any ? +sum.toFixed(2) : null
+}
+
 
 /* Calibration sensors */
 const CAL_SENSORS = [
@@ -135,7 +148,13 @@ function emptyForm(dryerType) {
     cal_chamber_temp: '',
     cal_chamber_sensor: '',
 
-    total_production: '',
+    // Production breakdown — entered; Total Production is their computed sum.
+    fine_powder: '',
+    crust_papadi: '',
+    startup: '',
+    packed_production: '',
+
+    total_production: '',   // now DERIVED = fine_powder + crust_papadi + startup + packed_production
     incharge: '',
     operator: '',
 
@@ -464,9 +483,14 @@ function DryerForm({
             {}
           ),
 
-          total_production: form.total_production
-            ? parseFloat(form.total_production)
-            : null,
+          // Production breakdown (entered) — sent so the sheet shows each part.
+          fine_powder:       form.fine_powder,
+          crust_papadi:      form.crust_papadi,
+          startup:           form.startup,
+          packed_production: form.packed_production,
+
+          // Total Production of the Day = sum of the four parts (derived).
+          total_production: computeTotalProduction(form),
 
           incharge: form.incharge,
           operator: form.operator,
@@ -1654,9 +1678,9 @@ function DryerForm({
           </div>
 
 
-          {/* Total production */}
-
-          <div className="dr-footer-field">
+          {/* Total Production of the Day — computed = fine powder + crust
+              (papadi) + startup + packed production, shown as a formula bar. */}
+          <div className="dr-footer-field dr-footer-total">
 
             <label className="dr-label">
 
@@ -1668,18 +1692,68 @@ function DryerForm({
 
             </label>
 
-            <input
-              type="number"
-              className="dr-input"
-              placeholder="0"
-              value={form.total_production}
-              onChange={e =>
-                set(
-                  'total_production',
-                  e.target.value
-                )
-              }
-            />
+            <div className="dr-total-formula">
+
+              <div className="dr-total-part">
+                <span className="dr-total-part-label">Fine Powder (kg)</span>
+                <input
+                  type="number"
+                  className="dr-total-input"
+                  placeholder="0"
+                  value={form.fine_powder}
+                  onChange={e => set('fine_powder', e.target.value)}
+                />
+              </div>
+
+              <span className="dr-total-op">+</span>
+
+              <div className="dr-total-part">
+                <span className="dr-total-part-label">Crust (Papadi) (kg)</span>
+                <input
+                  type="number"
+                  className="dr-total-input"
+                  placeholder="0"
+                  value={form.crust_papadi}
+                  onChange={e => set('crust_papadi', e.target.value)}
+                />
+              </div>
+
+              <span className="dr-total-op">+</span>
+
+              <div className="dr-total-part">
+                <span className="dr-total-part-label">Startup (kg)</span>
+                <input
+                  type="number"
+                  className="dr-total-input"
+                  placeholder="0"
+                  value={form.startup}
+                  onChange={e => set('startup', e.target.value)}
+                />
+              </div>
+
+              <span className="dr-total-op">+</span>
+
+              <div className="dr-total-part">
+                <span className="dr-total-part-label">Packed Production (kg)</span>
+                <input
+                  type="number"
+                  className="dr-total-input"
+                  placeholder="0"
+                  value={form.packed_production}
+                  onChange={e => set('packed_production', e.target.value)}
+                />
+              </div>
+
+              <span className="dr-total-op">=</span>
+
+              <div className="dr-total-result">
+                <span className="dr-total-result-label">Total</span>
+                <span className="dr-total-result-value">
+                  {(computeTotalProduction(form) ?? 0).toFixed(2)}
+                </span>
+              </div>
+
+            </div>
 
           </div>
 

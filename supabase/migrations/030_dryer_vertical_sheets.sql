@@ -174,6 +174,10 @@ begin
         ('fbd_pct_mr',      NEW.fbd_pct_mr),
         ('batch_no',        NEW.batch_no),
         ('calibration_due', NEW.calibration_due::text),
+        ('fine_powder',       NEW.fine_powder::text),
+        ('crust_papadi',      NEW.crust_papadi::text),
+        ('startup',           NEW.startup::text),
+        ('packed_production', NEW.packed_production::text),
         ('total_production',NEW.total_production::text),
         ('incharge',        NEW.incharge),
         ('operator',        NEW.operator)
