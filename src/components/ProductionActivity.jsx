@@ -84,7 +84,10 @@ function groupRows(rows) {
       })
     }
     const g = groups.get(key)
-    g.hours[r.hour] = r.values || {}
+    // Store values + the row's own last_saved_at so the Timestamp column can
+    // render the precise per-row save time (ISO, seconds precision) rather than
+    // the values.timestamp string (HH:MM only, same for bulk-saved rows).
+    g.hours[r.hour] = { ...(r.values || {}), _last_saved_at: r.last_saved_at }
     // Track the newest submission timestamp across all hours in this group
     if (r.last_saved_at && (!g.lastSavedAt || new Date(r.last_saved_at) > new Date(g.lastSavedAt))) {
       g.lastSavedAt = r.last_saved_at
@@ -195,13 +198,22 @@ function ActivityTable({ group }) {
         <tbody>
           {presentHours.map(h => {
             const v = group.hours[h] || {}
+            // Use the per-row ISO last_saved_at for Timestamp (has seconds precision).
+            // Falls back to the stored values.timestamp string if somehow absent.
+            const rowTs = v._last_saved_at
+              ? new Date(v._last_saved_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+              : (v.timestamp || null)
             return (
               <tr key={h}>
                 <td className="pa-td-time">{h}</td>
                 {TEMP_COLUMNS.map(c => <td key={c.key}>{cellVal(v[c.key])}</td>)}
                 {OTHER_COLUMNS.map(c => (
                   <td key={c.key}>
-                    {c.key === 'maintenance' ? renderMaintenanceCell(v[c.key]) : cellVal(v[c.key])}
+                    {c.key === 'maintenance'
+                      ? renderMaintenanceCell(v[c.key])
+                      : c.key === 'timestamp'
+                        ? (rowTs || '—')
+                        : cellVal(v[c.key])}
                   </td>
                 ))}
               </tr>
@@ -473,7 +485,7 @@ export default function ProductionActivity() {
       })}
 
       {qcGroups.map(r => (
-        <QcCard key={`${r.dryer}|${r.log_date}|${r.grade}`} row={r} />
+        <QcCard key={`${r.dryer}|${r.log_date}|${r.grade}|${r.batch_no}`} row={r} />
       ))}
     </div>
   )

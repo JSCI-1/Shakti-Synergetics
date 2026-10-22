@@ -857,7 +857,7 @@ export default function QualityCheck({ user }) {
 
     supabase
       .from('qc_activity_draft')
-      .upsert(row, { onConflict: 'dryer,log_date,grade' })
+      .upsert(row, { onConflict: 'dryer,log_date,grade,batch_no' })
       .then(({ error }) => {
         // Optional feed — does not block the UI. Log so a failing push
         // (missing table / RLS / Realtime) is diagnosable in the console.
@@ -928,12 +928,120 @@ export default function QualityCheck({ user }) {
   // Debounced live push when FG batch / moisture / suspensibility / dryer /
   // date / grade change (FG tab only, and only once a date is set).
   const fgMoistureVal = fgValues.fg_moisture
+
+  // Skip the FIRST live push after mount/login. The localStorage draft persists
+  // across logout, so when the user logs back in the draft may still hold an
+  // OLD date. Without this guard, the debounce effect fires on mount and pushes
+  // stale data with the old date — updating the wrong qc_activity_draft row
+  // (the old date's key) and resetting its last_saved_at to "now", which makes
+  // the old activity reappear as live with the wrong date. Only push once the
+  // user actively changes something.
+  const fgPushReadyRef = useRef(false)
+
   useEffect(() => {
     if (activeTab !== 'fg') return
     if (!fgDraft.date) return
+    if (!fgPushReadyRef.current) {
+      fgPushReadyRef.current = true
+      return
+    }
     const t = setTimeout(() => pushQcActivity(), 700)
     return () => clearTimeout(t)
   }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgMoistureVal, suspResult])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Load saved FG data from the database on date change ──────────
+  // When the user selects a date, query quality_control_records for the most
+  // recent FG entry for that (date, dryer, grade) and restore its values into
+  // the form. This ensures data persists across logouts, logins, and date
+  // switches — the form always reflects what was actually saved, not a stale
+  // localStorage draft. Does NOT clear existing draft values; only fills the
+  // form when a matching saved record exists. Skips the initial mount (the
+  // draft is already restored from localStorage by useDraft).
+  const fgLoadedKeyRef = useRef('')   // last "date|dryer|grade" we loaded from DB
+
+  useEffect(() => {
+    if (activeTab !== 'fg') return
+    if (!fgDraft.date) return
+    if (!supabaseReady || !supabase) return
+    // Skip the very first run (draft already has the restored data).
+    if (!fgPushReadyRef.current) return
+    // Avoid re-loading the same (date, dryer, grade) combo.
+    const loadKey = `${fgDraft.date}|${fgDraft.dryer || 'ND1'}|${fgDraft.uplGrade || 'normal'}`
+    if (fgLoadedKeyRef.current === loadKey) return
+    fgLoadedKeyRef.current = loadKey
+
+    let cancelled = false
+    supabase
+      .from('quality_control_records')
+      .select('values')
+      .eq('tab', 'fg')
+      .order('created_at', { ascending: false })
+      .limit(20)
+      .then(({ data, error }) => {
+        if (cancelled || error || !data || !data.length) return
+        // Find the most recent record matching the selected (date, dryer, grade).
+        const dryer = fgDraft.dryer || 'ND1'
+        const grade = fgDraft.uplGrade || 'normal'
+        const match = data.find(r => {
+          const v = r.values || {}
+          return v.date === fgDraft.date &&
+                 (v.dryer || 'ND1') === dryer &&
+                 (v.grade || 'normal') === grade
+        })
+        if (!match) return   // no saved record for this date → keep draft as-is
+        const v = match.values || {}
+        // Restore the saved values into the current (dryer, grade) bucket.
+        setFgDraft(p => {
+          const d = p.dryer || 'ND1'
+          const g = p.uplGrade || 'normal'
+          const vbd = p.valuesByDryer || { ND1: { normal: {} }, ND2: {} }
+          let db = vbd[dryer] || {}
+          if (db && typeof db === 'object' && (db.fg_moisture !== undefined || db.fg_susp !== undefined)) {
+            db = { normal: db }
+          }
+          // Merge saved FG measurement values into the bucket (preserve any
+          // already-typed values the user may have entered).
+          const savedVals = {}
+          const allowKeys = ['fg_moisture','fg_sulphur','fg_susp','fg_bulk','fg_ph',
+            'fg_wetSieve','fg_drySieve','fg_wettability','fg_foam_start','fg_foam_1min',
+            'fg_wetSieve_log','fg_drySieve_log',
+            'upl_exp_ps_10','upl_exp_ps_6','upl_exp_ps_1','upl_exp_ws_160','upl_exp_ws_25',
+            'upl_exp_df_0','upl_exp_df_1','upl_exp_df_2','upl_exp_df_5','upl_exp_wps',
+            'upl_exp_alk','upl_exp_disp',
+            'upl_omri_ps_10','upl_omri_ps_6','upl_omri_ps_1','upl_omri_ds_500','upl_omri_ds_106',
+            'upl_omri_disp_self','upl_omri_disp_1h','upl_omri_disp_24h','upl_omri_ws_160',
+            'upl_omri_ws_25']
+          allowKeys.forEach(k => { if (v[k] !== undefined && v[k] !== '') savedVals[k] = v[k] })
+          const cur = db[grade] || {}
+          const merged = { ...savedVals, ...cur }  // typed values override saved
+          // Restore batch_no, time, brand, product if present and form fields are empty.
+          const next = {
+            ...p,
+            batchNo: p.batchNo || v.batch_no || '',
+            time: p.time || v.time || '',
+            brand: p.brand || v.brand || '',
+            selected: p.selected || v.product || FINISHED_GOODS[0].id,
+          }
+          const newVbd = { ...vbd, [d]: { ...db, [g]: merged } }
+          next.valuesByDryer = newVbd
+          // Restore sieve log for this grade if present.
+          if (v.fg_wetSieve_log || v.fg_drySieve_log) {
+            const slg = p.sieveLogByGrade || {}
+            const curSg = slg[grade] || {}
+            next.sieveLogByGrade = {
+              ...slg,
+              [grade]: {
+                ...curSg,
+                ...(v.fg_wetSieve_log ? { fg_wetSieve: v.fg_wetSieve_log } : {}),
+                ...(v.fg_drySieve_log ? { fg_drySieve: v.fg_drySieve_log } : {}),
+              },
+            }
+          }
+          return next
+        })
+      })
+    return () => { cancelled = true }
+  }, [activeTab, fgDraft.date, fgDraft.dryer, fgDraft.uplGrade])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── FG Print/Download save state (FG tab only) ──
   const [qcSaving, setQcSaving] = useState(false)

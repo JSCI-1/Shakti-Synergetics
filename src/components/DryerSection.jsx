@@ -12,9 +12,13 @@ const TIME_SLOTS = [
 
 
 function stamp12hr() {
+  // Include SECONDS so rows saved together in one sitting (e.g. backfilling
+  // hours 03:00–07:00 at 07:02) are visually distinct (07:02:30, 07:02:31, …)
+  // instead of all reading "07:02 am".
   return new Date().toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: true,
   })
 }
@@ -167,6 +171,53 @@ function emptyForm(dryerType) {
   }
 }
 
+/**
+ * normalizeForm — guarantee a form object has a valid, complete shape.
+ *
+ * A draft restored from localStorage can be stale or partial (an older build,
+ * a quota-truncated write, or a hand-edited value): its `rows` array may be
+ * shorter than 24, or a row may be missing fields like `maintenance`,
+ * `timestamp`, or `saved`. The hourly render indexes form.rows[i] for every
+ * one of the 24 TIME_SLOTS and reads .saved/.colour/.timestamp, so a missing
+ * or malformed row throws "cannot read property of undefined" and the whole
+ * Dryer section crashes (the "could not load" screen).
+ *
+ * This merges whatever was restored onto a fresh emptyForm skeleton so EVERY
+ * field exists and `rows` is ALWAYS exactly 24 well-formed rows. Existing
+ * entered values are preserved; only missing/invalid structure is filled.
+ */
+function normalizeForm(raw, dryerType) {
+  const base = emptyForm(dryerType)
+  if (!raw || typeof raw !== 'object') return base
+
+  const merged = { ...base, ...raw, dryer_type: raw.dryer_type || dryerType }
+
+  // __ts must be a plain object.
+  merged.__ts = (raw.__ts && typeof raw.__ts === 'object' && !Array.isArray(raw.__ts))
+    ? raw.__ts
+    : {}
+
+  // rows must be exactly 24 well-formed rows, one per TIME_SLOT.
+  const rawRows = Array.isArray(raw.rows) ? raw.rows : []
+  merged.rows = TIME_SLOTS.map((_, i) => {
+    const r = rawRows[i]
+    const row = (r && typeof r === 'object' && !Array.isArray(r))
+      ? { ...emptyRow(), ...r }
+      : emptyRow()
+    // maintenance must be an object with both option keys.
+    row.maintenance = (row.maintenance && typeof row.maintenance === 'object' && !Array.isArray(row.maintenance))
+      ? { shifter_screen: '', atomizer_water: '', ...row.maintenance }
+      : { shifter_screen: '', atomizer_water: '' }
+    // __ts per row must be a plain object.
+    row.__ts = (row.__ts && typeof row.__ts === 'object' && !Array.isArray(row.__ts))
+      ? row.__ts
+      : {}
+    return row
+  })
+
+  return merged
+}
+
 
 const BLOWERS = [
   {
@@ -210,6 +261,22 @@ function DryerForm({
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
+
+  // Repair a stale/partial restored draft ONCE on mount so the section can
+  // never crash on a malformed shape (missing rows, missing nested fields).
+  // normalizeForm is idempotent, so if the draft is already valid this writes
+  // back an equivalent object (the one-time guard still prevents a loop).
+  const normalizedRef = useRef(false)
+  useEffect(() => {
+    if (normalizedRef.current) return
+    normalizedRef.current = true
+    setForm(p => normalizeForm(p, dryerType))
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Safe snapshot for THIS render. Even before the normalization effect above
+  // commits, reads below go through this guaranteed-complete 24-row shape, so
+  // the very first render of a malformed draft cannot throw either.
+  const safeForm = normalizeForm(form, dryerType)
 
   // Auto-fill the Operator box with the logged-in user's name ONLY when they
   // signed in as a Dryer Operator. An admin (or any other role) viewing the
@@ -308,20 +375,27 @@ function DryerForm({
     if (!supabaseReady || !supabase) return
     if (!form.date) return
 
-    const loadKey = `${dryerType}|${form.date}`
-    if (loadedKeyRef.current === loadKey) return   // already loaded this (dryer,date)
+    const loadKey = `${dryerType}|${form.date}|${form.shift || ''}`
+    if (loadedKeyRef.current === loadKey) return   // already loaded this (dryer,date,shift)
     loadedKeyRef.current = loadKey
 
     let cancelled = false
 
     ;(async () => {
       const cutoff = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
-      const { data, error: err } = await supabase
+      let query = supabase
         .from('dryer_hourly_draft')
         .select('hour, shift, values, operator')
         .eq('dryer_type', dryerType)
         .eq('log_date', form.date)
         .gt('last_saved_at', cutoff)
+      // Load ONLY the rows for the currently-selected shift. Without this, a
+      // Day-shift form would pull in Night-shift values for the same date+hour
+      // (and vice versa), because byHour keys on hour alone. When no shift is
+      // selected yet, load nothing (the form has no shift identity yet).
+      if (form.shift) query = query.eq('shift', form.shift)
+      else return
+      const { data, error: err } = await query
 
       if (cancelled || err || !data) return
 
@@ -361,7 +435,7 @@ function DryerForm({
     })()
 
     return () => { cancelled = true }
-  }, [dryerType, form.date])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dryerType, form.date, form.shift])  // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // ── Per-hour Save → upsert this hour to the shared draft ────
@@ -384,8 +458,15 @@ function DryerForm({
       setRowErrors(prev => ({ ...prev, [i]: 'Set the production date first.' }))
       return
     }
+    // Shift is part of the record identity (dryer, date, shift, hour). Requiring
+    // it before save prevents a row from silently landing under the wrong/empty
+    // shift (the root cause of the mismatched 21-10 Night vs 22-10 Day rows).
+    if (!form.shift) {
+      setRowErrors(prev => ({ ...prev, [i]: 'Select the shift (Day/Night) first.' }))
+      return
+    }
 
-    const row = form.rows[i]
+    const row = (form.rows && form.rows[i]) ? form.rows[i] : emptyRow()
     const { timestamp: _ts, saved: _sv, ...fields } = row
     const ts = stamp12hr()
     // The operator who pressed Save for THIS hour = the logged-in user's name
@@ -401,7 +482,7 @@ function DryerForm({
           dryer_type: dryerType,
           log_date: form.date,
           hour,
-          shift: form.shift || null,
+          shift: form.shift,
           operator: form.operator || userName || null,
           // timestamp is display-only (en-IN); never used for expiry/order.
           // operator_name = who pressed Save for this hour (per-row).
@@ -409,7 +490,11 @@ function DryerForm({
           updated_at: new Date().toISOString(),
           last_saved_at: new Date().toISOString(),
         },
-        { onConflict: 'dryer_type,log_date,hour' }
+        // Identity now includes shift, matching the Google Sheet row key
+        // (H|date|shift|hour) and the widened Supabase unique key (migration
+        // 037). Day and Night for the same (dryer, date, hour) are distinct
+        // records and never overwrite each other.
+        { onConflict: 'dryer_type,log_date,hour,shift' }
       )
 
     setRowSaving(prev => {
@@ -576,7 +661,7 @@ function DryerForm({
               : 'dr-cell-input'
           }
           placeholder="—"
-          value={form.rows[ri][field]}
+          value={safeForm.rows[ri][field]}
           onChange={e =>
             setRow(
               ri,
@@ -598,7 +683,7 @@ function DryerForm({
         type="text"
         className="dr-cell-input"
         placeholder="—"
-        value={form.rows[ri][field]}
+        value={safeForm.rows[ri][field]}
         onChange={e =>
           setRow(
             ri,
@@ -1190,7 +1275,7 @@ function DryerForm({
                         : 'dr-tr-alt'
                       }
                       ${
-                        form.rows[i].saved
+                        safeForm.rows[i].saved
                           ? 'dr-row-saved'
                           : ''
                       }
@@ -1293,7 +1378,7 @@ function DryerForm({
                     <td>
                       <select
                         className="dr-cell-input"
-                        value={form.rows[i].colour}
+                        value={safeForm.rows[i].colour}
                         onChange={e => setRow(i, 'colour', e.target.value)}
                       >
                         <option value="">—</option>
@@ -1318,9 +1403,9 @@ function DryerForm({
                         Save for this hour (set in saveRow). Shown after Remarks,
                         before Timestamp. */}
                     <td className="dr-td-operator">
-                      {form.rows[i].operator_name ? (
+                      {safeForm.rows[i].operator_name ? (
                         <span className="dr-operator-badge">
-                          {form.rows[i].operator_name}
+                          {safeForm.rows[i].operator_name}
                         </span>
                       ) : (
                         <span className="dr-ts-empty">—</span>
@@ -1332,7 +1417,7 @@ function DryerForm({
                         its own time shown beside it. Both can be selected. */}
                     <td className="dr-td-maint">
                       {MAINTENANCE_OPTIONS.map(opt => {
-                        const iso = (form.rows[i].maintenance || {})[opt.key] || ''
+                        const iso = (safeForm.rows[i].maintenance || {})[opt.key] || ''
                         const selected = !!iso
                         return (
                           <label key={opt.key} className="dr-maint-opt">
@@ -1357,10 +1442,10 @@ function DryerForm({
 
                     <td className="dr-td-ts">
 
-                      {form.rows[i].timestamp ? (
+                      {safeForm.rows[i].timestamp ? (
 
                         <span className="dr-ts-badge">
-                          {form.rows[i].timestamp}
+                          {safeForm.rows[i].timestamp}
                         </span>
 
                       ) : (
@@ -1382,10 +1467,10 @@ function DryerForm({
                         type="button"
                         className="dr-row-save-btn"
                         disabled={!!rowSaving[i]}
-                        title={form.rows[i].saved ? 'Saved — click to re-save this hour' : 'Save this hour'}
+                        title={safeForm.rows[i].saved ? 'Saved — click to re-save this hour' : 'Save this hour'}
                         onClick={() => saveRow(i)}
                       >
-                        {rowSaving[i] ? '…' : form.rows[i].saved ? '✓' : '💾'}
+                        {rowSaving[i] ? '…' : safeForm.rows[i].saved ? '✓' : '💾'}
                       </button>
 
                       {rowErrors[i] && (
