@@ -1197,29 +1197,29 @@
   .dr-td-time,
   .dr-thead-r1 .dr-th-time,
   .dr-table tbody .dr-td-time {
-    width: 46px !important;
-    min-width: 46px !important;
-    max-width: 46px !important;
+    width: 35px !important;
+    min-width: 35px !important;
+    max-width: 35px !important;
   }
 
   .dr-td-time {
-    font-size: 11px !important;
-    padding-left: 2px !important;
-    padding-right: 2px !important;
+    font-size: 9px !important;
+    padding-left: 1px !important;
+    padding-right: 1px !important;
   }
 
   .dr-th-time {
-    font-size: 10px !important;
-    padding-left: 2px !important;
-    padding-right: 2px !important;
+    font-size: 8px !important;
+    padding-left: 1px !important;
+    padding-right: 1px !important;
   }
 
   /* Keep the timestamp column aligned with
      the narrower time column. */
   .dr-td-ts {
-    width: 46px !important;
-    min-width: 46px !important;
-    max-width: 46px !important;
+    width: 35px !important;
+    min-width: 35px !important;
+    max-width: 35px !important;
   }
 }
 
