@@ -1186,6 +1186,41 @@
 
     text-align: center;
   }
+
+
+  /* ── Shrink sticky Time column on mobile ──
+     Frees horizontal space so the data
+     columns (Inlet / Outlet / etc.) are
+     clearly visible on small screens. */
+
+  .dr-th-time,
+  .dr-td-time,
+  .dr-thead-r1 .dr-th-time,
+  .dr-table tbody .dr-td-time {
+    width: 58px !important;
+    min-width: 58px !important;
+    max-width: 58px !important;
+  }
+
+  .dr-td-time {
+    font-size: 12px !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
+  .dr-th-time {
+    font-size: 11px !important;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+  }
+
+  /* Keep the timestamp column aligned with
+     the narrower time column. */
+  .dr-td-ts {
+    width: 58px !important;
+    min-width: 58px !important;
+    max-width: 58px !important;
+  }
 }
 
 
