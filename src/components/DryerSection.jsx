@@ -375,27 +375,28 @@ function DryerForm({
     if (!supabaseReady || !supabase) return
     if (!form.date) return
 
-    const loadKey = `${dryerType}|${form.date}|${form.shift || ''}`
-    if (loadedKeyRef.current === loadKey) return   // already loaded this (dryer,date,shift)
+    // Load keys on (dryer, date) ONLY — the hourly data is shared across BOTH
+    // shifts for the same dryer + date, so a Day-shift operator and a
+    // Night-shift operator working the same date see each other's saved hours.
+    const loadKey = `${dryerType}|${form.date}`
+    if (loadedKeyRef.current === loadKey) return   // already loaded this (dryer,date)
     loadedKeyRef.current = loadKey
 
     let cancelled = false
 
     ;(async () => {
       const cutoff = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
-      let query = supabase
+      // Pull EVERY non-expired saved hour for this dryer + date, regardless of
+      // shift. Ordering by last_saved_at ascending means that when the same
+      // hour was saved under different shifts, the most recently saved record
+      // wins (it is applied last into byHour).
+      const { data, error: err } = await supabase
         .from('dryer_hourly_draft')
-        .select('hour, shift, values, operator')
+        .select('hour, shift, values, operator, last_saved_at')
         .eq('dryer_type', dryerType)
         .eq('log_date', form.date)
         .gt('last_saved_at', cutoff)
-      // Load ONLY the rows for the currently-selected shift. Without this, a
-      // Day-shift form would pull in Night-shift values for the same date+hour
-      // (and vice versa), because byHour keys on hour alone. When no shift is
-      // selected yet, load nothing (the form has no shift identity yet).
-      if (form.shift) query = query.eq('shift', form.shift)
-      else return
-      const { data, error: err } = await query
+        .order('last_saved_at', { ascending: true })
 
       if (cancelled || err || !data) return
 
@@ -435,7 +436,7 @@ function DryerForm({
     })()
 
     return () => { cancelled = true }
-  }, [dryerType, form.date, form.shift])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dryerType, form.date])  // eslint-disable-line react-hooks/exhaustive-deps
 
 
   // ── Per-hour Save → upsert this hour to the shared draft ────
@@ -627,7 +628,15 @@ function DryerForm({
       setError(err.message)
     } else {
       setSaved(true)
+      // Reset EVERYTHING after a successful Save Log Sheet: clear the
+      // localStorage draft and reset the form to a blank emptyForm (all hourly
+      // rows, blower/footer/calibration fields, date and shift). Also clear the
+      // per-hour save/error state and release the cross-device load guard so a
+      // later re-selection of the same date can reload fresh from the server.
       onClearDraft()
+      setRowSaving({})
+      setRowErrors({})
+      loadedKeyRef.current = null
     }
   }
 
