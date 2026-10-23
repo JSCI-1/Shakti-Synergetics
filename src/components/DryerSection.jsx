@@ -295,6 +295,21 @@ function DryerForm({
   const [rowSaving, setRowSaving] = useState({})
   const [rowErrors, setRowErrors] = useState({})
 
+  // Transient success toast ("… saved successfully"). Positioned bottom-center
+  // on mobile and bottom-right on larger screens (see .dr-toast in the CSS),
+  // and auto-dismisses 3s after it is shown.
+  const [toast, setToast] = useState('')
+  const toastTimerRef = useRef(null)
+  function showToast(message) {
+    setToast(message)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(''), 3000)
+  }
+  // Clear the pending timer if the component unmounts mid-toast.
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+  }, [])
+
   // Guards the once-per-(dryer,date) cross-device load so it does not
   // thrash against useDraft's 600ms debounced localStorage writer.
   const loadedKeyRef = useRef(null)
@@ -537,6 +552,7 @@ function DryerForm({
         idx === i ? { ...(r || emptyRow()), operator_name: savedBy, timestamp: ts, saved: true } : r
       ),
     }))
+    showToast('Data saved successfully')
   }
 
 
@@ -628,6 +644,7 @@ function DryerForm({
       setError(err.message)
     } else {
       setSaved(true)
+      showToast('Log sheet saved successfully')
       // Reset EVERYTHING after a successful Save Log Sheet: clear the
       // localStorage draft and reset the form to a blank emptyForm (all hourly
       // rows, blower/footer/calibration fields, date and shift). Also clear the
@@ -1988,6 +2005,12 @@ function DryerForm({
         </div>
 
       </form>
+
+      {toast && (
+        <div className="dr-toast" role="status" aria-live="polite">
+          {toast}
+        </div>
+      )}
 
     </div>
   )
