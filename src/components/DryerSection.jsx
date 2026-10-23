@@ -475,27 +475,42 @@ function DryerForm({
 
     setRowSaving(prev => ({ ...prev, [i]: true }))
 
-    const { error: err } = await supabase
-      .from('dryer_hourly_draft')
-      .upsert(
-        {
-          dryer_type: dryerType,
-          log_date: form.date,
-          hour,
-          shift: form.shift,
-          operator: form.operator || userName || null,
-          // timestamp is display-only (en-IN); never used for expiry/order.
-          // operator_name = who pressed Save for this hour (per-row).
-          values: { ...fields, operator_name: savedBy, timestamp: ts },
-          updated_at: new Date().toISOString(),
-          last_saved_at: new Date().toISOString(),
-        },
-        // Identity now includes shift, matching the Google Sheet row key
-        // (H|date|shift|hour) and the widened Supabase unique key (migration
-        // 037). Day and Night for the same (dryer, date, hour) are distinct
-        // records and never overwrite each other.
-        { onConflict: 'dryer_type,log_date,hour,shift' }
-      )
+    // Wrap the whole network call in try/catch. supabase-js RESOLVES with
+    // { error } for a clean PostgREST error, but it REJECTS (throws) when the
+    // HTTP request itself fails — e.g. a dropped mobile connection surfaces as
+    // "TypeError: Failed to fetch". Without this catch, that rejection would be
+    // unhandled: the spinner would stick, no error would show, and the user
+    // could not tell the save failed. We catch it, show a meaningful message,
+    // clear the spinner, and — crucially — NEVER touch form.rows, so every
+    // entered value stays intact and the row remains re-savable.
+    let err = null
+    try {
+      const res = await supabase
+        .from('dryer_hourly_draft')
+        .upsert(
+          {
+            dryer_type: dryerType,
+            log_date: form.date,
+            hour,
+            shift: form.shift,
+            operator: form.operator || userName || null,
+            // timestamp is display-only (en-IN); never used for expiry/order.
+            // operator_name = who pressed Save for this hour (per-row).
+            values: { ...fields, operator_name: savedBy, timestamp: ts },
+            updated_at: new Date().toISOString(),
+            last_saved_at: new Date().toISOString(),
+          },
+          // Identity now includes shift, matching the Google Sheet row key
+          // (H|date|shift|hour) and the widened Supabase unique key (migration
+          // 037). Day and Night for the same (dryer, date, hour) are distinct
+          // records and never overwrite each other.
+          { onConflict: 'dryer_type,log_date,hour,shift' }
+        )
+      err = res && res.error ? res.error : null
+    } catch (e) {
+      // Network/transport failure (e.g. "Failed to fetch") or any thrown error.
+      err = e
+    }
 
     setRowSaving(prev => {
       const next = { ...prev }
@@ -504,16 +519,21 @@ function DryerForm({
     })
 
     if (err) {
-      // Do NOT mark the row saved — leave it re-savable for retry.
-      setRowErrors(prev => ({ ...prev, [i]: err.message || 'Save failed.' }))
+      // Do NOT mark the row saved and do NOT touch form.rows — leave every
+      // entered value intact and the row re-savable for retry.
+      const msg = (err && err.message)
+        ? err.message
+        : (typeof err === 'string' ? err : 'Save failed. Please check your connection and try again.')
+      setRowErrors(prev => ({ ...prev, [i]: msg }))
       return
     }
 
-    // Success — stamp timestamp + operator name + mark saved locally.
+    // Success — stamp timestamp + operator name + mark saved locally. Guard the
+    // rows map so a transient malformed state can never throw here.
     setForm(p => ({
       ...p,
-      rows: p.rows.map((r, idx) =>
-        idx === i ? { ...r, operator_name: savedBy, timestamp: ts, saved: true } : r
+      rows: (Array.isArray(p.rows) ? p.rows : []).map((r, idx) =>
+        idx === i ? { ...(r || emptyRow()), operator_name: savedBy, timestamp: ts, saved: true } : r
       ),
     }))
   }
@@ -1427,11 +1447,17 @@ function DryerForm({
                               onChange={() => toggleMaintenance(i, opt.key)}
                             />
                             <span className="dr-maint-label">{opt.label}</span>
-                            {selected && (
-                              <span className="dr-maint-time">
-                                {new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
-                              </span>
-                            )}
+                            {selected && (() => {
+                              // Guard against a stored value that is not a valid
+                              // ISO date (older drafts / corrupt state): an
+                              // Invalid Date would otherwise render "Invalid
+                              // Date" or throw in some engines.
+                              const d = new Date(iso)
+                              const label = isNaN(d.getTime())
+                                ? ''
+                                : d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })
+                              return label ? <span className="dr-maint-time">{label}</span> : null
+                            })()}
                           </label>
                         )
                       })}
