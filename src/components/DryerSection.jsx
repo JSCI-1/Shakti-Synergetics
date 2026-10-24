@@ -425,10 +425,24 @@ function DryerForm({
 
     // Merge: keep every local row that has ANY data; only fill a truly-empty
     // local slot from a matching remote hour. NEVER blank a populated row.
-    const rowIsEmpty = r =>
-      !r || Object.keys(emptyRow()).every(
-        k => k === 'timestamp' || k === 'saved' || k === '__ts' || (r[k] ?? '') === ''
+    //
+    // IMPORTANT: `maintenance` is an OBJECT ({ shifter_screen, atomizer_water }),
+    // not a string. An earlier version compared every field with
+    // `(r[k] ?? '') === ''`, which is ALWAYS false for the maintenance object —
+    // so EVERY row (even a blank one) counted as non-empty and the merge never
+    // filled any slot. That is why a second operator saw nothing. We now skip
+    // the bookkeeping keys AND treat `maintenance` specially: the row counts as
+    // empty only when both maintenance options are also unset.
+    const rowIsEmpty = r => {
+      if (!r) return true
+      const skip = new Set(['timestamp', 'saved', '__ts', 'maintenance', 'operator_name'])
+      const scalarsEmpty = Object.keys(emptyRow()).every(
+        k => skip.has(k) || (r[k] ?? '') === ''
       )
+      const m = r.maintenance || {}
+      const maintenanceEmpty = !m.shifter_screen && !m.atomizer_water
+      return scalarsEmpty && maintenanceEmpty
+    }
 
     setForm(p => {
       let changed = false
