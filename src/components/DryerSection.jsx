@@ -379,78 +379,123 @@ function DryerForm({
 
 
   // ── Cross-device load / shift handover ──────────────────────
-  // When the production date changes for this dryer, MERGE in any non-expired
-  // remote hours WITHOUT destroying the locally-restored draft. This runs on
-  // every mount (e.g. leaving the Dryer section and coming back), so it must be
-  // purely ADDITIVE: a local row that already has data is ALWAYS kept (that is
-  // the operator's earlier work, restored from localStorage). A remote hour
-  // fills a slot ONLY when the local row for that slot is completely empty.
-  // This fixes data vanishing when returning to the Dryer section.
-  useEffect(() => {
+  // MERGE any non-expired remote hours for this (dryer, date) into the form
+  // WITHOUT destroying the locally-restored draft. Purely ADDITIVE: a local row
+  // that already has data is ALWAYS kept (that is the operator's own in-progress
+  // or earlier work), while a remote hour fills a slot ONLY when the local row
+  // for that slot is completely empty.
+  //
+  // This is pulled into a reusable function (instead of living inside the mount
+  // effect) so it can run BOTH on mount/date-change AND on a short poll — that
+  // way, when Operator A saves hours 08:00–11:00 and Operator B is already on
+  // the page (same dryer + date, same OR different shift), Operator B's empty
+  // slots fill in within a few seconds without a manual refresh. The data is
+  // keyed on (dryer, date) only, so Day and Night operators see each other's
+  // saved hours and the data survives a shift change.
+  const mergeRemoteHours = useRef(null)
+  mergeRemoteHours.current = async (cancelledRef) => {
     if (!supabaseReady || !supabase) return
     if (!form.date) return
 
-    // Load keys on (dryer, date) ONLY — the hourly data is shared across BOTH
-    // shifts for the same dryer + date, so a Day-shift operator and a
-    // Night-shift operator working the same date see each other's saved hours.
-    const loadKey = `${dryerType}|${form.date}`
-    if (loadedKeyRef.current === loadKey) return   // already loaded this (dryer,date)
-    loadedKeyRef.current = loadKey
-
-    let cancelled = false
-
-    ;(async () => {
-      const cutoff = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
-      // Pull EVERY non-expired saved hour for this dryer + date, regardless of
-      // shift. Ordering by last_saved_at ascending means that when the same
-      // hour was saved under different shifts, the most recently saved record
-      // wins (it is applied last into byHour).
-      const { data, error: err } = await supabase
+    const cutoff = new Date(Date.now() - 36 * 60 * 60 * 1000).toISOString()
+    // Pull EVERY non-expired saved hour for this dryer + date, regardless of
+    // shift. Ordering by last_saved_at ascending means that when the same hour
+    // was saved under different shifts, the most recently saved record wins (it
+    // is applied last into byHour).
+    let data = null
+    try {
+      const res = await supabase
         .from('dryer_hourly_draft')
         .select('hour, shift, values, operator, last_saved_at')
         .eq('dryer_type', dryerType)
         .eq('log_date', form.date)
         .gt('last_saved_at', cutoff)
         .order('last_saved_at', { ascending: true })
+      if (res.error) return
+      data = res.data
+    } catch {
+      // Transient network failure during a poll — ignore and try again next tick.
+      return
+    }
 
-      if (cancelled || err || !data) return
+    if ((cancelledRef && cancelledRef.cancelled) || !data) return
 
-      const byHour = {}
-      data.forEach(r => { byHour[r.hour] = r })
+    const byHour = {}
+    data.forEach(r => { byHour[r.hour] = r })
 
-      // Merge: keep every local row that has ANY data; only fill a truly-empty
-      // local slot from a matching remote hour. NEVER blank a populated row.
-      const rowIsEmpty = r =>
-        !r || Object.keys(emptyRow()).every(
-          k => k === 'timestamp' || k === 'saved' || k === '__ts' || (r[k] ?? '') === ''
-        )
+    // Merge: keep every local row that has ANY data; only fill a truly-empty
+    // local slot from a matching remote hour. NEVER blank a populated row.
+    const rowIsEmpty = r =>
+      !r || Object.keys(emptyRow()).every(
+        k => k === 'timestamp' || k === 'saved' || k === '__ts' || (r[k] ?? '') === ''
+      )
 
-      setForm(p => ({
-        ...p,
-        rows: TIME_SLOTS.map((slot, idx) => {
-          const prev = p.rows[idx]
-          // Local row has data → KEEP it as-is (restored draft / in-progress).
-          if (!rowIsEmpty(prev)) return prev
+    setForm(p => {
+      let changed = false
+      const nextRows = TIME_SLOTS.map((slot, idx) => {
+        const prev = p.rows[idx]
+        // Local row has data → KEEP it as-is (restored draft / in-progress /
+        // an hour this operator is currently editing). Never overwrite it.
+        if (!rowIsEmpty(prev)) return prev
 
-          const remote = byHour[slot]
-          if (!remote) return prev || emptyRow()   // nothing remote → keep local (empty) row
+        const remote = byHour[slot]
+        if (!remote) return prev || emptyRow()   // nothing remote → keep local (empty) row
 
-          const base = emptyRow()
-          const v = remote.values || {}
-          return {
-            ...base,
-            ...v,
-            // Preserve per-field entry times from the shared draft so unchanged
-            // fields keep their ORIGINAL timestamp across reloads/handover.
-            __ts: (v && v.__ts && typeof v.__ts === 'object') ? v.__ts : {},
-            // remote rows represent an already-shared (saved) hour
-            saved: true,
-          }
-        }),
-      }))
-    })()
+        const base = emptyRow()
+        const v = remote.values || {}
+        changed = true
+        return {
+          ...base,
+          ...v,
+          // Preserve per-field entry times from the shared draft so unchanged
+          // fields keep their ORIGINAL timestamp across reloads/handover.
+          __ts: (v && v.__ts && typeof v.__ts === 'object') ? v.__ts : {},
+          // remote rows represent an already-shared (saved) hour
+          saved: true,
+        }
+      })
+      // Avoid a needless state update (and re-render) when nothing new arrived.
+      if (!changed) return p
+      return { ...p, rows: nextRows }
+    })
+  }
 
-    return () => { cancelled = true }
+  // Run the merge on mount and whenever the (dryer, date) changes, then keep it
+  // fresh with a short poll so an operator who leaves the page open still sees
+  // hours saved by the other operator (day/night handover included). The poll
+  // is additive and cheap — a single filtered query every 15s — and it stops
+  // when the section is unmounted or the date is cleared.
+  useEffect(() => {
+    if (!supabaseReady || !supabase) return
+    if (!form.date) return
+
+    const loadKey = `${dryerType}|${form.date}`
+    loadedKeyRef.current = loadKey
+
+    const cancelledRef = { cancelled: false }
+
+    // Immediate merge for this (dryer, date).
+    mergeRemoteHours.current(cancelledRef)
+
+    // Poll every 15s so newly-saved hours from the other operator appear
+    // without a manual refresh.
+    const intervalId = setInterval(() => {
+      mergeRemoteHours.current(cancelledRef)
+    }, 15000)
+
+    // Re-merge when the tab/app regains focus (operator returns to the page).
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        mergeRemoteHours.current(cancelledRef)
+      }
+    }
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelledRef.cancelled = true
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [dryerType, form.date])  // eslint-disable-line react-hooks/exhaustive-deps
 
 
