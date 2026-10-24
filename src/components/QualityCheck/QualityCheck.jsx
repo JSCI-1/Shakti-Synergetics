@@ -829,6 +829,11 @@ export default function QualityCheck({ user }) {
     // Suspensibility is NOT required — the record goes live even when it is
     // blank (it fills in later and is additive, like the sieve readings).
     // The repeated Wet/Dry Sieve readings are likewise NOT required.
+    // Normal / Colour Save-push bypass: when override.skipReadyGate is true
+    // (set only by the Save button for Normal/Colour grades), NONE of the FG
+    // fields are compulsory — whatever the user entered goes live as-is. The
+    // readiness gate below still fully applies to Export/OMRI (debounce + sieve
+    // feed) so their behavior is unchanged.
     const notEmpty = v => v !== null && v !== undefined && String(v).trim() !== ''
     const FG_ACTIVITY_REQUIRED_READY =
       notEmpty(logDate) &&
@@ -838,7 +843,7 @@ export default function QualityCheck({ user }) {
       notEmpty(d.batchNo) &&
       notEmpty(d.testedBy || userName) &&
       notEmpty(curVals.fg_moisture)
-    if (!FG_ACTIVITY_REQUIRED_READY) return   // incomplete → do not go live yet
+    if (!override.skipReadyGate && !FG_ACTIVITY_REQUIRED_READY) return   // incomplete → do not go live yet
 
     const row = {
       dryer,
@@ -941,6 +946,10 @@ export default function QualityCheck({ user }) {
   useEffect(() => {
     if (activeTab !== 'fg') return
     if (!fgDraft.date) return
+    // Only UPL Export and OMRI grades go live automatically (debounced) as the
+    // user types. Normal (uplGrade === null) and Colour go live ONLY when the
+    // Save button is clicked — handled in handlePrint — so skip them here.
+    if (fgDraft.uplGrade !== 'export' && fgDraft.uplGrade !== 'omri') return
     if (!fgPushReadyRef.current) {
       fgPushReadyRef.current = true
       return
@@ -1046,7 +1055,19 @@ export default function QualityCheck({ user }) {
   // ── FG Print/Download save state (FG tab only) ──
   const [qcSaving, setQcSaving] = useState(false)
   const [qcError, setQcError]   = useState('')
+  const [qcSaved, setQcSaved]   = useState(false)   // "Data saved successfully" toast
   const lastSavedSig            = useRef('')
+  const savedToastTimer         = useRef(null)
+
+  // Show the "Data saved successfully" toast for ~3s. Clears any pending hide.
+  const showSavedToast = useCallback(() => {
+    setQcSaved(true)
+    if (savedToastTimer.current) clearTimeout(savedToastTimer.current)
+    savedToastTimer.current = setTimeout(() => setQcSaved(false), 3000)
+  }, [])
+
+  // Clean up the toast timer on unmount
+  useEffect(() => () => { if (savedToastTimer.current) clearTimeout(savedToastTimer.current) }, [])
 
   // ── UPL menu open state (transient, not persisted) ──
   const [uplMenuOpenLocal, setUplMenuOpenLocal] = useState(false)
@@ -1420,12 +1441,12 @@ export default function QualityCheck({ user }) {
       // Skip an identical immediate re-save (defence against double submit).
       const sig = JSON.stringify(row.values)
       if (sig === lastSavedSig.current) {
-        doPrint()
+        showSavedToast()
         return
       }
 
       if (!supabaseReady) {
-        setQcError('Supabase not configured. Cannot save report — printing is blocked.')
+        setQcError('Supabase not configured. Cannot save report.')
         return
       }
 
@@ -1438,7 +1459,7 @@ export default function QualityCheck({ user }) {
 
       if (error) {
         setQcError(error.message || 'Failed to save report.')
-        return   // do NOT print on save failure
+        return   // do NOT show success on save failure
       }
 
       // Persist the recomputed In-Process timestamp bookkeeping so the NEXT
@@ -1448,7 +1469,8 @@ export default function QualityCheck({ user }) {
       }
 
       lastSavedSig.current = sig
-      doPrint()
+      showSavedToast()
+      handleReset()   // clear the whole form after a successful save
       return
     }
 
@@ -1527,12 +1549,12 @@ export default function QualityCheck({ user }) {
     // Skip an identical immediate re-save (defence against double submit).
     const sig = JSON.stringify(row.values)
     if (sig === lastSavedSig.current) {
-      doPrint()
+      showSavedToast()
       return
     }
 
     if (!supabaseReady) {
-      setQcError('Supabase not configured. Cannot save report — printing is blocked.')
+      setQcError('Supabase not configured. Cannot save report.')
       return
     }
 
@@ -1545,11 +1567,24 @@ export default function QualityCheck({ user }) {
 
     if (error) {
       setQcError(error.message || 'Failed to save report.')
-      return   // do NOT print on save failure
+      return   // do NOT show success on save failure
     }
 
     lastSavedSig.current = sig
-    doPrint()
+
+    // Normal (uplGrade === null) and Colour grades do NOT auto-push to
+    // Production → Activity as the user types (unlike Export/OMRI). They go
+    // live ONLY now, on a successful Save, and with NO required fields —
+    // skipReadyGate pushes whatever the user entered as-is. Export/OMRI are
+    // already live via the debounced/sieve feed, so they are intentionally left
+    // untouched here. Pushed BEFORE handleReset() so the current (pre-reset) FG
+    // values are read.
+    if (uplGrade !== 'export' && uplGrade !== 'omri') {
+      pushQcActivity({ skipReadyGate: true })
+    }
+
+    showSavedToast()
+    handleReset()   // clear the whole form after a successful save
   }
 
   // ─────────────────────────────────────────────────────────
@@ -2173,12 +2208,18 @@ export default function QualityCheck({ user }) {
           <div className="qc-error">Error: {qcError}</div>
         )}
         <button type="button" className="qc-print-btn" onClick={handlePrint} disabled={qcSaving}>
-          {qcSaving ? 'Saving…' : 'Print / Download'}
+          {qcSaving ? 'Saving…' : 'Save'}
         </button>
         <button type="button" className="qc-clear-btn" onClick={handleReset}>
           Reset All / सभी रीसेट करें
         </button>
       </div>
+
+      {qcSaved && (
+        <div className="qc-saved-toast" role="status" aria-live="polite">
+          Data saved successfully
+        </div>
+      )}
 
     </div>
   )

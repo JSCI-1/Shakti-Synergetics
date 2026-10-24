@@ -1145,3 +1145,42 @@
   .qc-sieve-apply-select { flex: 1 1 auto; }
   .qc-sieve-apply-btn { text-align: center; }
 }
+
+/* ── "Data saved successfully" toast ── */
+/* Desktop (laptop): bottom-right corner */
+.qc-saved-toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 9999;
+  background: #27ae60;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 12px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  animation: qc-toast-in 0.25s ease-out;
+}
+
+@keyframes qc-toast-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Mobile: centered along the bottom of the screen */
+@media (max-width: 640px) {
+  .qc-saved-toast {
+    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 20px;
+    white-space: nowrap;
+    animation: qc-toast-in-mobile 0.25s ease-out;
+  }
+
+  @keyframes qc-toast-in-mobile {
+    from { opacity: 0; transform: translate(-50%, 12px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+}
