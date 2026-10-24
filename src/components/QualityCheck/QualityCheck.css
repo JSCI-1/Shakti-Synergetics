@@ -1043,6 +1043,28 @@
   border-bottom-right-radius: 0;
 }
 
+/* Moisture Content card — matches .qc-formula-card exactly so the Record bar
+   (.qc-sieve-apply-bar, border-top:none) attaches flush below it, giving the
+   same bordered look as the Wet/Dry Sieve blocks. Squared bottom corners. */
+.qc-moisture-card {
+  border: 1px solid #e0dbd4;
+  border-radius: 6px 6px 0 0;
+  padding: 14px 16px;
+  background: #fafaf8;
+}
+.qc-moisture-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #b85c2c;
+  margin-bottom: 10px;
+}
+.qc-moisture-input-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.qc-moisture-input { width: 120px; }
+
 .qc-sieve-apply-bar {
   display: flex;
   align-items: center;

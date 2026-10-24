@@ -192,6 +192,16 @@ var FG_SIEVE_LOGS = [
   ['fg_wetSieve', 'fg_wetSieve_log', 'fg_wetSieve_reading_'],
   ['fg_drySieve', 'fg_drySieve_log', 'fg_drySieve_reading_']
 ];
+
+// Finished Goods repeated MOISTURE readings. Moisture Content is now measured
+// several times per batch — exactly like Wet/Dry Sieve. Each reading carries
+// its own result and website-recorded (IST-locked) iso_time. Stored in
+// values.fg_moisture_log as an array of { result, time, isoTime } and stacked
+// (every reading + its own time) inside the single existing "Moisture Content"
+// Value cell. No numbered columns. Maps: value/result key → repeated-readings
+// log key → per-reading __ts key prefix the website sends.
+//   [valueKey, logKey, readingTsPrefix]
+var FG_MOISTURE_LOG = ['fg_moisture', 'fg_moisture_log', 'fg_moisture_reading_'];
 // Newline used to stack multiple readings within one cell. Sheets renders "\n"
 // as a line break when the cell has wrapping enabled (formatQcTab_ wraps QC
 // cells), so stacked readings appear on separate lines in the same cell.
@@ -336,7 +346,8 @@ var QC_IDENTITY = {
     ['date',      'Manufactured Date'],
     ['tested_by', 'Tested By'],
     ['batch_no',  'Batch No.'],
-    ['time',      'Time'],
+    ['time',      'Batch Start Time'],
+    ['end_time',  'Batch End Time'],
     ['product',   'Product'],
     ['grade',     'Grade'],
     ['dryer',     'Dryer']
@@ -807,10 +818,20 @@ function rebuildInProcessTab() {
 
 
 /**
- * ONE-TIME, FINISHED-GOODS-ONLY rebuild — run manually after the Finished Goods
- * layout change (added formula-input columns + their own "Timestamp" columns,
- * renamed the per-field timestamp header from "(Updated)" to "Timestamp", and
- * added the numbered Wet/Dry Sieve reading columns).
+ * ONE-TIME, FINISHED-GOODS-ONLY rebuild — run manually after a Finished Goods
+ * layout change. Past changes: added formula-input columns + their own
+ * "Timestamp" columns, renamed the per-field timestamp header from "(Updated)"
+ * to "Timestamp", and added the Wet/Dry Sieve reading stacking.
+ *
+ * LATEST CHANGE requiring this rebuild (migration 038 + this Code.gs update):
+ *   • The single "Time" identity column is now TWO columns: "Batch Start Time"
+ *     and "Batch End Time". This inserts a new identity column, so the FG column
+ *     POSITIONS shifted and an in-place header edit would leave old data under
+ *     the wrong columns — rebuild instead.
+ *   • Moisture Content is now a REPEATED-readings cell (stacked "#N  <result>"
+ *     per line with each reading's own IST time), same as Wet/Dry Sieve. No new
+ *     column (it reuses the existing single Moisture cell), but the rebuild
+ *     re-populates it cleanly from the requeued records.
  *
  * The Finished Goods column POSITIONS changed (inputs are now interleaved before
  * each result, the ts header mode flipped from "(Updated)" to "Timestamp", and
@@ -1329,6 +1350,12 @@ function routeAndWrite_(row, dryerSS, qcSS) {
     // # / micron / result / status / time per line. No Print/Download needed.
     if (type === 'sieve_readings' && kind === 'qc_fg') {
       writeFgSieveReadings_(qcSS, tabName, row);
+      return;
+    }
+    // Finished Goods LIVE Moisture readings (migration 038). Same business-key
+    // row match + stacked-cell rebuild as the sieve readings, for Moisture.
+    if (type === 'moisture_readings' && kind === 'qc_fg') {
+      writeFgMoistureReadings_(qcSS, tabName, row);
       return;
     }
   }
@@ -2114,15 +2141,57 @@ function buildFgSieveStack_(valueKey, logKey, vals, tsMap, kind) {
     if (status !== '') parts.push(status);
     values.push(parts.join('  '));
 
+    // ALWAYS render the reading's time from its ISO moment in IST
+    // (renderFieldTs_ → Asia/Kolkata). We deliberately do NOT fall back to the
+    // raw e.time display string: that string was historically produced with the
+    // BROWSER's local timezone, which is the root cause of a reading showing the
+    // wrong half of the day (e.g. a noon-IST reading printed as ~6:30 AM). If no
+    // ISO is available the time cell is left blank rather than risk a wrong time.
     var iso = (tsMap && tsMap[valueKey + '_reading_' + no]) ? tsMap[valueKey + '_reading_' + no]
             : (e.isoTime || null);
-    if (iso) {
-      times.push(renderFieldTs_(kind, iso));
-    } else if (e.time) {
-      times.push(String(e.time));   // older entries saved only a display string
-    } else {
-      times.push('');
-    }
+    times.push(iso ? renderFieldTs_(kind, iso) : '');
+  }
+
+  if (values.length === 0) return null;
+  return {
+    value: values.join(FG_SIEVE_LINE_SEP),
+    ts:    times.join(FG_SIEVE_LINE_SEP)
+  };
+}
+
+/**
+ * Finished Goods repeated MOISTURE readings → stacked Value/Timestamp lines for
+ * the single "Moisture Content" cell. Same pattern and guarantees as
+ * buildFgSieveStack_ (deterministic, idempotent, IST-only times, never the
+ * upload time), but each reading line is just "#N  <result>" (moisture has no
+ * micron/status). Returns null when there are no readings, so the caller leaves
+ * the plain single-value Moisture cell written by the field loop untouched.
+ *
+ *   vals   the record's values object (reads vals.fg_moisture_log)
+ *   tsMap  values.__ts (per-reading keys 'fg_moisture_reading_N' when present)
+ *   kind   'qc_fg'
+ */
+function buildFgMoistureStack_(vals, tsMap, kind) {
+  var valueKey = FG_MOISTURE_LOG[0];   // 'fg_moisture'
+  var logKey   = FG_MOISTURE_LOG[1];   // 'fg_moisture_log'
+  var arr = vals[logKey];
+  if (typeof arr === 'string') {
+    try { arr = JSON.parse(arr); } catch (e) { arr = null; }
+  }
+  if (!arr || Object.prototype.toString.call(arr) !== '[object Array]') return null;
+
+  var values = [];
+  var times  = [];
+  for (var i = 0; i < arr.length; i++) {
+    var e = arr[i] || {};
+    if (e.result === undefined || e.result === null || String(e.result) === '') continue;
+    var no     = i + 1;
+    var result = coalesce_(e.result);
+    values.push('#' + no + '  ' + result);
+    // ALWAYS render from the ISO moment in IST (see buildFgSieveStack_ note).
+    var iso = (tsMap && tsMap[valueKey + '_reading_' + no]) ? tsMap[valueKey + '_reading_' + no]
+            : (e.isoTime || null);
+    times.push(iso ? renderFieldTs_(kind, iso) : '');
   }
 
   if (values.length === 0) return null;
@@ -2250,13 +2319,13 @@ function writeQcSnapshot_(ss, tabName, kind, row) {
       // Map the stored material/test id to its website label, per section.
       var labelMap = (kind === 'qc_ip') ? IP_MATERIAL_LABELS : RM_MATERIAL_LABELS;
       idv = labelMap[mid] || mid;   // label if known, else raw id
-    } else if (idk === 'time') {
-      // The ordinary "Time" identity field. The website <input type="time">
-      // submits a 24-hour wall-clock string (e.g. "14:35"). Display it in
-      // 12-hour AM/PM (e.g. "02:35:00 PM") consistently across RM/IP/FG. This is
-      // a DISPLAY reformat of a date-less clock value — it does NOT shift the
-      // time and is DISTINCT from the per-field "Timestamp" columns (which keep
-      // their own renderFieldTs_ logic untouched).
+    } else if (idk === 'time' || idk === 'end_time') {
+      // Batch Start / End Time identity fields (FG). The website <input
+      // type="time"> submits a 24-hour wall-clock string (e.g. "14:35"). Display
+      // it in 12-hour AM/PM (e.g. "02:35:00 PM") consistently. This is a DISPLAY
+      // reformat of a date-less clock value — it does NOT shift the time and is
+      // a plain local wall-clock (NOT subject to any timezone conversion), so it
+      // is DISTINCT from the per-field "Timestamp" columns (renderFieldTs_).
       idv = renderClockTime_(coalesce_(vals[idk]));
     } else {
       idv = coalesce_(vals[idk]);
@@ -2282,6 +2351,13 @@ function writeQcSnapshot_(ss, tabName, kind, row) {
     var hasVal = (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '');
     var isFgSieve = (kind === 'qc_fg' && (fk === 'fg_wetSieve' || fk === 'fg_drySieve'));
     if (isFgSieve) continue;   // handled by the sieve-stack writer below
+    // Moisture is stacked below ONLY when a readings log exists; otherwise fall
+    // through so the plain single value (the latest reading or legacy value) is
+    // still written by this loop.
+    var isFgMoistureStacked = (kind === 'qc_fg' && fk === 'fg_moisture' &&
+      vals.fg_moisture_log !== undefined && vals.fg_moisture_log !== null &&
+      String(vals.fg_moisture_log) !== '' && String(vals.fg_moisture_log) !== '[]');
+    if (isFgMoistureStacked) continue;   // handled by the moisture-stack writer below
 
     var tsOwnedBySnapshot = (kind === 'qc_ip' || kind === 'qc_fg');
     if (hasVal) {
@@ -2331,6 +2407,15 @@ function writeQcSnapshot_(ss, tabName, kind, row) {
         // value and its time stay together in the one sieve cell.
         existing[layout.valueCol[vKey]] = qcMergeSieveStack_(stack);
       }
+    }
+    // Finished Goods: STACK the repeated Moisture readings within the single
+    // "Moisture Content" cell, SAME shape/guarantees as the sieve stack above
+    // (deterministic, idempotent, IST-only times). When no moisture readings
+    // are logged, the plain single-value cell written by the field loop is left
+    // as-is.
+    var mStack = buildFgMoistureStack_(vals, tsMap, kind);
+    if (mStack && layout.valueCol[FG_MOISTURE_LOG[0]] !== undefined) {
+      existing[layout.valueCol[FG_MOISTURE_LOG[0]]] = qcMergeSieveStack_(mStack);
     }
   }
 
@@ -2689,6 +2774,74 @@ function writeFgSieveReadings_(ss, tabName, row) {
   }
 
   sh.getRange(rowIdx, 1, 1, existing.length).setValues([existing]);
+}
+
+
+/**
+ * Finished Goods LIVE Moisture readings writer (event_type 'moisture_readings').
+ * Mirrors writeFgSieveReadings_ but for the repeated Moisture Content readings:
+ * matches the SAME business-key FG row (findOrAppendFgRowByKey_ / _fg_key), and
+ * rebuilds the single "Moisture Content" cell as stacked "#N  <result>" lines
+ * with each reading's own IST time. Moisture has no micron/status and feeds no
+ * UPL parameter, so this is simpler than the sieve writer. Deterministic +
+ * idempotent (rebuilt entirely from the array each sync) and shares the exact
+ * same row as the Print/Download snapshot, so whichever writes last produces
+ * identical content. Never uses the sheet upload time.
+ */
+function writeFgMoistureReadings_(ss, tabName, row) {
+  var payload = row.payload || {};
+  var biz = payload.biz || {};
+
+  var readings = payload.readings;
+  if (typeof readings === 'string') {
+    try { readings = JSON.parse(readings); } catch (e) { readings = []; }
+  }
+  if (!readings || Object.prototype.toString.call(readings) !== '[object Array]') readings = [];
+
+  var kind = 'qc_fg';
+  var valueKey = FG_MOISTURE_LOG[0];   // 'fg_moisture'
+  var layout = buildQcLayout_(kind);
+  if (layout.valueCol[valueKey] === undefined) return;
+
+  var sh = getOrCreateSheet_(ss, tabName);
+  var liveHeader = ensureHeader_(sh, layout.header);
+  var width = Math.max(liveHeader.length, layout.header.length);
+
+  // Map the event's biz payload → identity-column keys used by the layout, and
+  // reuse the SAME normalized _fg_key as the snapshot so this lands on the one
+  // shared row per batch.
+  var bizByIdentity = {
+    date:     coalesce_(biz.date),
+    batch_no: coalesce_(biz.batch_no),
+    product:  coalesce_(biz.product),
+    grade:    coalesce_(biz.grade),
+    dryer:    coalesce_(biz.dryer)
+  };
+
+  var rowIdx = findOrAppendFgRowByKey_(sh, layout, bizByIdentity, bizByIdentity, width);
+  var fullWidth = Math.max(sh.getLastColumn(), width);
+  var existing = sh.getRange(rowIdx, 1, 1, fullWidth).getValues()[0];
+
+  // Build the stacked Value + Timestamp strings from the ordered readings.
+  var valueLines = [];
+  var tsLines = [];
+  for (var i = 0; i < readings.length; i++) {
+    var e = readings[i] || {};
+    if (e.result === undefined || e.result === null || String(e.result) === '') continue;
+    var no     = (e.reading_no !== undefined && e.reading_no !== null) ? e.reading_no : (i + 1);
+    var result = coalesce_(e.result);
+    valueLines.push('#' + no + '  ' + result);
+    // ALWAYS from ISO in IST — never a browser-local display string.
+    tsLines.push(e.iso_time ? renderFieldTs_(kind, e.iso_time) : '');
+  }
+
+  if (valueLines.length > 0) {
+    existing[layout.valueCol[valueKey]] = qcMergeSieveStack_({
+      value: valueLines.join(FG_SIEVE_LINE_SEP),
+      ts:    tsLines.join(FG_SIEVE_LINE_SEP)
+    });
+    sh.getRange(rowIdx, 1, 1, existing.length).setValues([existing]);
+  }
 }
 
 

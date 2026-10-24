@@ -338,12 +338,14 @@ export const FINISHED_GOODS = [
       { ...SHARED_FORMULAS.sulphur,         id: 'fg_sulphur'  },
       // B) Suspensibility — formula, no rule
       { ...SHARED_FORMULAS.suspensibility,  id: 'fg_susp'     },
-      // C) Moisture Content — single % value (no formula; FG only)
+      // C) Moisture Content — repeated timestamped readings (FG only).
+      // Measured several times per batch, just like Wet/Dry Sieve: each reading
+      // is recorded with its own IST timestamp into a per-grade log. Applies to
+      // all four grades (Normal / UPL Export / UPL OMRI / Colour).
       {
         id: 'fg_moisture',
-        type: 'spec-single',
+        type: 'moisture-readings',
         name: 'Moisture Content',
-        specification: '—',
         inputType: 'number',
         unit: '%',
         // no rule

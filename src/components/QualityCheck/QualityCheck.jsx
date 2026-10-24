@@ -25,6 +25,27 @@ const TABS = [
 // ─────────────────────────────────────────────────────────────
 const FG_ACTIVITY_LIVE_PUSH_ENABLED = true
 
+// ─────────────────────────────────────────────────────────────
+// IST time helpers — single source of truth for recorded reading times.
+//
+// BUG FIX: a recorded reading once showed a stray morning time (e.g. 6:32 AM)
+// that was really an afternoon reading. Root cause: the display time string was
+// built with the BROWSER's local timezone (toLocaleTimeString with no timeZone),
+// so on any device not set to IST it rendered the wrong wall-clock (a ~12:00 PM
+// IST reading printed as its UTC equivalent ~06:30 AM). Every recorded reading
+// time is now derived EXPLICITLY in Asia/Kolkata from the same Date object whose
+// ISO is stored, so the UI, the ISO, and the Google Sheet always agree and no
+// reading can ever drift to the wrong half of the day again.
+const IST_TIME_FMT = new Intl.DateTimeFormat('en-IN', {
+  timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true,
+})
+// Format a Date (or ISO string) as an IST hh:mm AM/PM clock string.
+function istClock(dateOrIso) {
+  const d = dateOrIso instanceof Date ? dateOrIso : new Date(dateOrIso)
+  if (isNaN(d.getTime())) return ''
+  return IST_TIME_FMT.format(d)
+}
+
 // Which UPL parameter rows a Wet/Dry Sieve formula result can be pushed into
 // (the micron targets shown in the UPL Parameters table), per grade.
 //   OMRI   → Wet Sieve + Dry Sieve
@@ -604,7 +625,7 @@ export default function QualityCheck({ user }) {
   const [fgDraft, setFgDraft, clearFgDraft] = useDraft(`draft:${uid}:qc:fg`, {
     selected: FINISHED_GOODS[0].id,
     values: {}, date: '', testedBy: userName,
-    batchNo: '', time: '',
+    batchNo: '', time: '', endTime: '',
     brand: '',
     uplGrade: null, uplValues: {},
     // OMRI sieve calculation log: timestamped entries per sieve test.
@@ -660,6 +681,7 @@ export default function QualityCheck({ user }) {
   const ipTime         = ipDraft.time
   const fgBatchNo      = fgDraft.batchNo
   const fgTime         = fgDraft.time
+  const fgEndTime      = fgDraft.endTime || ''
   const uplGrade       = fgDraft.uplGrade
   // UPL values are per-grade. Legacy flat `uplValues` migrates into 'normal'.
   const uplValuesByGrade = fgDraft.uplValuesByGrade || { normal: fgDraft.uplValues || {} }
@@ -713,6 +735,7 @@ export default function QualityCheck({ user }) {
   const setIpTime         = v => setIpDraft(p => ({ ...p, time: v }))
   const setFgBatchNo      = v => setFgDraft(p => ({ ...p, batchNo: v }))
   const setFgTime         = v => setFgDraft(p => ({ ...p, time: v }))
+  const setFgEndTime      = v => setFgDraft(p => ({ ...p, endTime: v }))
   const setUplGrade       = v => setFgDraft(p => ({ ...p, uplGrade: v }))
   const setUplValues      = fn => setFgDraft(p => {
     const grade = p.uplGrade || 'normal'
@@ -730,6 +753,33 @@ export default function QualityCheck({ user }) {
     const cur   = slg[grade] || {}
     return { ...p, sieveLogByGrade: { ...slg, [grade]: { ...cur, [testId]: [ ...(cur[testId] || []), entry ] } } }
   })
+
+  // ── Moisture readings log (per-grade) ──────────────────────────────────────
+  // Moisture Content is measured several times per batch (exactly like Wet/Dry
+  // Sieve). Each reading is a timestamped entry stored under the test id
+  // 'fg_moisture' in a per-grade bucket, so Normal / UPL Export / UPL OMRI /
+  // Colour each keep their own independent list. The recording trigger mirrors
+  // the sieve "Record" button and the live Google-Sheet sync is identical in
+  // shape (qc_fg_moisture_readings). No legacy flat value to migrate — the old
+  // single fg_moisture input becomes the FIRST reading when present.
+  const moistureLogByGrade = fgDraft.moistureLogByGrade || {}
+  const moistureLog        = (moistureLogByGrade[fgGrade] && moistureLogByGrade[fgGrade].fg_moisture) || []
+  const addMoistureEntry   = (entry) => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const mlg   = p.moistureLogByGrade || {}
+    const cur   = mlg[grade] || {}
+    return { ...p, moistureLogByGrade: { ...mlg, [grade]: { ...cur, fg_moisture: [ ...(cur.fg_moisture || []), entry ] } } }
+  })
+  const removeMoistureEntry = (idx) => {
+    const nextLog = (moistureLog || []).filter((_, i) => i !== idx)
+    setFgDraft(p => {
+      const grade = p.uplGrade || 'normal'
+      const mlg   = p.moistureLogByGrade || {}
+      const cur   = mlg[grade] || {}
+      return { ...p, moistureLogByGrade: { ...mlg, [grade]: { ...cur, fg_moisture: (cur.fg_moisture || []).filter((_, i) => i !== idx) } } }
+    })
+    pushFgMoistureReadings(nextLog)
+  }
   const removeSieveEntry  = (testId, idx) => {
     // Compute the post-delete list from the CURRENT active-grade log so we can
     // sync the full updated list to the Google Sheet (handles deletions). The
@@ -786,11 +836,16 @@ export default function QualityCheck({ user }) {
   const [suspResult, setSuspResult] = useState(null)
 
   // ── Live push to Production → Activity (qc_activity_draft) ──────────
-  // Upserts the current Finished Goods snapshot keyed on (dryer, date, grade).
-  // Called on each sieve "Record" and (debounced) when batch/moisture/susp/
-  // dryer/date/grade change. Requires a date to key on; guards supabaseReady.
-  // Never blocks the UI — errors are swallowed (this is an optional feed;
-  // the authoritative save is still Print/Download → quality_control_records).
+  // Upserts the current Finished Goods snapshot keyed on
+  // (Dryer, Date, Grade, Batch No.) — migration 039. One live row per that
+  // combination, so every later Moisture / Wet / Dry Sieve reading for the same
+  // (batch, date, dryer, grade) updates the SAME live entry. Batch numbers are
+  // not always unique, so date + dryer + grade qualify the batch.
+  // Called on each sieve/moisture "Record" and (debounced) when batch / start
+  // time / moisture / susp / dryer / date / grade change. Requires a date to
+  // key on; guards supabaseReady. Never blocks the UI — errors are swallowed
+  // (this is an optional feed; the authoritative save is still Print/Download →
+  // quality_control_records).
   const toNum = v => {
     const n = parseFloat(v)
     return Number.isFinite(n) ? n : null
@@ -818,31 +873,47 @@ export default function QualityCheck({ user }) {
     const log = slg[grade] || {}
     const product = (FINISHED_GOODS.find(p => p.id === d.selected) || {}).label || null
 
+    // Moisture readings log for this grade (the record now requires at least one
+    // RECORDED reading, not just a typed value). Legacy single fg_moisture value
+    // still counts so older drafts aren't blocked.
+    const mlg = d.moistureLogByGrade || {}
+    const moistureReadings = (mlg[grade] && mlg[grade].fg_moisture) || []
+
     // ── Readiness gate (FG only) ───────────────────────────────────────────
-    // The row goes live in Production → Activity ONLY once the required FG
-    // fields are entered. Until then nothing is pushed, so no partial/incomplete
-    // row ever appears. Required fields:
-    //   • Manufactured Date (log_date)      • Dryer (ND1/ND2)
-    //   • Grade                             • Product
-    //   • Batch No.                         • Tested By
-    //   • Moisture %   (fg_moisture)
-    // Suspensibility is NOT required — the record goes live even when it is
-    // blank (it fills in later and is additive, like the sieve readings).
-    // The repeated Wet/Dry Sieve readings are likewise NOT required.
-    // Normal / Colour Save-push bypass: when override.skipReadyGate is true
-    // (set only by the Save button for Normal/Colour grades), NONE of the FG
-    // fields are compulsory — whatever the user entered goes live as-is. The
-    // readiness gate below still fully applies to Export/OMRI (debounce + sieve
-    // feed) so their behavior is unchanged.
+    // The row goes live in Production → Activity ONLY once ALL of the required
+    // fields below are active. Until then nothing is pushed, so no partial /
+    // incomplete row ever appears. Required (per request):
+    //   • Batch No.                       • Batch Start Time
+    //   • Dryer (ND1/ND2)                 • Moisture readings (≥1 recorded)
+    //   • Wet/Dry Sieve readings AS PER GRADE:
+    //       – OMRI   → BOTH Wet Sieve AND Dry Sieve have ≥1 reading
+    //       – Export → Wet Sieve has ≥1 reading (Dry Sieve is not an Export parameter)
+    //       – Normal / Colour → no sieve requirement (they have no UPL sieve targets)
+    // Manufactured Date is enforced separately above (it is the row key and the
+    // feed cannot be keyed without it). Tested By / Product / Grade are NOT part
+    // of the gate.
+    //
+    // This gate now applies to ALL grades: Export/OMRI via the debounced feed as
+    // the user works, and Normal/Colour on the Save button. (override.skipReadyGate
+    // remains as an explicit escape hatch but is no longer used by Save.)
     const notEmpty = v => v !== null && v !== undefined && String(v).trim() !== ''
+    const hasList  = arr => Array.isArray(arr) && arr.length > 0
+
+    // Sieve readiness depends on the grade (which sieve tests that grade uses).
+    const wetReadings = override.wetLog ?? (log.fg_wetSieve || [])
+    const dryReadings = override.dryLog ?? (log.fg_drySieve || [])
+    let sieveReady = true
+    if (grade === 'omri')        sieveReady = hasList(wetReadings) && hasList(dryReadings)
+    else if (grade === 'export') sieveReady = hasList(wetReadings)
+    // Normal / Colour → no sieve targets → no sieve requirement (sieveReady stays true).
+
     const FG_ACTIVITY_REQUIRED_READY =
       notEmpty(logDate) &&
-      notEmpty(dryer) &&
-      notEmpty(grade) &&
-      notEmpty(product) &&
       notEmpty(d.batchNo) &&
-      notEmpty(d.testedBy || userName) &&
-      notEmpty(curVals.fg_moisture)
+      notEmpty(d.time) &&                 // Batch Start Time
+      notEmpty(dryer) &&
+      (hasList(moistureReadings) || notEmpty(curVals.fg_moisture)) &&
+      sieveReady
     if (!override.skipReadyGate && !FG_ACTIVITY_REQUIRED_READY) return   // incomplete → do not go live yet
 
     const row = {
@@ -851,7 +922,13 @@ export default function QualityCheck({ user }) {
       grade,
       product,
       batch_no: d.batchNo || null,
-      moisture_pct: toNum(curVals.fg_moisture),
+      // Prefer the LATEST recorded moisture reading; fall back to the legacy
+      // single value for older drafts.
+      moisture_pct: toNum(
+        moistureReadings.length
+          ? moistureReadings[moistureReadings.length - 1].result
+          : curVals.fg_moisture
+      ),
       suspensibility_pct: override.susp !== undefined ? toNum(override.susp) : toNum(suspResult),
       wet_sieve_log: override.wetLog ?? (log.fg_wetSieve || []),
       dry_sieve_log: override.dryLog ?? (log.fg_drySieve || []),
@@ -862,6 +939,11 @@ export default function QualityCheck({ user }) {
 
     supabase
       .from('qc_activity_draft')
+      // ONE live row per (Dryer, Date, Grade, Batch No.) — migration 039. Every
+      // later Moisture / Wet Sieve / Dry Sieve reading for that SAME combination
+      // updates the one existing live entry. Because batch numbers are NOT always
+      // unique, the date + dryer + grade qualify the batch so the same batch no.
+      // on a different day, dryer, or grade correctly becomes its own live card.
       .upsert(row, { onConflict: 'dryer,log_date,grade,batch_no' })
       .then(({ error }) => {
         // Optional feed — does not block the UI. Log so a failing push
@@ -930,6 +1012,52 @@ export default function QualityCheck({ user }) {
       })
   }, [fgDraft, userName])
 
+  // ── Live Moisture readings → Google Sheet (qc_fg_moisture_readings) ────────
+  // Identical in shape and behavior to pushFgSieveReadings above, for the
+  // repeated Moisture Content readings. Upserts ONE row per
+  // (date, batch, product, grade, dryer) holding the CURRENT full ordered
+  // reading list, so each recorded Moisture reading (and each deletion) reaches
+  // the Finished Goods sheet AUTOMATICALLY on the "Record"/× click — no
+  // Print/Download needed. We write the WHOLE current list every time so the
+  // server-side rebuild is deterministic (no duplicates on retries). Each
+  // reading keeps its own website-recorded iso_time (IST-locked). Never blocks
+  // the UI; errors are logged, not thrown. The authoritative Print/Download →
+  // quality_control_records save is unaffected.
+  const pushFgMoistureReadings = useCallback((readingsArr) => {
+    if (!supabaseReady || !supabase) return
+    const d = fgDraft || {}
+    const logDate = d.date
+    if (!logDate) return                 // need a date to key the live row
+    const grade   = d.uplGrade || 'normal'
+    const dryer   = d.dryer || 'ND1'
+    const product = d.selected || null   // product id (e.g. 'sulphur80wdg')
+
+    const arr = Array.isArray(readingsArr) ? readingsArr : []
+    const readings = arr.map((e, i) => ({
+      reading_no: i + 1,
+      result:     e && e.result !== undefined && e.result !== null ? String(e.result) : '',
+      iso_time:   e && e.isoTime ? e.isoTime : null,
+    }))
+
+    const row = {
+      log_date:  logDate,
+      batch_no:  d.batchNo || null,
+      product,
+      grade,
+      dryer,
+      readings,
+      tested_by: d.testedBy || userName || null,
+      updated_at: new Date().toISOString(),
+    }
+
+    supabase
+      .from('qc_fg_moisture_readings')
+      .upsert(row, { onConflict: 'log_date,batch_no,product,grade,dryer' })
+      .then(({ error }) => {
+        if (error) console.warn('[FG Moisture Sync] live push failed:', error.message, error)
+      })
+  }, [fgDraft, userName])
+
   // Debounced live push when FG batch / moisture / suspensibility / dryer /
   // date / grade change (FG tab only, and only once a date is set).
   const fgMoistureVal = fgValues.fg_moisture
@@ -942,6 +1070,13 @@ export default function QualityCheck({ user }) {
   // the old activity reappear as live with the wrong date. Only push once the
   // user actively changes something.
   const fgPushReadyRef = useRef(false)
+
+  // Compact signals of the ACTIVE grade's reading logs so the debounced push
+  // re-fires whenever a moisture / wet / dry sieve reading is recorded or
+  // deleted (the readiness gate depends on these lists, not just typed values).
+  const moistureLogSig = JSON.stringify(moistureLog)
+  const wetSieveLogSig  = JSON.stringify(sieveLog.fg_wetSieve || [])
+  const drySieveLogSig  = JSON.stringify(sieveLog.fg_drySieve || [])
 
   useEffect(() => {
     if (activeTab !== 'fg') return
@@ -956,7 +1091,7 @@ export default function QualityCheck({ user }) {
     }
     const t = setTimeout(() => pushQcActivity(), 700)
     return () => clearTimeout(t)
-  }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgMoistureVal, suspResult])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDraft.time, fgMoistureVal, moistureLogSig, wetSieveLogSig, drySieveLogSig, suspResult])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load saved FG data from the database on date change ──────────
   // When the user selects a date, query quality_control_records for the most
@@ -1013,7 +1148,7 @@ export default function QualityCheck({ user }) {
           const savedVals = {}
           const allowKeys = ['fg_moisture','fg_sulphur','fg_susp','fg_bulk','fg_ph',
             'fg_wetSieve','fg_drySieve','fg_wettability','fg_foam_start','fg_foam_1min',
-            'fg_wetSieve_log','fg_drySieve_log',
+            'fg_wetSieve_log','fg_drySieve_log','fg_moisture_log',
             'upl_exp_ps_10','upl_exp_ps_6','upl_exp_ps_1','upl_exp_ws_160','upl_exp_ws_25',
             'upl_exp_df_0','upl_exp_df_1','upl_exp_df_2','upl_exp_df_5','upl_exp_wps',
             'upl_exp_alk','upl_exp_disp',
@@ -1028,6 +1163,7 @@ export default function QualityCheck({ user }) {
             ...p,
             batchNo: p.batchNo || v.batch_no || '',
             time: p.time || v.time || '',
+            endTime: p.endTime || v.end_time || '',
             brand: p.brand || v.brand || '',
             selected: p.selected || v.product || FINISHED_GOODS[0].id,
           }
@@ -1044,6 +1180,15 @@ export default function QualityCheck({ user }) {
                 ...(v.fg_wetSieve_log ? { fg_wetSieve: v.fg_wetSieve_log } : {}),
                 ...(v.fg_drySieve_log ? { fg_drySieve: v.fg_drySieve_log } : {}),
               },
+            }
+          }
+          // Restore moisture readings log for this grade if present.
+          if (v.fg_moisture_log) {
+            const mlg = p.moistureLogByGrade || {}
+            const curMg = mlg[grade] || {}
+            next.moistureLogByGrade = {
+              ...mlg,
+              [grade]: { ...curMg, fg_moisture: v.fg_moisture_log },
             }
           }
           return next
@@ -1496,6 +1641,9 @@ export default function QualityCheck({ user }) {
     // column shows its genuine recorded time (not the save moment).
     const wetSieveLog = Array.isArray(sieveLog.fg_wetSieve) ? sieveLog.fg_wetSieve : []
     const drySieveLog = Array.isArray(sieveLog.fg_drySieve) ? sieveLog.fg_drySieve : []
+    // Repeated Moisture Content readings for the ACTIVE grade (same shape as the
+    // sieve logs). Each entry carries its own IST display time + ISO time.
+    const moistureReadingsLog = Array.isArray(moistureLog) ? moistureLog : []
 
     // Per-field FIRST-ENTRY times the capture listener recorded as the user
     // typed (same source RM uses). Each FG field thus shows its genuine entry
@@ -1515,6 +1663,12 @@ export default function QualityCheck({ user }) {
       const iso = e && e.isoTime ? e.isoTime : (fgEntryTimes.fg_drySieve || null)
       if (iso) sieveTs[`fg_drySieve_reading_${i + 1}`] = iso
     })
+    // Per-reading ISO timestamps for each recorded Moisture reading, keyed so
+    // Code.gs places each next to its matching numbered reading line.
+    moistureReadingsLog.forEach((e, i) => {
+      const iso = e && e.isoTime ? e.isoTime : (fgEntryTimes.fg_moisture || null)
+      if (iso) sieveTs[`fg_moisture_reading_${i + 1}`] = iso
+    })
 
     // One row for quality_control_records. Only the ACTIVE dryer's values are
     // saved per click (values.dryer makes the record unambiguous); this keeps
@@ -1529,6 +1683,7 @@ export default function QualityCheck({ user }) {
         shift: null,            // FG form has no shift input today — stored null for forward-compat
         batch_no: fgBatchNo || null,
         time: fgTime || null,
+        end_time: fgEndTime || null,
         brand: fgBrand || null,
         product: fgSelected || null,
         grade: uplGrade || null,
@@ -1538,6 +1693,15 @@ export default function QualityCheck({ user }) {
         // numbered reading columns so no reading is lost or overwritten.
         fg_wetSieve_log: wetSieveLog,
         fg_drySieve_log: drySieveLog,
+        // Repeated Moisture Content readings (array; each { result, time,
+        // isoTime }). The Google Sheet stacks these in the single Moisture cell
+        // exactly like the Wet/Dry Sieve cells. fg_moisture itself holds the
+        // LATEST recorded reading (or the un-recorded live input) so the summary
+        // and backward-compatible readers still see a value.
+        fg_moisture: (moistureReadingsLog.length
+          ? String(moistureReadingsLog[moistureReadingsLog.length - 1].result)
+          : String(fgValues.fg_moisture ?? captured.fg_moisture ?? '')),
+        fg_moisture_log: moistureReadingsLog,
         // Per-field first-entry times (ISO) → the trigger uses these as
         // field_entry_ts so each FG field (inputs + results) shows its REAL
         // entry time, not the single save-moment time. Includes synthetic
@@ -1574,13 +1738,15 @@ export default function QualityCheck({ user }) {
 
     // Normal (uplGrade === null) and Colour grades do NOT auto-push to
     // Production → Activity as the user types (unlike Export/OMRI). They go
-    // live ONLY now, on a successful Save, and with NO required fields —
-    // skipReadyGate pushes whatever the user entered as-is. Export/OMRI are
-    // already live via the debounced/sieve feed, so they are intentionally left
+    // live ONLY now, on a successful Save — but still subject to the SAME
+    // readiness gate (Batch No. + Batch Start Time + Dryer + Moisture readings;
+    // Normal/Colour have no sieve targets so no sieve is required). So an empty
+    // or half-filled Normal/Colour report no longer goes live on Save. Export/
+    // OMRI are already live via the debounced/sieve feed, so they are left
     // untouched here. Pushed BEFORE handleReset() so the current (pre-reset) FG
     // values are read.
     if (uplGrade !== 'export' && uplGrade !== 'omri') {
-      pushQcActivity({ skipReadyGate: true })
+      pushQcActivity()
     }
 
     showSavedToast()
@@ -1934,7 +2100,9 @@ export default function QualityCheck({ user }) {
               if (!hasRes) return
               const status = evaluate(res, targetRule) || '—'
               const now = new Date()
-              const time = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+              // IST-locked display time (see istClock): never the browser-local
+              // wall-clock, so a reading can't drift to the wrong half of the day.
+              const time = istClock(now)
               const targetLabel = (opts.find(o => o.id === target) || {}).label || ''
               // isoTime: genuine recording moment (ISO) so the Google Sheet can
               // render this reading's own Timestamp. `time` stays for the UI log.
@@ -2049,6 +2217,90 @@ export default function QualityCheck({ user }) {
               onResult={test.id === 'fg_susp' ? setSuspResult : undefined}
             />
           )
+          if (test.type === 'moisture-readings') {
+            // Moisture Content is recorded several times per batch (same UX as
+            // Wet/Dry Sieve) for EVERY grade. The live input holds the current
+            // reading; "Record" stamps it with its own IST time into the
+            // per-grade moisture log and live-syncs the full list to the sheet.
+            const mVal    = values[test.id] ?? ''
+            const hasMVal = mVal !== null && mVal !== undefined && String(mVal).trim() !== ''
+            const mLog    = moistureLog
+
+            function recordMoisture() {
+              if (!hasMVal) return
+              const now    = new Date()
+              const time   = istClock(now)           // IST-locked display time
+              const nowIso = now.toISOString()
+              const entry  = { result: String(mVal), time, isoTime: nowIso }
+              addMoistureEntry(entry)
+              // Clear the live input so the next reading starts fresh.
+              setVal(test.id, '')
+              // Live push the full updated list (state update is async → pass override).
+              const newLog = [ ...(moistureLog || []), entry ]
+              pushFgMoistureReadings(newLog)
+            }
+
+            return (
+              <div key={`${test.id}-${resetKey}`} className="qc-sieve-apply-wrap" data-test-id={test.id}>
+                <div className="qc-sieve-apply-grid">
+                  <div className="qc-sieve-apply-formula">
+                    {/* Bordered card so the Record bar attaches seamlessly below
+                        it, exactly like the Wet/Dry Sieve formula card. */}
+                    <div className="qc-moisture-card">
+                      <div className="qc-moisture-name">{test.name}</div>
+                      <div className="qc-moisture-input-row">
+                        <input type="number" className="qc-input qc-moisture-input" placeholder="—"
+                          value={mVal}
+                          onChange={e => setVal(test.id, e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') recordMoisture() }}
+                          step="any" min="0" />
+                        {test.unit && <span className="qc-unit">{test.unit}</span>}
+                      </div>
+                    </div>
+                    <div className="qc-sieve-apply-bar">
+                      <button
+                        type="button"
+                        className="qc-sieve-apply-btn"
+                        disabled={!hasMVal}
+                        onClick={recordMoisture}
+                      >
+                        + Record {hasMVal ? `(${mVal})` : ''}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Recorded moisture readings — result + time */}
+                  <div className="qc-sieve-log" data-moisture-log={test.id}>
+                    <div className="qc-sieve-log-title">{test.name} — recorded</div>
+                    {mLog.length === 0 ? (
+                      <div className="qc-sieve-log-empty">No entries yet.</div>
+                    ) : (
+                      <div className="qc-sieve-log-scroll">
+                        <table className="qc-sieve-log-table">
+                          <thead>
+                            <tr><th>#</th><th>Result ({test.unit})</th><th>Time</th><th></th></tr>
+                          </thead>
+                          <tbody>
+                            {mLog.map((e, idx) => (
+                              <tr key={idx}>
+                                <td>{idx + 1}</td>
+                                <td>{e.result}</td>
+                                <td>{e.time}</td>
+                                <td>
+                                  <button type="button" className="qc-sieve-log-del"
+                                    title="Remove" onClick={() => removeMoistureEntry(idx)}>×</button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          }
           if (test.type === 'spec-single') return (
             <div key={test.id} className="qc-single-spec" data-test-id={test.id}>
               <div className="qc-single-name">{test.name}</div>
@@ -2191,8 +2443,9 @@ export default function QualityCheck({ user }) {
             { key: 'ibatch', label: 'Batch No. / बैच नं.', placeholder: 'e.g. 3512',    value: ipBatchNo,   onChange: setIpBatchNo },
             { key: 'itime',  label: 'Time / समय',          value: ipTime,               onChange: setIpTime, type: 'time' },
           ] : [
-            { key: 'fbatch', label: 'Batch No. / बैच नं.', placeholder: 'e.g. 3512',    value: fgBatchNo,   onChange: setFgBatchNo },
-            { key: 'ftime',  label: 'Time / समय',          value: fgTime,               onChange: setFgTime, type: 'time' },
+            { key: 'fbatch',   label: 'Batch No. / बैच नं.',                 placeholder: 'e.g. 3512', value: fgBatchNo,   onChange: setFgBatchNo },
+            { key: 'ftime',    label: 'Batch Start Time / बॅच सुरू वेळ',     value: fgTime,             onChange: setFgTime,    type: 'time' },
+            { key: 'fendtime', label: 'Batch End Time / बॅच समाप्ती वेळ',   value: fgEndTime,          onChange: setFgEndTime, type: 'time' },
           ]
         }
       />
