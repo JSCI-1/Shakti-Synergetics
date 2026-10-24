@@ -162,6 +162,22 @@
   gap: 4px;
   flex: 1;
   min-width: 130px;
+  /* Visible card border + separation so the first section's fields are
+     clearly delineated (previously they floated with no outline). */
+  border: 1px solid #d8d0c8;
+  border-radius: 5px;
+  padding: 8px 10px;
+  background: #fcfbf9;
+}
+
+.op-field .cell-mini-label {
+  margin-bottom: 4px;
+}
+
+/* The field inputs sit inside a bordered card now, so soften their own border
+   to avoid a double-outline look while keeping them clearly editable. */
+.op-field .tjc-input {
+  background: #fff;
 }
 
 /* ════════════════════
@@ -778,6 +794,25 @@
   font-size: 12px;
 }
 
+/* Operator column in the hourly log table (auto-filled logged-in user). */
+.tjc-op-cell {
+  white-space: nowrap;
+  min-width: 100px;
+  text-align: center;
+}
+
+.tjc-op-name {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #5b4636;
+  background: #f5efe7;
+  border: 1px solid #ddd0c2;
+  border-radius: 4px;
+  padding: 2px 8px;
+  white-space: nowrap;
+}
+
 
 /* ── Save cell ── */
 
@@ -900,6 +935,26 @@
   font-size: 13px;
   font-weight: 600;
   flex: 1 1 100%;
+}
+
+/* Auto-dismissing inline confirmation (toast-like). It is unmounted after a
+   few seconds by the component; the fade keyframes give it a gentle entrance
+   and a fade toward the end so its disappearance isn't abrupt. */
+.tjc-toast {
+  display: inline-block;
+  flex: 0 0 auto;
+  background: #e8f5e9;
+  border: 1px solid #a5d6a7;
+  border-radius: 6px;
+  padding: 6px 12px;
+  animation: tjcToast 4s ease forwards;
+}
+
+@keyframes tjcToast {
+  0%   { opacity: 0; transform: translateY(-4px); }
+  10%  { opacity: 1; transform: translateY(0); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 

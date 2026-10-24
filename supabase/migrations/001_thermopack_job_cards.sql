@@ -51,6 +51,20 @@ create table thermopack_job_cards (
   summary_10l                  jsonb,
   summary_6l                   jsonb,
 
+  -- Section 5 (flattened): the ACTIVE variant's summary values, written as
+  -- individual columns by the website submit (ThermpackJobCard.jsx handleSubmit).
+  -- These mirror the fields inside summary_10l/summary_6l for the variant that
+  -- was active at submit time, so queries/reports can read them directly.
+  outlet_set_temp              numeric,       -- °C
+  expansion_tank_level         text,
+  type_of_fuel                 text,
+  qty_fuel_used                text,
+  date_of_last_boiler_cleaning date,
+  total_running_hrs            numeric,
+  consumption_per_hr           numeric,
+  total_consumption            numeric,       -- kg
+  dryer_in_use                 text,          -- 'Old' | 'New'
+
   -- Auto-calculated
   total_clinker_wt             numeric,       -- sum of ash_clinker_wt from both log variants
 
@@ -60,11 +74,25 @@ create table thermopack_job_cards (
 
 alter table thermopack_job_cards enable row level security;
 
+-- Logged-in operators run as the `authenticated` role (OTP auth session), so
+-- authenticated INSERT/SELECT policies are REQUIRED — without them the save
+-- fails with "new row violates row-level security policy". anon policies are
+-- kept for parity with the rest of the schema.
+drop policy if exists "anon_insert_thermopack" on thermopack_job_cards;
 create policy "anon_insert_thermopack"
   on thermopack_job_cards for insert to anon with check (true);
 
+drop policy if exists "anon_select_thermopack" on thermopack_job_cards;
 create policy "anon_select_thermopack"
   on thermopack_job_cards for select to anon using (true);
+
+drop policy if exists "authenticated_insert_thermopack" on thermopack_job_cards;
+create policy "authenticated_insert_thermopack"
+  on thermopack_job_cards for insert to authenticated with check (true);
+
+drop policy if exists "authenticated_select_thermopack" on thermopack_job_cards;
+create policy "authenticated_select_thermopack"
+  on thermopack_job_cards for select to authenticated using (true);
 
 
 -- ── TABLE: motor_amp_status ──────────────────────────────────
@@ -86,8 +114,21 @@ create table motor_amp_status (
 
 alter table motor_amp_status enable row level security;
 
+-- Same reasoning as thermopack_job_cards: the website inserts as the
+-- authenticated role after login, so authenticated INSERT/SELECT are required
+-- (this is the exact table in the reported RLS error). anon kept for parity.
+drop policy if exists "anon_insert_motor" on motor_amp_status;
 create policy "anon_insert_motor"
   on motor_amp_status for insert to anon with check (true);
 
+drop policy if exists "anon_select_motor" on motor_amp_status;
 create policy "anon_select_motor"
   on motor_amp_status for select to anon using (true);
+
+drop policy if exists "authenticated_insert_motor" on motor_amp_status;
+create policy "authenticated_insert_motor"
+  on motor_amp_status for insert to authenticated with check (true);
+
+drop policy if exists "authenticated_select_motor" on motor_amp_status;
+create policy "authenticated_select_motor"
+  on motor_amp_status for select to authenticated using (true);

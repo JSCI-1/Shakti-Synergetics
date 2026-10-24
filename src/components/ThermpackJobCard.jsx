@@ -69,6 +69,7 @@ function emptyRow() {
   return {
     ...Object.fromEntries(LOG_FIELDS_10L.map(f => [f, ''])),
     timestamp: '',
+    operator: '',
     saved: false,
   }
 }
@@ -82,14 +83,68 @@ function emptyMotorEntry() {
   }
 }
 
+// hh:mm:ss AM/PM in IST (display only — the authoritative save moment is the
+// server-side saved_at / created_at captured by Supabase on the actual save).
 function stamp12hr() {
   return new Date().toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true,
+    timeZone: 'Asia/Kolkata',
   })
+}
+
+// Name of the currently logged-in user (set at login in LoginPage.jsx as
+// localStorage 'jsci_user' = { id, name, role, ... }). Used to auto-fill the
+// Operator column of each saved hourly log row.
+function loggedInUserName() {
+  try {
+    const raw = localStorage.getItem('jsci_user')
+    if (!raw) return ''
+    const u = JSON.parse(raw)
+    return (u && u.name) ? String(u.name) : ''
+  } catch {
+    return ''
+  }
+}
+
+// Update a per-field timestamp map immutably:
+//   • value changed to non-empty  → set this field's time to NOW (entry/update)
+//   • value unchanged             → keep the existing time (preserve original)
+//   • value cleared to empty       → remove this field's time
+// Returns the same object reference when nothing changes (cheap no-op).
+function stampFieldTs(tsMap, key, oldVal, newVal) {
+  const prev = tsMap || {}
+  const oldStr = oldVal === undefined || oldVal === null ? '' : String(oldVal)
+  const newStr = newVal === undefined || newVal === null ? '' : String(newVal)
+  if (oldStr === newStr) return prev   // no value change → keep original time
+  const next = { ...prev }
+  if (newStr.trim() === '') {
+    delete next[key]                   // emptied → no timestamp
+  } else {
+    next[key] = new Date().toISOString()
+  }
+  return next
+}
+
+// Stable per-fill draft key so each per-row hourly Save for THIS job card
+// groups together and can be associated with the job card id at submit time.
+function newDraftKey() {
+  const rnd = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+  return `tjc-${rnd}`
 }
 
 function emptyForm() {
   return {
+    // Stable grouping key for per-row hourly saves of THIS job card fill.
+    draft_key: newDraftKey(),
+
+    // Per-field entry/update timestamps (ISO). Keyed by the same field keys the
+    // sheet uses: top-level keys, plus flattened summary keys '10l.<sub>' /
+    // '6l.<sub>'. A field's time is set the first time it gets a non-empty
+    // value and refreshed whenever its value changes; cleared if emptied.
+    field_ts: {},
+
     date: '',
     shift: '',
     operator: '',
@@ -108,6 +163,10 @@ function emptyForm() {
     coal_charged: '',
     bugass_charged: '',
     diesel_charged: '',
+
+    // "Total fuel Consumption" — operator-entered value (no auto-calc; the app
+    // defines no formula for it). Placed after Diesel in the UI and sheet.
+    total_fuel_consumption: '',
 
     log_variant: '10L',
 
@@ -160,14 +219,45 @@ export default function ThermpackJobCard() {
   const [motorForm, setMotorForm, clearMotorDraft] = useDraft(`draft:${uid}:thermopack:motor`, emptyMotorForm())
   const [motorOpen, setMotorOpen] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [savingRow, setSavingRow] = useState('')   // "<variant>:<rowIndex>" while a row saves
+  const [submittedJobCardId, setSubmittedJobCardId] = useState(null)   // set after first save
   const [savedMain, setSavedMain] = useState(false)
   const [savedMotor, setSavedMotor] = useState(false)
   const [error, setError] = useState('')
+
+  // A restored older draft may lack draft_key — ensure one exists so per-row
+  // hourly saves can group and later associate with the job card.
+  React.useEffect(() => {
+    if (!form.draft_key) {
+      setForm(prev => (prev.draft_key ? prev : { ...prev, draft_key: newDraftKey() }))
+    }
+    // Default the job card Operator field to the logged-in user's name.
+    const name = loggedInUserName()
+    if (name) {
+      setForm(prev => (prev.operator ? prev : { ...prev, operator: name }))
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Auto-dismiss the "Saved" confirmations after a few seconds so they don't
+  // linger on screen.
+  React.useEffect(() => {
+    if (!savedMain) return
+    const t = setTimeout(() => setSavedMain(false), 4000)
+    return () => clearTimeout(t)
+  }, [savedMain])
+
+  React.useEffect(() => {
+    if (!savedMotor) return
+    const t = setTimeout(() => setSavedMotor(false), 4000)
+    return () => clearTimeout(t)
+  }, [savedMotor])
 
   const set = (name, value) =>
     setForm(prev => ({
       ...prev,
       [name]: value,
+      field_ts: stampFieldTs(prev.field_ts, name, prev[name], value),
     }))
 
   // Numeric fields:
@@ -198,25 +288,66 @@ export default function ThermpackJobCard() {
     }))
   }
 
-  // stamp time on active variant
-  function saveRow(i) {
+  // Save a SINGLE hourly row to Supabase (thermopack_hourly_draft). Only this
+  // row is persisted and stamped; other unsaved rows stay unsaved. The server
+  // captures the authoritative save moment in saved_at; the displayed badge is
+  // the hh:mm:ss IST time. Re-saving the same (draft_key, variant, hour) is an
+  // UPSERT (single row, last write wins) — no duplicates.
+  async function saveRow(i) {
     const key = form.log_variant === '10L' ? 'rows_10l' : 'rows_6l'
-    if (form[key][i].saved) return   // already stamped — no re-stamp
+    if (form[key][i].saved) return   // already saved — no re-stamp
 
-    const ts = new Date().toLocaleTimeString('en-IN', {
-      hour: '2-digit', minute: '2-digit', hour12: true,
-    })
+    if (!supabaseReady) {
+      setError('Supabase not configured.')
+      return
+    }
 
+    const variant = form.log_variant
+    const slot = TIME_SLOTS[i]
+    const draftKey = form.draft_key || newDraftKey()
+    const rowData = form[key][i]
+
+    // Only persist the measurement fields (never the client saved/timestamp).
+    const values = Object.fromEntries(
+      LOG_FIELDS_10L.map(f => [f, rowData[f] ?? ''])
+    )
+
+    setSavingRow(`${variant}:${i}`)
+    setError('')
+
+    const { error: eRow } = await supabase
+      .from('thermopack_hourly_draft')
+      .upsert(
+        {
+          draft_key: draftKey,
+          variant,
+          hour: slot,
+          values,
+          // Operator column auto-filled with the logged-in user's name,
+          // falling back to the job card's Operator field if unavailable.
+          operator: loggedInUserName() || form.operator || null,
+          saved_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'draft_key,variant,hour' }
+      )
+
+    setSavingRow('')
+
+    if (eRow) {
+      setError(eRow.message)
+      return
+    }
+
+    const ts = stamp12hr()
+    const opName = loggedInUserName() || form.operator || ''
     setForm(prev => ({
       ...prev,
+      draft_key: draftKey,
       [key]: prev[key].map((r, idx) =>
-        idx === i
-          ? {
-              ...r,
-              timestamp: ts,
-              saved: true,
-            }
-          : r
+        // Stamp the operator name onto THIS row only on save, so the Operator
+        // column shows the name only after the row's Save button is clicked.
+        idx === i ? { ...r, timestamp: ts, operator: opName, saved: true } : r
       ),
     }))
   }
@@ -227,14 +358,17 @@ export default function ThermpackJobCard() {
       ? form.rows_10l
       : form.rows_6l
 
+
   // active summary for rendering — switches with variant
   const activeSummary = form.log_variant === '10L' ? form.summary_10l : form.summary_6l
 
   const setSummary = (field, val) => {
     const key = form.log_variant === '10L' ? 'summary_10l' : 'summary_6l'
+    const tsKey = (form.log_variant === '10L' ? '10l.' : '6l.') + field
     setForm(prev => ({
       ...prev,
       [key]: { ...prev[key], [field]: val },
+      field_ts: stampFieldTs(prev.field_ts, tsKey, prev[key][field], val),
     }))
   }
 
@@ -254,24 +388,21 @@ export default function ThermpackJobCard() {
       const varKey = prev.motor_variant === '10L' ? 'motors_10l' : 'motors_6l'
       return {
         ...prev,
-        [varKey]: prev[varKey].map((m, idx) =>
-          idx === mi ? { ...m, [key]: value } : m
-        ),
+        [varKey]: prev[varKey].map((m, idx) => {
+          if (idx !== mi) return m
+          const next = { ...m, [key]: value }
+          // Show a live timestamp as soon as BOTH Amp Reading and Status are
+          // filled (the authoritative save moment is re-stamped server-side on
+          // Save Motor Status). If a row is already saved, keep its timestamp.
+          const hasAmp = next.val !== undefined && next.val !== null && String(next.val).trim() !== ''
+          const hasStatus = next.stop !== undefined && next.stop !== null && String(next.stop).trim() !== ''
+          if (!next.saved) {
+            next.timestamp = (hasAmp && hasStatus) ? stamp12hr() : ''
+          }
+          return next
+        }),
       }
     })
-
-  function saveMotorRow(mi) {
-    setMotorForm(prev => {
-      const varKey = prev.motor_variant === '10L' ? 'motors_10l' : 'motors_6l'
-      if (prev[varKey][mi].saved) return prev   // already stamped
-      return {
-        ...prev,
-        [varKey]: prev[varKey].map((m, idx) =>
-          idx === mi ? { ...m, timestamp: stamp12hr(), saved: true } : m
-        ),
-      }
-    })
-  }
 
   const activeMotors = motorForm.motor_variant === '10L'
     ? motorForm.motors_10l
@@ -289,11 +420,27 @@ export default function ThermpackJobCard() {
     setError('')
     setSavedMain(false)
 
+    // Operator is the authenticated user's name (never manually typed). If the
+    // profile has no name, fall back to whatever is in the field; if that is
+    // also empty it stays null (no invented name).
+    const operatorName = loggedInUserName() || form.operator || ''
+
+    // Build the per-field timestamp map to persist. Start from what the form
+    // captured as the operator typed, then ensure operator + total fuel
+    // consumption have a time when they carry a value (preserving any existing
+    // time). This is what makes each field show its OWN entry/update time.
+    const nowIso = new Date().toISOString()
+    const fieldTs = { ...(form.field_ts || {}) }
+    if (operatorName && !fieldTs.operator) fieldTs.operator = nowIso
+    if (String(form.total_fuel_consumption || '').trim() !== '' && !fieldTs.total_fuel_consumption) {
+      fieldTs.total_fuel_consumption = nowIso
+    }
+
     const payload = {
       date: form.date || null,
 
       shift: form.shift,
-      operator: form.operator,
+      operator: operatorName || null,
 
       helper1: form.helper1,
       helper2: form.helper2,
@@ -325,6 +472,11 @@ export default function ThermpackJobCard() {
         ? parseFloat(form.diesel_charged)
         : null,
 
+      // "Total fuel Consumption" — operator-entered (no auto-calc).
+      total_fuel_consumption: form.total_fuel_consumption
+        ? parseFloat(form.total_fuel_consumption)
+        : null,
+
       // Summary fields
       outlet_set_temp: form.summary_10l.outlet_set_temp
         ? parseFloat(form.summary_10l.outlet_set_temp)
@@ -348,20 +500,65 @@ export default function ThermpackJobCard() {
       log_rows_6l: form.rows_6l,
 
       remarks: form.remarks,
+
+      // Per-field entry/update timestamps → synced to the sheet so each value
+      // shows its own time. Keyed to match the sheet's field keys.
+      field_ts: fieldTs,
     }
 
-    const { error: e1 } = await supabase
-      .from('thermopack_job_cards')
-      .insert([payload])
-
-    setSaving(false)
+    // If this card was already submitted in this session, UPDATE the same row
+    // (keeps one job card + one Sheet row) instead of inserting a duplicate.
+    // Otherwise INSERT a new row and capture its generated id.
+    let inserted = null
+    let e1 = null
+    if (submittedJobCardId) {
+      const res = await supabase
+        .from('thermopack_job_cards')
+        .update(payload)
+        .eq('id', submittedJobCardId)
+        .select('id')
+        .single()
+      inserted = res.data
+      e1 = res.error
+    } else {
+      const res = await supabase
+        .from('thermopack_job_cards')
+        .insert([payload])
+        .select('id')
+        .single()
+      inserted = res.data
+      e1 = res.error
+    }
 
     if (e1) {
+      setSaving(false)
       setError(e1.message)
-    } else {
-      setSavedMain(true)
-      clearFormDraft()
+      return
     }
+
+    // Associate every previously-saved hourly row for this fill with the new
+    // job card id. This stamps job_card_id on the thermopack_hourly_draft rows,
+    // which makes them eligible for Google Sheets sync (orphaned/unsaved rows
+    // are never exported). Non-fatal if it fails — the job card is already
+    // saved; the hourly rows simply stay unassociated.
+    if (inserted && inserted.id && form.draft_key) {
+      const { error: eAssoc } = await supabase.rpc('thermopack_associate_hourly', {
+        p_draft_key: form.draft_key,
+        p_job_card_id: inserted.id,
+      })
+      if (eAssoc) {
+        // Surface but don't block — job card itself succeeded.
+        console.warn('thermopack_associate_hourly failed:', eAssoc.message)
+      }
+    }
+
+    setSaving(false)
+    setSavedMain(true)
+    // Remember the saved job card id so re-clicking Save Job Card UPDATES the
+    // same record instead of creating a duplicate. Data stays in the fields
+    // until the user clicks Reset.
+    if (inserted && inserted.id) setSubmittedJobCardId(inserted.id)
+    // Inline confirmation (auto-dismisses) — set via savedMain above.
   }
 
   async function handleMotorSubmit(e) {
@@ -369,6 +566,31 @@ export default function ThermpackJobCard() {
 
     if (!supabaseReady) {
       setError('Supabase not configured.')
+      return
+    }
+
+    // A motor row counts as "completed" when it has an Amp Reading or a Status.
+    const isComplete = (m) =>
+      (m.val !== undefined && m.val !== null && String(m.val).trim() !== '') ||
+      (m.stop !== undefined && m.stop !== null && String(m.stop).trim() !== '')
+
+    // Stamp each completed row's save moment; drop incomplete rows (never saved
+    // silently). Keep the per-motor slot order by writing nulls for blanks.
+    const nowIso = new Date().toISOString()
+    const prepare = (motors) =>
+      motors.map(m =>
+        isComplete(m)
+          ? { val: m.val, stop: m.stop, timestamp: stamp12hr(), isoTime: nowIso, saved: true }
+          : null
+      )
+
+    const prepared10 = prepare(motorForm.motors_10l)
+    const prepared6  = prepare(motorForm.motors_6l)
+    const completedCount =
+      prepared10.filter(Boolean).length + prepared6.filter(Boolean).length
+
+    if (completedCount === 0) {
+      setError('Enter at least one motor Amp Reading or Status before saving.')
       return
     }
 
@@ -384,8 +606,8 @@ export default function ThermpackJobCard() {
           checked_by:     motorForm.checked_by,
           remark:         motorForm.remark,
           motor_variant:  motorForm.motor_variant,
-          motor_data_10l: motorForm.motors_10l,
-          motor_data_6l:  motorForm.motors_6l,
+          motor_data_10l: prepared10,
+          motor_data_6l:  prepared6,
         },
       ])
 
@@ -395,7 +617,19 @@ export default function ThermpackJobCard() {
       setError(e2.message)
     } else {
       setSavedMotor(true)
-      clearMotorDraft()
+      // Keep the entered data in the fields until the user clicks Reset.
+      // Mark the saved rows (stamp their timestamps in the live form) so the
+      // Timestamp column reflects the persisted save moment.
+      setMotorForm(prev => ({
+        ...prev,
+        motors_10l: prev.motors_10l.map((m, idx) =>
+          prepared10[idx] ? { ...m, timestamp: prepared10[idx].timestamp, saved: true } : m
+        ),
+        motors_6l: prev.motors_6l.map((m, idx) =>
+          prepared6[idx] ? { ...m, timestamp: prepared6[idx].timestamp, saved: true } : m
+        ),
+      }))
+      // Inline confirmation (auto-dismisses) — set via savedMotor above.
     }
   }
 
@@ -696,6 +930,25 @@ export default function ThermpackJobCard() {
 
             </div>
 
+            <div className="common-entry-field">
+
+              <div className="cell-mini-label">
+                Total fuel Consumption
+              </div>
+
+              <input
+                type="text"
+                inputMode="decimal"
+                className="tjc-input"
+                placeholder="0"
+                value={form.total_fuel_consumption}
+                onChange={e =>
+                  setNumeric('total_fuel_consumption', e.target.value)
+                }
+              />
+
+            </div>
+
           </div>
 
           {/* ── Total Fuel Consumption bar ── */}
@@ -854,6 +1107,14 @@ export default function ThermpackJobCard() {
                     Timing of Coil
                     <br />
                     Cleaning by Air
+                  </th>
+
+                  <th rowSpan={2}>
+                    Operator
+                    <br />
+                    <span className="hi">
+                      ऑपरेटर
+                    </span>
                   </th>
 
                   <th rowSpan={2}>
@@ -1106,6 +1367,12 @@ export default function ThermpackJobCard() {
                       />
                     </td>
 
+                    <td className="tjc-op-cell">
+                      {activeRows[i].saved && activeRows[i].operator
+                        ? <span className="tjc-op-name">{activeRows[i].operator}</span>
+                        : <span className="ts-empty">—</span>}
+                    </td>
+
                     <td className="ts-cell">
 
                       {activeRows[i].timestamp ? (
@@ -1125,10 +1392,12 @@ export default function ThermpackJobCard() {
                       <button
                         type="button"
                         className="row-save-btn"
-                        disabled={activeRows[i].saved}
+                        disabled={activeRows[i].saved || savingRow === `${form.log_variant}:${i}`}
                         onClick={() => saveRow(i)}
                       >
-                        {activeRows[i].saved ? '✓' : '💾'}
+                        {activeRows[i].saved
+                          ? '✓'
+                          : (savingRow === `${form.log_variant}:${i}` ? '…' : '💾')}
                       </button>
 
                     </td>
@@ -1303,8 +1572,8 @@ export default function ThermpackJobCard() {
           )}
 
           {savedMain && (
-            <div className="tjc-success">
-              ✓ Saved / सहेजा गया
+            <div className="tjc-success tjc-toast" role="status">
+              ✓ Saved successfully / सफलतापूर्वक सहेजा गया
             </div>
           )}
 
@@ -1323,6 +1592,7 @@ export default function ThermpackJobCard() {
             className="tjc-reset-btn"
             onClick={() => {
               clearFormDraft()
+              setSubmittedJobCardId(null)
               setSavedMain(false)
               setError('')
             }}
@@ -1399,7 +1669,6 @@ export default function ThermpackJobCard() {
                     <th>Amp Reading<br /><span className="hi">एम्प रीडिंग</span></th>
                     <th>Status<br /><span className="hi">स्थिति</span></th>
                     <th>Timestamp<br /><span className="hi">समय</span></th>
-                    <th>Save<br /><span className="hi">सहेजें</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1428,13 +1697,6 @@ export default function ThermpackJobCard() {
                           ? <span className="ts-badge">{activeMotors[mi].timestamp}</span>
                           : <span className="ts-empty">—</span>}
                       </td>
-                      <td className="ts-save-cell">
-                        <button type="button" className="row-save-btn"
-                          disabled={activeMotors[mi].saved}
-                          onClick={() => saveMotorRow(mi)}>
-                          {activeMotors[mi].saved ? '✓' : '💾'}
-                        </button>
-                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1449,7 +1711,7 @@ export default function ThermpackJobCard() {
                   onChange={e => setMotorForm(p => ({ ...p, remark: e.target.value }))} />
               </div>
               <div className="tjc-actions sc-actions">
-                {savedMotor && <div className="tjc-success">✓ Saved / सहेजा गया</div>}
+                {savedMotor && <div className="tjc-success tjc-toast" role="status">✓ Saved successfully / सफलतापूर्वक सहेजा गया</div>}
                 <button type="submit" className="tjc-save-btn" disabled={saving}>
                   {saving ? 'Saving…' : 'Save Motor Status / मोटर स्थिति सहेजें'}
                 </button>
