@@ -1078,6 +1078,38 @@ export default function QualityCheck({ user }) {
   // dryer, grade — mirroring the "need a date" gate the sieve/moisture pushes
   // already use — so unrelated incomplete forms never merge under one key).
   // batch_no may be empty; the server index coalesces it to '' as its own slot.
+
+  // ── FG SHARED DRAFT (cross-chemist) state (FG tab only) ──
+  // These MUST be declared BEFORE the shared-draft effects/callbacks below,
+  // which close over them — declaring them later causes a temporal-dead-zone
+  // crash ("Cannot access '…' before initialization") that breaks the whole QC
+  // page on load.
+  // sharedStatus: '' | 'saving' | 'saved' | 'error'  — shown next to Save.
+  const [sharedStatus, setSharedStatus] = useState('')
+  // conflicts: { [fieldPath]: { local, remote } } awaiting the chemist's choice.
+  const [fgConflicts, setFgConflicts]   = useState({})
+  // The server revision this browser last saw for the CURRENT identity. Used for
+  // the version-checked update (optimistic concurrency). null = not loaded yet.
+  const fgSharedRevRef   = useRef(null)
+  // The identity key this browser is currently bound to (so a mid-flight save
+  // from an old identity is ignored after the chemist switches batch).
+  const fgSharedKeyRef   = useRef('')
+  // created_by for the current identity (never overwritten on resume).
+  const fgSharedCreatedByRef = useRef('')
+  // Debounce timer + "skip first autosave after (re)bind" guard.
+  const fgSharedSaveTimer = useRef(null)
+  const fgSharedReadyRef  = useRef(false)
+  // Last payload signature this browser successfully pushed, so the 15s poll's
+  // merge-back of our own write does not echo into another autosave loop.
+  const fgSharedPushedSig = useRef('')
+  // F-1: when the authoritative insert SUCCEEDED but finalizing the shared draft
+  // FAILED, we hold the identity to retry finalize — WITHOUT re-inserting.
+  const [fgFinalizePending, setFgFinalizePending] = useState(null)
+  // F-2: set when a poll / conflict-recovery discovers THIS batch's shared draft
+  // is already finalized by another chemist. Autosave + final submit are then
+  // disabled for this identity; local values are preserved.
+  const [fgFinalizedByOther, setFgFinalizedByOther] = useState('')
+
   const fgSharedIdentity = useCallback(() => {
     const d = fgDraft || {}
     const log_date = d.date
@@ -1601,38 +1633,6 @@ export default function QualityCheck({ user }) {
   const [qcSaved, setQcSaved]   = useState(false)   // "Data saved successfully" toast
   const lastSavedSig            = useRef('')
   const savedToastTimer         = useRef(null)
-
-  // ── FG SHARED DRAFT (cross-chemist) state (FG tab only) ──
-  // sharedStatus: '' | 'saving' | 'saved' | 'error'  — shown next to Save.
-  const [sharedStatus, setSharedStatus] = useState('')
-  // conflicts: { [fieldPath]: { local, remote } } awaiting the chemist's choice.
-  const [fgConflicts, setFgConflicts]   = useState({})
-  // The server revision this browser last saw for the CURRENT identity. Used for
-  // the version-checked update (optimistic concurrency). null = not loaded yet.
-  const fgSharedRevRef   = useRef(null)
-  // The identity key this browser is currently bound to (so a mid-flight save
-  // from an old identity is ignored after the chemist switches batch).
-  const fgSharedKeyRef   = useRef('')
-  // created_by for the current identity (never overwritten on resume).
-  const fgSharedCreatedByRef = useRef('')
-  // Debounce timer + "skip first autosave after (re)bind" guard.
-  const fgSharedSaveTimer = useRef(null)
-  const fgSharedReadyRef  = useRef(false)
-  // Last payload signature this browser successfully pushed, so the 15s poll's
-  // merge-back of our own write does not echo into another autosave loop.
-  const fgSharedPushedSig = useRef('')
-
-  // F-1: when the authoritative insert SUCCEEDED but finalizing the shared draft
-  // FAILED, we hold the identity to retry finalize — WITHOUT re-inserting. While
-  // set, the "record saved, finalization pending" banner shows and a retry
-  // button calls finalizeFgSharedDraft again (idempotent). Shape: identity obj.
-  const [fgFinalizePending, setFgFinalizePending] = useState(null)
-
-  // F-2: set when a poll / conflict-recovery discovers THIS batch's shared draft
-  // is already finalized by another chemist. While set, autosave + final submit
-  // for this identity are disabled and a "already submitted" banner shows. Local
-  // values are preserved (never auto-cleared). Shape: the identity key string.
-  const [fgFinalizedByOther, setFgFinalizedByOther] = useState('')
 
   // Show the "Data saved successfully" toast for ~3s. Clears any pending hide.
   const showSavedToast = useCallback(() => {
