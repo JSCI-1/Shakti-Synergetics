@@ -929,6 +929,10 @@ export default function QualityCheck({ user }) {
           ? moistureReadings[moistureReadings.length - 1].result
           : curVals.fg_moisture
       ),
+      // Full ordered list of recorded moisture readings so Production → Activity
+      // can show EVERY reading as a table (like Wet/Dry Sieve), not just the
+      // latest value. Each entry: { result, time, isoTime }.
+      moisture_log: moistureReadings,
       suspensibility_pct: override.susp !== undefined ? toNum(override.susp) : toNum(suspResult),
       wet_sieve_log: override.wetLog ?? (log.fg_wetSieve || []),
       dry_sieve_log: override.dryLog ?? (log.fg_drySieve || []),

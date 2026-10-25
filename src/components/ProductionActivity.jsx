@@ -258,6 +258,33 @@ function SieveLogTable({ title, log }) {
   )
 }
 
+// Moisture readings table — same look as SieveLogTable, but Moisture has no
+// micron and no Pass/Fail status, so it shows only #, Result, and Time.
+function MoistureLogTable({ title, log }) {
+  if (!log || !log.length) return null
+  return (
+    <div className="pa-qc-sieve">
+      <div className="pa-qc-sieve-title">{title}</div>
+      <div className="pa-table-scroll">
+        <table className="pa-qc-sieve-table">
+          <thead>
+            <tr><th>#</th><th>Result</th><th>Time</th></tr>
+          </thead>
+          <tbody>
+            {log.map((e, i) => (
+              <tr key={i}>
+                <td>{i + 1}</td>
+                <td>{e.result ?? '—'}</td>
+                <td>{e.time || '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // Read-only Quality Control (Finished Goods) live card.
 function QcCard({ row }) {
   const header = [
@@ -269,6 +296,7 @@ function QcCard({ row }) {
 
   const wet = row.wet_sieve_log || []
   const dry = row.dry_sieve_log || []
+  const moist = row.moisture_log || []
 
   // "Went live" = the FIRST moment this FG row became live (went_live_at,
   // preserved across upserts by migration 029). "Remaining" counts down the
@@ -311,10 +339,11 @@ function QcCard({ row }) {
           <div className="pa-qc-field"><span className="pa-qc-field-k">Suspensibility (%)</span><span className="pa-qc-field-v">{cellVal(row.suspensibility_pct)}</span></div>
         </div>
 
-        {(wet.length > 0 || dry.length > 0) && (
+        {(wet.length > 0 || dry.length > 0 || moist.length > 0) && (
           <div className="pa-qc-sieves">
             <SieveLogTable title="Dry Sieve — recorded" log={dry} />
             <SieveLogTable title="Wet Sieve — recorded" log={wet} />
+            <MoistureLogTable title="Moisture — recorded" log={moist} />
           </div>
         )}
       </div>
@@ -349,7 +378,7 @@ export default function ProductionActivity() {
         .order('log_date', { ascending: false }),
       supabase
         .from('qc_activity_draft')
-        .select('dryer, log_date, grade, product, batch_no, moisture_pct, suspensibility_pct, wet_sieve_log, dry_sieve_log, tested_by, went_live_at, last_saved_at')
+        .select('dryer, log_date, grade, product, batch_no, moisture_pct, moisture_log, suspensibility_pct, wet_sieve_log, dry_sieve_log, tested_by, went_live_at, last_saved_at')
         .gt('last_saved_at', cutoff)
         .order('log_date', { ascending: false }),
     ])

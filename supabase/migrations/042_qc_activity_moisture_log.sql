@@ -1,0 +1,37 @@
+-- ════════════════════════════════════════════════════════════
+-- MIGRATION 042 — Production → Activity: show MULTIPLE Moisture readings
+-- Run in: Supabase Dashboard → SQL Editor → New query
+-- APPLY ORDER: run AFTER 020 (qc_activity_draft) and 039.
+--
+-- GOAL: Production → Activity already shows every recorded Wet Sieve and Dry
+-- Sieve reading as a table (from wet_sieve_log / dry_sieve_log). Moisture is
+-- currently shown as a SINGLE latest value. This adds a moisture reading LOG so
+-- the Activity card can show ALL recorded Moisture readings as a table too,
+-- exactly like the sieves.
+--
+-- WHAT THIS DOES: adds ONE nullable jsonb column `moisture_log` to
+-- qc_activity_draft, holding the CURRENT ordered list of moisture readings for
+-- the live (dryer, date, grade, batch) row. Each element mirrors the website's
+-- moisture reading shape:
+--   { result, time, isoTime }
+-- (no micron / no status — Moisture has neither, same as migration 038's
+-- moisture readings table). The existing `moisture_pct` column is LEFT AS-IS
+-- (it still holds the latest value for the small summary field), so nothing
+-- that reads it breaks.
+--
+-- SAFETY: additive only.
+--   • Adds ONE nullable column with a default; does NOT alter/drop existing
+--     columns, constraints, RLS, Realtime, or the 24h view.
+--   • Does NOT touch quality_control_records, qc_fg_sieve_readings,
+--     qc_fg_moisture_readings, the Google Sheets outbox/triggers, Code.gs, or
+--     Edge Functions.
+--   • qc_activity_draft has NO outbox trigger, so this never reaches Sheets.
+--   • No existing row is modified (the column defaults to an empty array).
+-- Re-runnable (if-not-exists guard).
+--
+-- ROLLBACK:
+--   alter table qc_activity_draft drop column if exists moisture_log;
+-- ════════════════════════════════════════════════════════════
+
+alter table qc_activity_draft
+  add column if not exists moisture_log jsonb not null default '[]'::jsonb;
