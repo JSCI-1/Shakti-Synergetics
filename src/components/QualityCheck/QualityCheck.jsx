@@ -1058,6 +1058,404 @@ export default function QualityCheck({ user }) {
       })
   }, [fgDraft, userName])
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // FG SHARED DRAFT — cross-chemist, server-backed (table: fg_shared_draft)
+  // ---------------------------------------------------------------------------
+  // Lets up to three chemists collaborate on the SAME Finished Goods batch form
+  // across logins/devices. Debounced autosave of the WHOLE fgDraft payload +
+  // a 15s poll that MERGES remote→local without clobbering newer local edits,
+  // with revision-based optimistic concurrency and a visible conflict banner.
+  //
+  // Strictly ADDITIVE and FG-only:
+  //   • Never writes quality_control_records, qc_activity_draft, or the
+  //     sieve/moisture tables — those existing paths are untouched.
+  //   • fg_shared_draft has NO Google-Sheets outbox trigger, so autosaves never
+  //     produce sheet rows/events.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // Build the stable business identity for the CURRENT FG form. Returns null
+  // when the identity is not complete enough to share (we require date, product,
+  // dryer, grade — mirroring the "need a date" gate the sieve/moisture pushes
+  // already use — so unrelated incomplete forms never merge under one key).
+  // batch_no may be empty; the server index coalesces it to '' as its own slot.
+  const fgSharedIdentity = useCallback(() => {
+    const d = fgDraft || {}
+    const log_date = d.date
+    const product  = d.selected
+    const dryer    = d.dryer || 'ND1'
+    const grade    = d.uplGrade || 'normal'
+    if (!log_date || !product || !dryer || !grade) return null
+    return { log_date, batch_no: d.batchNo || null, product, grade, dryer }
+  }, [fgDraft])
+
+  const fgSharedIdentityKey = useCallback(() => {
+    const idn = fgSharedIdentity()
+    if (!idn) return ''
+    return [idn.log_date, idn.batch_no || '', idn.product, idn.grade, idn.dryer].join('|')
+  }, [fgSharedIdentity])
+
+  // The sharable payload = the full fgDraft MINUS transient UI-only bits. We
+  // store source inputs + reading logs; the UI recomputes derived values.
+  const fgSharedPayload = useCallback(() => {
+    const { ...rest } = fgDraft || {}
+    return rest
+  }, [fgDraft])
+
+  // Deep-merge a remote payload INTO local without destroying newer local work.
+  // Rules:
+  //   • Scalars: if equal → keep. If one side empty → take the non-empty one.
+  //     If both non-empty AND different → CONFLICT (record both; keep local for
+  //     now; surface in the banner for the chemist to resolve). This lets a
+  //     chemist intentionally correct a value (they resolve the conflict).
+  //   • Plain objects (the per-(dryer,grade) buckets, __ts): merge key by key.
+  //   • Reading-log arrays (sieve/moisture): merge by stable reading identity
+  //     (iso_time, else result+index) — never blind concat, no dup, newer kept.
+  // Returns { merged, conflicts } where conflicts is { path: {local, remote} }.
+  const mergeFgPayload = useCallback((local, remote) => {
+    const conflicts = {}
+    const isEmpty = v => v === undefined || v === null || v === ''
+    const isPlainObj = v => v && typeof v === 'object' && !Array.isArray(v)
+
+    // Merge a reading-log array by stable identity. Preserves order, drops
+    // exact dups, and never lets an older entry overwrite a newer one.
+    const mergeReadings = (a, b) => {
+      const out = []
+      const seen = new Map()  // key → index in out
+      const keyOf = (e, i) => {
+        if (e && e.isoTime) return 'iso:' + e.isoTime
+        if (e && e.iso_time) return 'iso:' + e.iso_time
+        return 'rk:' + String(e && e.result) + ':' + i
+      }
+      ;[...(Array.isArray(a) ? a : []), ...(Array.isArray(b) ? b : [])].forEach((e, i) => {
+        const k = keyOf(e, i)
+        if (seen.has(k)) return   // identical reading already present → skip dup
+        seen.set(k, out.length)
+        out.push(e)
+      })
+      return out
+    }
+
+    const isReadingArray = (path) =>
+      /(^|\.)fg_wetSieve($|\.)/.test(path) ||
+      /(^|\.)fg_drySieve($|\.)/.test(path) ||
+      /(^|\.)fg_moisture($|\.)/.test(path)
+
+    const walk = (lv, rv, path) => {
+      if (rv === undefined) return lv
+      if (lv === undefined) return rv
+      if (Array.isArray(lv) || Array.isArray(rv)) {
+        if (isReadingArray(path)) return mergeReadings(lv, rv)
+        // Non-reading arrays: prefer the non-empty, else local.
+        if (Array.isArray(lv) && lv.length) return lv
+        if (Array.isArray(rv) && rv.length) return rv
+        return lv
+      }
+      if (isPlainObj(lv) || isPlainObj(rv)) {
+        const lo = isPlainObj(lv) ? lv : {}
+        const ro = isPlainObj(rv) ? rv : {}
+        const out = { ...lo }
+        new Set([...Object.keys(lo), ...Object.keys(ro)]).forEach(k => {
+          out[k] = walk(lo[k], ro[k], path ? `${path}.${k}` : k)
+        })
+        return out
+      }
+      // Scalars
+      if (lv === rv) return lv
+      if (isEmpty(lv)) return rv
+      if (isEmpty(rv)) return lv
+      // Both non-empty and different → conflict. Keep local; record both.
+      conflicts[path] = { local: lv, remote: rv }
+      return lv
+    }
+
+    const merged = walk(local || {}, remote || {}, '')
+    return { merged, conflicts }
+  }, [])
+
+  // Load the shared draft for the current identity + poll every 15s to pick up
+  // the other chemists' saved work. Additive merge; never clobbers newer local.
+  useEffect(() => {
+    if (activeTab !== 'fg') return
+    if (!supabaseReady || !supabase) return
+    const key = fgSharedIdentityKey()
+    if (!key) return
+
+    // Rebind to this identity: reset per-identity refs and skip the first
+    // autosave (so a fresh load does not immediately echo back). Also clear the
+    // F-2 "finalized by other" lock (it is per-identity; a NEW batch starts
+    // unlocked and loads normally).
+    if (fgSharedKeyRef.current !== key) {
+      fgSharedKeyRef.current = key
+      fgSharedRevRef.current = null
+      fgSharedCreatedByRef.current = ''
+      fgSharedReadyRef.current = false
+      fgSharedPushedSig.current = ''
+      setFgConflicts({})
+      setFgFinalizedByOther('')
+    }
+
+    const idn = fgSharedIdentity()
+    let cancelled = false
+
+    const pull = async () => {
+      try {
+        let q = supabase
+          .from('fg_shared_draft')
+          .select('payload, revision, created_by, finalized')
+          .eq('log_date', idn.log_date)
+          .eq('product', idn.product)
+          .eq('grade', idn.grade)
+          .eq('dryer', idn.dryer)
+        q = idn.batch_no === null ? q.is('batch_no', null) : q.eq('batch_no', idn.batch_no)
+        const { data, error } = await q.maybeSingle()
+        if (cancelled || error || !data) return
+        // F-2: a finalized batch must not reopen as an editable active draft.
+        // Lock this identity: stop autosaving/retrying, show the "already
+        // submitted" banner, and PRESERVE the chemist's local values (we do not
+        // merge the remote payload or clear anything — they can switch batches).
+        if (data.finalized) {
+          fgSharedRevRef.current = data.revision
+          setFgFinalizedByOther(key)
+          return
+        }
+
+        fgSharedRevRef.current = data.revision
+        if (!fgSharedCreatedByRef.current) fgSharedCreatedByRef.current = data.created_by || ''
+
+        // Merge remote → current local draft (functional update so we always
+        // merge against the freshest local state).
+        setFgDraft(prevLocal => {
+          const { merged, conflicts } = mergeFgPayload(prevLocal, data.payload || {})
+          if (Object.keys(conflicts).length) {
+            setFgConflicts(c => ({ ...c, ...conflicts }))
+          }
+          return merged
+        })
+      } catch {
+        // transient network error on a poll — ignore; next tick retries
+      }
+    }
+
+    pull()
+    const intervalId = setInterval(pull, 15000)
+    const onVisible = () => { if (document.visibilityState === 'visible') pull() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      cancelled = true
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+    // Depend on the identity STRING (not the callback, which is a new function
+    // every keystroke) so the poll/interval is set up once per identity and not
+    // torn down and recreated on every edit.
+  }, [activeTab, fgSharedIdentityKey()])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Core writer: version-checked upsert of the current payload. Returns
+  // 'saved' | 'conflict' | 'error' | 'skipped'. Exposed for the debounce AND
+  // for an explicit flush before final submit.
+  const saveFgSharedDraft = useCallback(async () => {
+    if (!supabaseReady || !supabase) return 'skipped'
+    const idn = fgSharedIdentity()
+    if (!idn) return 'skipped'
+    const key = [idn.log_date, idn.batch_no || '', idn.product, idn.grade, idn.dryer].join('|')
+
+    const payload = fgSharedPayload()
+    const sig = JSON.stringify(payload)
+    if (sig === fgSharedPushedSig.current) return 'skipped'  // nothing new to push
+
+    const who = userName || ''
+    const nowIso = new Date().toISOString()
+    const baseRev = fgSharedRevRef.current
+
+    try {
+      if (baseRev === null || baseRev === undefined) {
+        // No known server row yet → INSERT (revision starts at 0). If another
+        // chemist already created it, the unique index rejects us → fall through
+        // to a re-pull on the next poll (and we retry as an update).
+        const { data, error } = await supabase
+          .from('fg_shared_draft')
+          .insert({
+            log_date: idn.log_date, batch_no: idn.batch_no, product: idn.product,
+            grade: idn.grade, dryer: idn.dryer,
+            payload, revision: 0, finalized: false,
+            created_by: who, updated_by: who,
+            updated_at: nowIso, last_saved_at: nowIso,
+          })
+          .select('revision')
+          .single()
+        if (error) {
+          // Likely a concurrent insert (unique violation). Let the poll pull the
+          // row; the next debounce will update it. Not a hard error for the user.
+          return 'skipped'
+        }
+        if (fgSharedKeyRef.current === key) {
+          fgSharedRevRef.current = data.revision
+          fgSharedPushedSig.current = sig
+        }
+        return 'saved'
+      }
+
+      // Version-checked UPDATE: only applies if the stored revision still equals
+      // the one we based this edit on. Otherwise someone else wrote first.
+      let uq = supabase
+        .from('fg_shared_draft')
+        .update({
+          payload, revision: baseRev + 1, updated_by: who,
+          updated_at: nowIso, last_saved_at: nowIso,
+        })
+        .eq('log_date', idn.log_date)
+        .eq('product', idn.product)
+        .eq('grade', idn.grade)
+        .eq('dryer', idn.dryer)
+        .eq('revision', baseRev)
+        .is('finalized', false)
+      uq = idn.batch_no === null ? uq.is('batch_no', null) : uq.eq('batch_no', idn.batch_no)
+      const { data, error } = await uq.select('revision').maybeSingle()
+
+      if (error) return 'error'
+      if (!data) {
+        // Stale revision (or finalized). Re-pull and merge; conflicts surface.
+        let q = supabase
+          .from('fg_shared_draft')
+          .select('payload, revision, finalized')
+          .eq('log_date', idn.log_date).eq('product', idn.product)
+          .eq('grade', idn.grade).eq('dryer', idn.dryer)
+        q = idn.batch_no === null ? q.is('batch_no', null) : q.eq('batch_no', idn.batch_no)
+        const { data: fresh } = await q.maybeSingle()
+        if (fresh && fgSharedKeyRef.current === key) {
+          fgSharedRevRef.current = fresh.revision
+          if (fresh.finalized) {
+            // F-2: another chemist finalized this batch. Lock it (stop autosave
+            // + submit) and preserve local values; do NOT merge/overwrite.
+            setFgFinalizedByOther(key)
+            return 'finalized'
+          }
+          setFgDraft(prevLocal => {
+            const { merged, conflicts } = mergeFgPayload(prevLocal, fresh.payload || {})
+            if (Object.keys(conflicts).length) setFgConflicts(c => ({ ...c, ...conflicts }))
+            return merged
+          })
+        }
+        return 'conflict'
+      }
+
+      if (fgSharedKeyRef.current === key) {
+        fgSharedRevRef.current = data.revision
+        fgSharedPushedSig.current = sig
+      }
+      return 'saved'
+    } catch {
+      return 'error'
+    }
+  }, [fgSharedIdentity, fgSharedPayload, mergeFgPayload, userName, setFgDraft])
+
+  // Debounced autosave: fire ~900ms after the FG draft changes, but never until
+  // the identity is complete and the first post-bind change has happened.
+  const fgSharedSig = (() => {
+    try { return JSON.stringify(fgSharedPayload()) } catch { return '' }
+  })()
+  useEffect(() => {
+    if (activeTab !== 'fg') return
+    if (!supabaseReady || !supabase) return
+    if (!fgSharedIdentityKey()) return
+    // F-2: stop autosaving once this batch has been finalized by another chemist.
+    if (fgFinalizedByOther && fgFinalizedByOther === fgSharedIdentityKey()) return
+    // Skip the very first run after binding to an identity (that state came from
+    // a load/restore, not a user edit) to avoid an immediate echo save.
+    if (!fgSharedReadyRef.current) { fgSharedReadyRef.current = true; return }
+
+    clearTimeout(fgSharedSaveTimer.current)
+    fgSharedSaveTimer.current = setTimeout(async () => {
+      setSharedStatus('saving')
+      const r = await saveFgSharedDraft()
+      // 'finalized' → F-2 banner takes over (no retry status). Others map as
+      // before: saved=green, error/conflict=retry, skipped=clear.
+      setSharedStatus(
+        r === 'saved' ? 'saved'
+          : r === 'finalized' ? ''
+          : r === 'error' ? 'error'
+          : r === 'conflict' ? 'error'
+          : ''
+      )
+    }, 900)
+    return () => clearTimeout(fgSharedSaveTimer.current)
+  }, [activeTab, fgSharedSig, fgSharedIdentityKey()])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush any pending debounced autosave immediately (used before final submit
+  // and reset so no in-flight change is lost).
+  const flushFgSharedDraft = useCallback(async () => {
+    clearTimeout(fgSharedSaveTimer.current)
+    return saveFgSharedDraft()
+  }, [saveFgSharedDraft])
+
+  // Mark the current identity's shared draft finalized. IDEMPOTENT: finalizing
+  // an already-finalized row is a harmless no-op, so a retry after a partial
+  // final-save never creates duplicates. Returns true on success, false on any
+  // failure so the caller can surface "finalization pending" and offer a safe
+  // retry WITHOUT re-inserting the authoritative record (F-1).
+  const finalizeFgSharedDraft = useCallback(async (idn) => {
+    if (!supabaseReady || !supabase || !idn) return false
+    try {
+      let q = supabase
+        .from('fg_shared_draft')
+        .update({ finalized: true, updated_at: new Date().toISOString() })
+        .eq('log_date', idn.log_date).eq('product', idn.product)
+        .eq('grade', idn.grade).eq('dryer', idn.dryer)
+      q = idn.batch_no === null ? q.is('batch_no', null) : q.eq('batch_no', idn.batch_no)
+      const { error } = await q
+      return !error   // true on success; false lets the caller show "pending"
+    } catch {
+      return false
+    }
+  }, [])
+
+  // Resolve one conflicted field: 'local' keeps the local value, 'remote'
+  // adopts the server value. Removing it from the conflicts map lets autosave
+  // push the resolved value (bumping the revision) on the next debounce.
+  const resolveFgConflict = useCallback((path, choice) => {
+    if (choice === 'remote') {
+      const remote = fgConflicts[path]?.remote
+      // Write the chosen remote value back into the draft at `path`.
+      setFgDraft(prev => {
+        const next = JSON.parse(JSON.stringify(prev || {}))
+        const parts = path.split('.')
+        let o = next
+        for (let i = 0; i < parts.length - 1; i++) {
+          if (!o[parts[i]] || typeof o[parts[i]] !== 'object') o[parts[i]] = {}
+          o = o[parts[i]]
+        }
+        o[parts[parts.length - 1]] = remote
+        return next
+      })
+    }
+    setFgConflicts(c => {
+      const n = { ...c }; delete n[path]; return n
+    })
+  }, [fgConflicts, setFgDraft])
+
+  // F-1: retry ONLY the draft-finalization step after the authoritative record
+  // was already saved. This never re-inserts into quality_control_records (that
+  // insert is guarded by lastSavedSig and is not touched here). On success it
+  // clears the pending state and resets the form as a normal successful save
+  // would have.
+  const retryFinalizeFgSharedDraft = useCallback(async () => {
+    if (!fgFinalizePending) return
+    setQcError('')
+    const ok = await finalizeFgSharedDraft(fgFinalizePending)
+    if (!ok) {
+      setQcError('Finalization still failed. Check your connection and retry.')
+      return
+    }
+    setFgFinalizePending(null)
+    fgSharedKeyRef.current = ''
+    fgSharedRevRef.current = null
+    fgSharedReadyRef.current = false
+    fgSharedPushedSig.current = ''
+    setSharedStatus('')
+    showSavedToast()
+    handleReset()
+  }, [fgFinalizePending, finalizeFgSharedDraft, showSavedToast])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // Debounced live push when FG batch / moisture / suspensibility / dryer /
   // date / grade change (FG tab only, and only once a date is set).
   const fgMoistureVal = fgValues.fg_moisture
@@ -1203,6 +1601,38 @@ export default function QualityCheck({ user }) {
   const [qcSaved, setQcSaved]   = useState(false)   // "Data saved successfully" toast
   const lastSavedSig            = useRef('')
   const savedToastTimer         = useRef(null)
+
+  // ── FG SHARED DRAFT (cross-chemist) state (FG tab only) ──
+  // sharedStatus: '' | 'saving' | 'saved' | 'error'  — shown next to Save.
+  const [sharedStatus, setSharedStatus] = useState('')
+  // conflicts: { [fieldPath]: { local, remote } } awaiting the chemist's choice.
+  const [fgConflicts, setFgConflicts]   = useState({})
+  // The server revision this browser last saw for the CURRENT identity. Used for
+  // the version-checked update (optimistic concurrency). null = not loaded yet.
+  const fgSharedRevRef   = useRef(null)
+  // The identity key this browser is currently bound to (so a mid-flight save
+  // from an old identity is ignored after the chemist switches batch).
+  const fgSharedKeyRef   = useRef('')
+  // created_by for the current identity (never overwritten on resume).
+  const fgSharedCreatedByRef = useRef('')
+  // Debounce timer + "skip first autosave after (re)bind" guard.
+  const fgSharedSaveTimer = useRef(null)
+  const fgSharedReadyRef  = useRef(false)
+  // Last payload signature this browser successfully pushed, so the 15s poll's
+  // merge-back of our own write does not echo into another autosave loop.
+  const fgSharedPushedSig = useRef('')
+
+  // F-1: when the authoritative insert SUCCEEDED but finalizing the shared draft
+  // FAILED, we hold the identity to retry finalize — WITHOUT re-inserting. While
+  // set, the "record saved, finalization pending" banner shows and a retry
+  // button calls finalizeFgSharedDraft again (idempotent). Shape: identity obj.
+  const [fgFinalizePending, setFgFinalizePending] = useState(null)
+
+  // F-2: set when a poll / conflict-recovery discovers THIS batch's shared draft
+  // is already finalized by another chemist. While set, autosave + final submit
+  // for this identity are disabled and a "already submitted" banner shows. Local
+  // values are preserved (never auto-cleared). Shape: the identity key string.
+  const [fgFinalizedByOther, setFgFinalizedByOther] = useState('')
 
   // Show the "Data saved successfully" toast for ~3s. Clears any pending hide.
   const showSavedToast = useCallback(() => {
@@ -1621,6 +2051,25 @@ export default function QualityCheck({ user }) {
 
     if (qcSaving) return   // in-flight guard — ignore repeated clicks
 
+    // F-2: this batch was already submitted by another chemist — block a
+    // duplicate authoritative submission entirely.
+    if (fgFinalizedByOther && fgFinalizedByOther === fgSharedIdentityKey()) {
+      setQcError('This Finished Goods batch has already been submitted by another chemist.')
+      return
+    }
+
+    // Unresolved shared-draft conflicts must be resolved before the final,
+    // authoritative save — otherwise the record could lock in a value the other
+    // chemist is still disputing. Point the chemist at the conflict banner.
+    if (Object.keys(fgConflicts).length > 0) {
+      setQcError('Resolve the highlighted conflicts before saving.')
+      return
+    }
+
+    // Flush any pending debounced shared-draft autosave so the server copy is
+    // current before we build the authoritative record and then reset the form.
+    await flushFgSharedDraft()
+
     // Capture the SAME values the printout shows (from the live DOM) so the
     // saved record matches the printed report exactly.
     const captured = collectReportValues()
@@ -1631,6 +2080,10 @@ export default function QualityCheck({ user }) {
       setQcError('Enter at least one value before saving.')
       return
     }
+
+    // Capture the shared-draft identity NOW (before handleReset clears the form)
+    // so we can finalize exactly this batch's draft after a successful insert.
+    const finalizeIdn = fgSharedIdentity()
 
     // Repeated Wet/Dry Sieve readings for the ACTIVE grade. Each entry carries
     // its own recorded time (entry.time, already an IST hh:mm AM/PM string) and
@@ -1730,24 +2183,74 @@ export default function QualityCheck({ user }) {
     setQcSaving(false)
 
     if (error) {
+      // Durable cross-device duplicate guard (migration 041): a second
+      // authoritative insert for the SAME five-part FG identity (date | batch |
+      // product | grade | dryer, non-empty batch) is rejected by the partial
+      // unique index quality_control_records_fg_submission_key_uq with Postgres
+      // error 23505. Treat THAT specific violation as "already submitted" (not a
+      // failure): no duplicate record was created and none should be retried.
+      //
+      // IMPORTANT (condition 5): classify as a duplicate FG submission ONLY when
+      // the error is confirmed to come from OUR index — both the SQLSTATE 23505
+      // AND the constraint/index name must match. Any other unique violation is
+      // surfaced as a normal error so unrelated constraints are never masked.
+      const isFgDuplicate =
+        error.code === '23505' &&
+        (
+          (error.constraint && error.constraint === 'quality_control_records_fg_submission_key_uq') ||
+          (typeof error.message === 'string' && error.message.includes('quality_control_records_fg_submission_key_uq')) ||
+          (typeof error.details === 'string' && error.details.includes('quality_control_records_fg_submission_key_uq'))
+        )
+
+      if (isFgDuplicate) {
+        // Mark this exact submission as done for THIS session (no re-insert) and
+        // reuse the F-2 lock so the "already submitted" banner shows, the Save
+        // button is disabled for this identity, and local values are preserved.
+        lastSavedSig.current = sig
+        setFgFinalizedByOther(fgSharedIdentityKey())
+        setQcError('This Finished Goods batch has already been submitted. No duplicate was created.')
+        return
+      }
+
       setQcError(error.message || 'Failed to save report.')
       return   // do NOT show success on save failure
     }
 
+    // F-1: record the authoritative success durably in THIS session FIRST. The
+    // lastSavedSig guard above already blocks a byte-identical re-insert, so from
+    // here on the authoritative record is "done" and must NEVER be inserted again
+    // by this component instance — regardless of whether finalization succeeds.
     lastSavedSig.current = sig
 
-    // Normal (uplGrade === null) and Colour grades do NOT auto-push to
-    // Production → Activity as the user types (unlike Export/OMRI). They go
-    // live ONLY now, on a successful Save — but still subject to the SAME
-    // readiness gate (Batch No. + Batch Start Time + Dryer + Moisture readings;
-    // Normal/Colour have no sieve targets so no sieve is required). So an empty
-    // or half-filled Normal/Colour report no longer goes live on Save. Export/
-    // OMRI are already live via the debounced/sieve feed, so they are left
-    // untouched here. Pushed BEFORE handleReset() so the current (pre-reset) FG
-    // values are read.
+    // Production → Activity live feed (Normal/Colour on Save; Export/OMRI are
+    // already live). Independent of finalization. Push BEFORE any reset so the
+    // current (pre-reset) FG values are read. Behavior unchanged from before.
     if (uplGrade !== 'export' && uplGrade !== 'omri') {
       pushQcActivity()
     }
+
+    // Finalize this batch's SHARED draft so it cannot reopen as an editable
+    // active draft for another chemist. Treated as a SEPARATE operation that can
+    // fail independently of the authoritative insert (F-1).
+    const finalized = await finalizeFgSharedDraft(finalizeIdn)
+
+    if (!finalized) {
+      // The authoritative record IS saved (and lastSavedSig guards re-insert),
+      // but the shared draft is still unfinalized. Do NOT fully reset or claim
+      // full success: keep the form + identity binding so the chemist can retry
+      // finalization (which never re-inserts), and show the pending banner.
+      setFgFinalizePending(finalizeIdn)
+      setQcError('Record saved. Finalizing the shared draft is pending — tap "Retry finalization".')
+      return
+    }
+
+    // Reset the shared-draft identity binding so a fresh form starts clean.
+    setFgFinalizePending(null)
+    fgSharedKeyRef.current = ''
+    fgSharedRevRef.current = null
+    fgSharedReadyRef.current = false
+    fgSharedPushedSig.current = ''
+    setSharedStatus('')
 
     showSavedToast()
     handleReset()   // clear the whole form after a successful save
@@ -2462,11 +2965,84 @@ export default function QualityCheck({ user }) {
         {activeTab === 'fg' && renderFG()}
       </div>
 
+      {/* F-2: this batch was already submitted by another chemist. Editing and
+          final submission are blocked for this identity; local values are kept
+          so nothing is lost. The chemist can switch to a different batch. */}
+      {activeTab === 'fg' && fgFinalizedByOther && fgFinalizedByOther === fgSharedIdentityKey() && (
+        <div className="qc-conflict-banner qc-finalized-banner" role="alert">
+          <div className="qc-conflict-title">
+            This Finished Goods batch has already been submitted by another chemist.
+          </div>
+          <div className="qc-finalized-note">
+            Editing and saving are disabled for this batch. Your entered values are
+            kept on this device. Select a different Date / Batch / Product / Grade /
+            Dryer to continue with another batch.
+          </div>
+        </div>
+      )}
+
+      {/* F-1: the authoritative record was saved but finalizing the shared draft
+          failed. The record is NOT re-inserted on retry — this only finalizes the
+          draft. Until it succeeds we do not claim full success or reset. */}
+      {activeTab === 'fg' && fgFinalizePending && (
+        <div className="qc-conflict-banner qc-pending-banner" role="alert">
+          <div className="qc-conflict-title">
+            Record saved — shared-draft finalization pending.
+          </div>
+          <div className="qc-finalized-note">
+            The report was saved successfully. Finalizing the shared draft (so no
+            one else can resubmit this batch) did not complete. Retrying will NOT
+            create a duplicate record.
+          </div>
+          <button type="button" className="qc-conflict-choice"
+            onClick={retryFinalizeFgSharedDraft}>
+            Retry finalization
+          </button>
+        </div>
+      )}
+
+      {/* FG shared-draft conflict banner — shown only when two chemists set a
+          different non-empty value for the same field. The chemist keeps either
+          their own value or the other chemist's; both are preserved until then.
+          Final Save is blocked while any conflict is unresolved. */}
+      {activeTab === 'fg' && Object.keys(fgConflicts).length > 0 && (
+        <div className="qc-conflict-banner" role="alert">
+          <div className="qc-conflict-title">
+            Conflicting edits from another chemist — choose which value to keep:
+          </div>
+          {Object.entries(fgConflicts).map(([path, { local, remote }]) => (
+            <div key={path} className="qc-conflict-row">
+              <span className="qc-conflict-field">{path}</span>
+              <button type="button" className="qc-conflict-choice"
+                onClick={() => resolveFgConflict(path, 'local')}>
+                Keep yours: <b>{String(local)}</b>
+              </button>
+              <button type="button" className="qc-conflict-choice"
+                onClick={() => resolveFgConflict(path, 'remote')}>
+                Use theirs: <b>{String(remote)}</b>
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="qc-actions">
         {qcError && (
           <div className="qc-error">Error: {qcError}</div>
         )}
-        <button type="button" className="qc-print-btn" onClick={handlePrint} disabled={qcSaving}>
+        {activeTab === 'fg' && sharedStatus && (
+          <span className={`qc-shared-status qc-shared-status-${sharedStatus}`} aria-live="polite">
+            {sharedStatus === 'saving' ? 'Sharing…'
+              : sharedStatus === 'saved' ? 'Shared ✓'
+              : 'Share failed — will retry'}
+          </span>
+        )}
+        <button
+          type="button"
+          className="qc-print-btn"
+          onClick={handlePrint}
+          disabled={qcSaving || (activeTab === 'fg' && fgFinalizedByOther === fgSharedIdentityKey() && !!fgFinalizedByOther)}
+        >
           {qcSaving ? 'Saving…' : 'Save'}
         </button>
         <button type="button" className="qc-clear-btn" onClick={handleReset}>

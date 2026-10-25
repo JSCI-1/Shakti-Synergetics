@@ -1206,3 +1206,67 @@
     to   { opacity: 1; transform: translate(-50%, 0); }
   }
 }
+
+/* ── FG shared-draft: cross-chemist sync status + conflict banner ───────────── */
+.qc-shared-status {
+  font-size: 13px;
+  font-weight: 600;
+  margin-right: 10px;
+  align-self: center;
+}
+.qc-shared-status-saving { color: #8a6d00; }
+.qc-shared-status-saved  { color: #1b7a34; }
+.qc-shared-status-error  { color: #b3261e; }
+
+.qc-conflict-banner {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #e0a800;
+  background: #fff8e1;
+  border-radius: 8px;
+}
+.qc-conflict-title {
+  font-weight: 700;
+  color: #8a6d00;
+  margin-bottom: 8px;
+}
+.qc-conflict-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 0;
+  border-top: 1px dashed #e0cfa0;
+}
+.qc-conflict-field {
+  font-family: monospace;
+  font-size: 12px;
+  color: #555;
+  min-width: 140px;
+}
+.qc-conflict-choice {
+  padding: 6px 10px;
+  border: 1px solid #c9a227;
+  background: #fff;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.qc-conflict-choice:hover { background: #fdf3d0; }
+
+/* F-2 finalized-by-other banner (red) + F-1 finalization-pending banner (amber). */
+.qc-finalized-banner {
+  border-color: #d08b8b;
+  background: #fdecec;
+}
+.qc-finalized-banner .qc-conflict-title { color: #a52222; }
+.qc-pending-banner {
+  border-color: #e0a800;
+  background: #fff8e1;
+}
+.qc-finalized-note {
+  font-size: 13px;
+  color: #555;
+  margin-top: 6px;
+  line-height: 1.4;
+}
