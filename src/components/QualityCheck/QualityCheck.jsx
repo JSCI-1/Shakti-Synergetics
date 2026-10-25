@@ -26,6 +26,19 @@ const TABS = [
 const FG_ACTIVITY_LIVE_PUSH_ENABLED = true
 
 // ─────────────────────────────────────────────────────────────
+// Live Google-Sheet sync for the repeated FG readings (Wet/Dry Sieve + Moisture
+// → qc_fg_sieve_readings / qc_fg_moisture_readings) as the chemist presses
+// "Record". DISABLED per requirement: QC data must reach the Google Sheet ONLY
+// when the final "Save" button is pressed (not live as readings are recorded).
+// The authoritative Save path (→ quality_control_records → Sheets) carries each
+// reading's own website entry time, so the sheet still shows real entry
+// timestamps, just written once on Save. Production → Activity (qc_activity_draft)
+// is a SEPARATE live feed and is NOT affected by this flag.
+// Flip back to true to restore the live-as-you-record sheet sync.
+const FG_READINGS_LIVE_SHEET_SYNC_ENABLED = false
+
+
+// ─────────────────────────────────────────────────────────────
 // IST time helpers — single source of truth for recorded reading times.
 //
 // BUG FIX: a recorded reading once showed a stray morning time (e.g. 6:32 AM)
@@ -733,7 +746,56 @@ export default function QualityCheck({ user }) {
   const setRmTime         = v => { markIdentityEntry('time', v);         setRmDraft(p => ({ ...p, time: v })) }
   const setIpBatchNo      = v => setIpDraft(p => ({ ...p, batchNo: v }))
   const setIpTime         = v => setIpDraft(p => ({ ...p, time: v }))
-  const setFgBatchNo      = v => setFgDraft(p => ({ ...p, batchNo: v }))
+  // Changing the FG Batch No. means we are now working on a DIFFERENT batch, so
+  // the previously-visible values must NOT linger (which also caused a false
+  // "conflict" when the new batch's shared draft loaded). When the batch number
+  // actually changes to a different value, wipe this batch's measurement values
+  // + reading logs so the form is blank; the DB-restore effect then repopulates
+  // if that (date, dryer, grade, batch) already has saved data, or clears the
+  // date/time for a fresh entry when it does not (see the restore effect).
+  const setFgBatchNo = v => {
+    const prev = (fgDraft.batchNo || '')
+    const next = (v || '')
+    if (prev === next) { setFgDraft(p => ({ ...p, batchNo: v })); return }
+
+    // Batch changed → we are on a DIFFERENT batch now. Clear the shared-draft
+    // conflict banner + rebind so the new batch's draft loads cleanly (no false
+    // conflict against lingering old values), and reset this tab's entry-time
+    // capture so the new record stamps from scratch.
+    setFgConflicts({})
+    setFgFinalizedByOther('')
+    fgSharedKeyRef.current = ''
+    fgSharedRevRef.current = null
+    fgSharedReadyRef.current = false
+    fgSharedPushedSig.current = ''
+    fgLoadedKeyRef.current = ''
+    fgBatchJustChangedRef.current = true   // user changed batch → allow date/time blank if no saved data
+    fieldEntryTimesRef.current.fg = {}
+    identityEntryTimesRef.current.fg = {}
+
+    setFgDraft(p => ({
+      ...p,
+      batchNo: v,
+      // Clear all per-(dryer,grade) measurement buckets, UPL values, and the
+      // sieve/moisture reading logs so no previous-batch data stays visible.
+      valuesByDryer: { ND1: {}, ND2: {} },
+      values: {},
+      uplValues: {},
+      uplValuesByGrade: {},
+      sieveLog: {},
+      sieveLogByGrade: {},
+      moistureLogByGrade: {},
+      fgFormulaInputsByGrade: {},   // clear Suspensibility (and any FG formula) inputs for the new batch
+      // Time is per-batch → blank it for the new batch. (Date is kept for a
+      // moment so the restore lookup can check whether this batch already has
+      // saved data; if it does NOT, the restore effect blanks the date too so
+      // the user re-enters it. If it DOES, the saved time is restored.)
+      time: '',
+      endTime: '',
+      // Per-field entry-time bookkeeping for a clean record.
+      __ts: {},
+    }))
+  }
   const setFgTime         = v => setFgDraft(p => ({ ...p, time: v }))
   const setFgEndTime      = v => setFgDraft(p => ({ ...p, endTime: v }))
   const setUplGrade       = v => setFgDraft(p => ({ ...p, uplGrade: v }))
@@ -744,6 +806,20 @@ export default function QualityCheck({ user }) {
     const next  = typeof fn === 'function' ? fn(cur) : fn
     return { ...p, uplValuesByGrade: { ...uvg, [grade]: next } }
   })
+  // FG formula-card inputs (e.g. Suspensibility fg_susp), persisted per-grade so
+  // they SURVIVE a page refresh / relogin and are part of the shared draft —
+  // previously they lived only in the FormulaCalculator's local state and were
+  // lost on reload. Shape: { [grade]: { [formulaId]: { [varKey]: val } } }.
+  const fgFormulaInputsByGrade = fgDraft.fgFormulaInputsByGrade || {}
+  const getFgFormulaInputs = fid =>
+    (fgFormulaInputsByGrade[fgGrade] && fgFormulaInputsByGrade[fgGrade][fid]) || {}
+  const setFgFormulaInputs = (fid, next) => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const fbg   = p.fgFormulaInputsByGrade || {}
+    const curG  = fbg[grade] || {}
+    return { ...p, fgFormulaInputsByGrade: { ...fbg, [grade]: { ...curG, [fid]: next } } }
+  })
+
   // Sieve logs are per-grade. Legacy flat `sieveLog` migrates into 'normal'.
   const sieveLogByGrade   = fgDraft.sieveLogByGrade || { normal: fgDraft.sieveLog || {} }
   const sieveLog          = sieveLogByGrade[fgGrade] || {}
@@ -877,7 +953,9 @@ export default function QualityCheck({ user }) {
     // RECORDED reading, not just a typed value). Legacy single fg_moisture value
     // still counts so older drafts aren't blocked.
     const mlg = d.moistureLogByGrade || {}
-    const moistureReadings = (mlg[grade] && mlg[grade].fg_moisture) || []
+    // override.moistureLog lets the Record handler pass the just-updated list
+    // (draft state updates are async), exactly like override.wetLog/dryLog.
+    const moistureReadings = override.moistureLog ?? ((mlg[grade] && mlg[grade].fg_moisture) || [])
 
     // ── Readiness gate (FG only) ───────────────────────────────────────────
     // The row goes live in Production → Activity ONLY once ALL of the required
@@ -916,12 +994,19 @@ export default function QualityCheck({ user }) {
       sieveReady
     if (!override.skipReadyGate && !FG_ACTIVITY_REQUIRED_READY) return   // incomplete → do not go live yet
 
+    // Normalize the batch number (trim) so the Activity upsert key
+    // (dryer, log_date, grade, batch_no) is IDENTICAL every time the SAME batch
+    // is entered. Without trimming, "683/94" vs "683/94 " would be two distinct
+    // keys → two live cards (a duplicate). With a stable key, re-entering an
+    // already-live batch UPSERTS onto its existing card instead of creating a
+    // new one.
+    const batchKey = (d.batchNo || '').trim() || null
     const row = {
       dryer,
       log_date: logDate,
       grade,
       product,
-      batch_no: d.batchNo || null,
+      batch_no: batchKey,
       // Prefer the LATEST recorded moisture reading; fall back to the legacy
       // single value for older drafts.
       moisture_pct: toNum(
@@ -971,6 +1056,9 @@ export default function QualityCheck({ user }) {
   // Never blocks the UI; errors are logged, not thrown. The authoritative
   // Print/Download → quality_control_records save is unaffected.
   const pushFgSieveReadings = useCallback((testId, readingsArr) => {
+    // Live sheet sync disabled: readings go to the Google Sheet only on final
+    // Save (via quality_control_records), carrying each reading's entry time.
+    if (!FG_READINGS_LIVE_SHEET_SYNC_ENABLED) return
     if (!supabaseReady || !supabase) return
     const d = fgDraft || {}
     const logDate = d.date
@@ -1028,6 +1116,9 @@ export default function QualityCheck({ user }) {
   // the UI; errors are logged, not thrown. The authoritative Print/Download →
   // quality_control_records save is unaffected.
   const pushFgMoistureReadings = useCallback((readingsArr) => {
+    // Live sheet sync disabled: readings go to the Google Sheet only on final
+    // Save (via quality_control_records), carrying each reading's entry time.
+    if (!FG_READINGS_LIVE_SHEET_SYNC_ENABLED) return
     if (!supabaseReady || !supabase) return
     const d = fgDraft || {}
     const logDate = d.date
@@ -1547,6 +1638,22 @@ export default function QualityCheck({ user }) {
     return () => clearTimeout(t)
   }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDraft.time, fgMoistureVal, moistureLogSig, wetSieveLogSig, drySieveLogSig, suspResult])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Suspensibility is OPTIONAL for the readiness gate (it does not make a row go
+  // live on its own), but when the chemist DOES enter it, it should appear on
+  // the live Activity card. The main debounced effect above only auto-pushes for
+  // Export/OMRI grades, so for Normal/Colour a typed suspensibility never showed.
+  // This effect pushes on a suspensibility change for ANY grade — pushQcActivity
+  // still enforces the full readiness gate internally, so an incomplete row is
+  // NOT created; it only updates a row that already qualifies to be live.
+  useEffect(() => {
+    if (activeTab !== 'fg') return
+    if (!fgDraft.date) return
+    if (suspResult === null || suspResult === undefined || String(suspResult).trim() === '') return
+    if (!fgPushReadyRef.current) return   // skip the mount/stale-draft run
+    const t = setTimeout(() => pushQcActivity(), 700)
+    return () => clearTimeout(t)
+  }, [activeTab, suspResult, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDryer])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Load saved FG data from the database on date change ──────────
   // When the user selects a date, query quality_control_records for the most
   // recent FG entry for that (date, dryer, grade) and restore its values into
@@ -1555,7 +1662,12 @@ export default function QualityCheck({ user }) {
   // localStorage draft. Does NOT clear existing draft values; only fills the
   // form when a matching saved record exists. Skips the initial mount (the
   // draft is already restored from localStorage by useDraft).
-  const fgLoadedKeyRef = useRef('')   // last "date|dryer|grade" we loaded from DB
+  const fgLoadedKeyRef = useRef('')   // last "date|dryer|grade|batch" we loaded from DB
+  // Set true by setFgBatchNo ONLY when the user actually changes the batch
+  // number. The restore effect uses it to blank date/time when the new batch
+  // has no saved data (fresh entry) — WITHOUT blanking on a page reload, so
+  // in-progress work survives a refresh/relogin.
+  const fgBatchJustChangedRef = useRef(false)
 
   useEffect(() => {
     if (activeTab !== 'fg') return
@@ -1563,8 +1675,11 @@ export default function QualityCheck({ user }) {
     if (!supabaseReady || !supabase) return
     // Skip the very first run (draft already has the restored data).
     if (!fgPushReadyRef.current) return
-    // Avoid re-loading the same (date, dryer, grade) combo.
-    const loadKey = `${fgDraft.date}|${fgDraft.dryer || 'ND1'}|${fgDraft.uplGrade || 'normal'}`
+    // Avoid re-loading the same (date, dryer, grade, batch) combo. batch_no is
+    // part of the identity: WITHOUT it, starting a new batch on the SAME date +
+    // dryer + grade would reload the PREVIOUS batch's saved values (incl. the
+    // sieve / moisture reading logs) into the fresh form — the stale-data bug.
+    const loadKey = `${fgDraft.date}|${fgDraft.dryer || 'ND1'}|${fgDraft.uplGrade || 'normal'}|${fgDraft.batchNo || ''}`
     if (fgLoadedKeyRef.current === loadKey) return
     fgLoadedKeyRef.current = loadKey
 
@@ -1580,13 +1695,35 @@ export default function QualityCheck({ user }) {
         // Find the most recent record matching the selected (date, dryer, grade).
         const dryer = fgDraft.dryer || 'ND1'
         const grade = fgDraft.uplGrade || 'normal'
+        // Match on the FULL identity including batch_no. A new batch on the same
+        // date/dryer/grade must NOT pull back the previous batch's saved values.
+        const batchNo = fgDraft.batchNo || ''
         const match = data.find(r => {
           const v = r.values || {}
           return v.date === fgDraft.date &&
                  (v.dryer || 'ND1') === dryer &&
-                 (v.grade || 'normal') === grade
+                 (v.grade || 'normal') === grade &&
+                 (v.batch_no || '') === batchNo
         })
-        if (!match) return   // no saved record for this date → keep draft as-is
+        // Consume the one-shot "user just changed the batch" flag.
+        const userChangedBatch = fgBatchJustChangedRef.current
+        fgBatchJustChangedRef.current = false
+
+        if (!match) {
+          // No saved record for this (date, dryer, grade, batch).
+          //   • If the USER just changed the batch number to a new one with no
+          //     data → blank only TIME/End Time for the fresh batch (measurement
+          //     values were already cleared by setFgBatchNo). We do NOT blank the
+          //     DATE here — blanking the date undid the date the user had just
+          //     picked (the "date won't select in one click" bug).
+          //   • On a page RELOAD (flag false), do NOT blank anything — keep the
+          //     in-progress draft useDraft just restored, so a refresh/relogin
+          //     never loses the values the user already filled.
+          if (userChangedBatch && batchNo) {
+            setFgDraft(p => ({ ...p, time: '', endTime: '' }))
+          }
+          return
+        }
         const v = match.values || {}
         // Restore the saved values into the current (dryer, grade) bucket.
         setFgDraft(p => {
@@ -1597,29 +1734,43 @@ export default function QualityCheck({ user }) {
           if (db && typeof db === 'object' && (db.fg_moisture !== undefined || db.fg_susp !== undefined)) {
             db = { normal: db }
           }
-          // Merge saved FG measurement values into the bucket (preserve any
-          // already-typed values the user may have entered).
+          // Merge ALL saved FG measurement values into the bucket (preserve any
+          // already-typed values the user may have entered). Restore EVERY key
+          // from the saved record EXCEPT the meta / identity / log keys handled
+          // separately below — a hardcoded allow-list dropped fields that were
+          // not listed (spec-group, newer UPL params, etc.), which is why some
+          // values did not reappear when reopening a saved batch.
+          const META_KEYS = new Set([
+            'date','shift','tested_by','batch_no','time','end_time','brand',
+            'product','grade','dryer',
+            // reading logs + per-field timestamps + formula inputs are restored
+            // on their own, below (not as plain measurement values):
+            'fg_wetSieve_log','fg_drySieve_log','fg_moisture_log','fg_formula_inputs','__ts',
+          ])
           const savedVals = {}
-          const allowKeys = ['fg_moisture','fg_sulphur','fg_susp','fg_bulk','fg_ph',
-            'fg_wetSieve','fg_drySieve','fg_wettability','fg_foam_start','fg_foam_1min',
-            'fg_wetSieve_log','fg_drySieve_log','fg_moisture_log',
-            'upl_exp_ps_10','upl_exp_ps_6','upl_exp_ps_1','upl_exp_ws_160','upl_exp_ws_25',
-            'upl_exp_df_0','upl_exp_df_1','upl_exp_df_2','upl_exp_df_5','upl_exp_wps',
-            'upl_exp_alk','upl_exp_disp',
-            'upl_omri_ps_10','upl_omri_ps_6','upl_omri_ps_1','upl_omri_ds_500','upl_omri_ds_106',
-            'upl_omri_disp_self','upl_omri_disp_1h','upl_omri_disp_24h','upl_omri_ws_160',
-            'upl_omri_ws_25']
-          allowKeys.forEach(k => { if (v[k] !== undefined && v[k] !== '') savedVals[k] = v[k] })
+          Object.keys(v || {}).forEach(k => {
+            if (META_KEYS.has(k)) return
+            if (v[k] === undefined || v[k] === '' || v[k] === null) return
+            savedVals[k] = v[k]
+          })
           const cur = db[grade] || {}
-          const merged = { ...savedVals, ...cur }  // typed values override saved
-          // Restore batch_no, time, brand, product if present and form fields are empty.
+          // Reopening a SAVED batch: the saved values are the source of truth, so
+          // they take precedence over whatever (usually empty) values are in the
+          // current bucket. This is why some values were missing before — the
+          // empty current bucket was overriding the saved values.
+          const merged = { ...cur, ...savedVals }
+          // Restore the identity/meta fields FROM THE SAVED RECORD so the Time
+          // (and End Time / brand / product) auto-reflect the saved batch once
+          // the batch no. + date are entered. We overwrite with the saved value
+          // when present (the user is viewing a saved batch), falling back to the
+          // current form value only when the record has none.
           const next = {
             ...p,
-            batchNo: p.batchNo || v.batch_no || '',
-            time: p.time || v.time || '',
-            endTime: p.endTime || v.end_time || '',
-            brand: p.brand || v.brand || '',
-            selected: p.selected || v.product || FINISHED_GOODS[0].id,
+            batchNo: v.batch_no || p.batchNo || '',
+            time: v.time || p.time || '',
+            endTime: v.end_time || p.endTime || '',
+            brand: v.brand || p.brand || '',
+            selected: v.product || p.selected || FINISHED_GOODS[0].id,
           }
           const newVbd = { ...vbd, [d]: { ...db, [g]: merged } }
           next.valuesByDryer = newVbd
@@ -1645,11 +1796,27 @@ export default function QualityCheck({ user }) {
               [grade]: { ...curMg, fg_moisture: v.fg_moisture_log },
             }
           }
+          // Restore the formula-card INPUTS (Sulphur Content, Suspensibility,
+          // etc.) for this grade so the cards recompute and SHOW their saved
+          // result instead of appearing blank. Only present on records saved
+          // after this feature shipped (older records have no inputs → cards
+          // stay blank, which is unavoidable since the inputs were never saved).
+          if (v.fg_formula_inputs && typeof v.fg_formula_inputs === 'object') {
+            const fbg = p.fgFormulaInputsByGrade || {}
+            const curFg = fbg[grade] || {}
+            next.fgFormulaInputsByGrade = {
+              ...fbg,
+              [grade]: { ...curFg, ...v.fg_formula_inputs },
+            }
+          }
           return next
         })
+        // Remount the formula cards (outside the state updater) so they re-read
+        // the restored inputs and recompute their result.
+        if (!cancelled) setResetKey(k => k + 1)
       })
     return () => { cancelled = true }
-  }, [activeTab, fgDraft.date, fgDraft.dryer, fgDraft.uplGrade])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, fgDraft.date, fgDraft.dryer, fgDraft.uplGrade, fgDraft.batchNo])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── UPL menu open state (transient, not persisted) ──
   const [uplMenuOpenLocal, setUplMenuOpenLocal] = useState(false)
@@ -2162,6 +2329,11 @@ export default function QualityCheck({ user }) {
           ? String(moistureReadingsLog[moistureReadingsLog.length - 1].result)
           : String(fgValues.fg_moisture ?? captured.fg_moisture ?? '')),
         fg_moisture_log: moistureReadingsLog,
+        // Formula-card INPUTS for the active grade (Sulphur Content, Suspensibility,
+        // etc.) keyed { [formulaId]: { [varKey]: val } }. Saved so reopening this
+        // batch can restore the raw inputs and the cards RECOMPUTE their result —
+        // otherwise only the computed result was kept and the cards showed blank.
+        fg_formula_inputs: (fgDraft.fgFormulaInputsByGrade && fgDraft.fgFormulaInputsByGrade[uplGrade || 'normal']) || {},
         // Per-field first-entry times (ISO) → the trigger uses these as
         // field_entry_ts so each FG field (inputs + results) shows its REAL
         // entry time, not the single save-moment time. Includes synthetic
@@ -2729,6 +2901,11 @@ export default function QualityCheck({ user }) {
               key={`${test.id}-${resetKey}`}
               formula={test}
               onResult={test.id === 'fg_susp' ? setSuspResult : undefined}
+              // CONTROLLED: persist this card's inputs in the FG draft (per
+              // grade) so Suspensibility (and any FG formula) SURVIVES a refresh
+              // / relogin and is part of the shared draft.
+              storedInputs={getFgFormulaInputs(test.id)}
+              onInputsChange={next => setFgFormulaInputs(test.id, next)}
             />
           )
           if (test.type === 'moisture-readings') {
@@ -2751,6 +2928,12 @@ export default function QualityCheck({ user }) {
               setVal(test.id, '')
               // Live push the full updated list (state update is async → pass override).
               const newLog = [ ...(moistureLog || []), entry ]
+              // Live push to Production → Activity immediately with the fresh log
+              // (state updates are async, so pass the updated array as override).
+              pushQcActivity({ moistureLog: newLog })
+              // Google-Sheet live sync is intentionally disabled (readings reach
+              // the sheet only on final Save); this is a no-op while the flag is
+              // off, kept so re-enabling restores the sheet sync.
               pushFgMoistureReadings(newLog)
             }
 
