@@ -1079,6 +1079,26 @@ export default function QualityCheck({ user }) {
   // already use — so unrelated incomplete forms never merge under one key).
   // batch_no may be empty; the server index coalesces it to '' as its own slot.
 
+  // ── FG Print/Download save state (FG tab only) ──
+  // Declared here (before the shared-draft effects/callbacks) because those
+  // close over setQcError / showSavedToast; declaring them later caused a
+  // temporal-dead-zone crash that broke the whole QC page on load.
+  const [qcSaving, setQcSaving] = useState(false)
+  const [qcError, setQcError]   = useState('')
+  const [qcSaved, setQcSaved]   = useState(false)   // "Data saved successfully" toast
+  const lastSavedSig            = useRef('')
+  const savedToastTimer         = useRef(null)
+
+  // Show the "Data saved successfully" toast for ~3s. Clears any pending hide.
+  const showSavedToast = useCallback(() => {
+    setQcSaved(true)
+    if (savedToastTimer.current) clearTimeout(savedToastTimer.current)
+    savedToastTimer.current = setTimeout(() => setQcSaved(false), 3000)
+  }, [])
+
+  // Clean up the toast timer on unmount
+  useEffect(() => () => { if (savedToastTimer.current) clearTimeout(savedToastTimer.current) }, [])
+
   // ── FG SHARED DRAFT (cross-chemist) state (FG tab only) ──
   // These MUST be declared BEFORE the shared-draft effects/callbacks below,
   // which close over them — declaring them later causes a temporal-dead-zone
@@ -1626,23 +1646,6 @@ export default function QualityCheck({ user }) {
       })
     return () => { cancelled = true }
   }, [activeTab, fgDraft.date, fgDraft.dryer, fgDraft.uplGrade])  // eslint-disable-line react-hooks/exhaustive-deps
-
-  // ── FG Print/Download save state (FG tab only) ──
-  const [qcSaving, setQcSaving] = useState(false)
-  const [qcError, setQcError]   = useState('')
-  const [qcSaved, setQcSaved]   = useState(false)   // "Data saved successfully" toast
-  const lastSavedSig            = useRef('')
-  const savedToastTimer         = useRef(null)
-
-  // Show the "Data saved successfully" toast for ~3s. Clears any pending hide.
-  const showSavedToast = useCallback(() => {
-    setQcSaved(true)
-    if (savedToastTimer.current) clearTimeout(savedToastTimer.current)
-    savedToastTimer.current = setTimeout(() => setQcSaved(false), 3000)
-  }, [])
-
-  // Clean up the toast timer on unmount
-  useEffect(() => () => { if (savedToastTimer.current) clearTimeout(savedToastTimer.current) }, [])
 
   // ── UPL menu open state (transient, not persisted) ──
   const [uplMenuOpenLocal, setUplMenuOpenLocal] = useState(false)
