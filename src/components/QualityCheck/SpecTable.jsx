@@ -47,13 +47,13 @@ export default function SpecTable({ params, values, onChange }) {
                   ) : (
                     <div className="qc-input-unit">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="text"
+                        pattern="-?[0-9]*\.?[0-9]*"
                         className="qc-input"
                         placeholder="—"
                         value={val}
                         onChange={e => onChange(param.id, e.target.value)}
-                        step="any"
-                        min="0"
                         // data attrs for DOM reading
                         data-param-id={param.id}
                         data-param-name={param.name}

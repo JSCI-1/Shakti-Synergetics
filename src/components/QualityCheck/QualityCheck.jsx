@@ -1919,7 +1919,9 @@ export default function QualityCheck({ user }) {
                     <td className="qc-ip-mill-name">{row.mill}</td>
                     <td className="qc-ip-mill-td">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="text"
+                        pattern="-?[0-9]*\.?[0-9]*"
                         className="qc-ip-mill-input"
                         placeholder="—"
                         value={row.br}
@@ -1931,7 +1933,9 @@ export default function QualityCheck({ user }) {
                     </td>
                     <td className="qc-ip-mill-td">
                       <input
-                        type="number"
+                        type="text"
+                        inputMode="text"
+                        pattern="-?[0-9]*\.?[0-9]*"
                         className="qc-ip-mill-input"
                         placeholder="—"
                         value={row.flowRate}
@@ -2249,11 +2253,11 @@ export default function QualityCheck({ user }) {
                     <div className="qc-moisture-card">
                       <div className="qc-moisture-name">{test.name}</div>
                       <div className="qc-moisture-input-row">
-                        <input type="number" className="qc-input qc-moisture-input" placeholder="—"
+                        <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*"
+                          className="qc-input qc-moisture-input" placeholder="—"
                           value={mVal}
                           onChange={e => setVal(test.id, e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') recordMoisture() }}
-                          step="any" min="0" />
+                          onKeyDown={e => { if (e.key === 'Enter') recordMoisture() }} />
                         {test.unit && <span className="qc-unit">{test.unit}</span>}
                       </div>
                     </div>
@@ -2306,9 +2310,10 @@ export default function QualityCheck({ user }) {
               <div className="qc-single-name">{test.name}</div>
               {test.method && <div className="qc-method">{test.method}</div>}
               <div className="qc-input-unit">
-                <input type="number" className="qc-input" placeholder="—"
+                <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*"
+                  className="qc-input" placeholder="—"
                   value={values[test.id] ?? ''}
-                  onChange={e => setVal(test.id, e.target.value)} step="any" min="0" />
+                  onChange={e => setVal(test.id, e.target.value)} />
                 {test.unit && <span className="qc-unit">{test.unit}</span>}
               </div>
             </div>
@@ -2365,10 +2370,11 @@ export default function QualityCheck({ user }) {
                                 </select>
                               ) : (
                                 <input
-                                  type="number"
+                                  type="text"
+                                  inputMode="text"
+                                  pattern="-?[0-9]*\.?[0-9]*"
                                   className="qc-upl-input"
                                   placeholder="—"
-                                  step="any"
                                   value={val}
                                   data-upl-id={row.id}
                                   onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}

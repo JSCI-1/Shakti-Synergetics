@@ -84,6 +84,18 @@ function computeTotalProduction(form) {
   return any ? +sum.toFixed(2) : null
 }
 
+// Convert a form value to a number for a NUMERIC database column, or null when
+// blank. Postgres rejects an empty string ("") for a numeric column with
+// "invalid input syntax for type numeric: \"\"", so every numeric field that an
+// operator may leave empty MUST be sent as null (or a real number) — never "".
+function numOrNull(v) {
+  if (v === null || v === undefined) return null
+  const s = String(v).trim()
+  if (s === '') return null
+  const n = Number(s)
+  return Number.isFinite(n) ? n : null
+}
+
 
 /* Calibration sensors */
 const CAL_SENSORS = [
@@ -665,10 +677,12 @@ function DryerForm({
           ),
 
           // Production breakdown (entered) — sent so the sheet shows each part.
-          fine_powder:       form.fine_powder,
-          crust_papadi:      form.crust_papadi,
-          startup:           form.startup,
-          packed_production: form.packed_production,
+          // These are NUMERIC columns: send a number or null, never "" (an
+          // empty string triggers "invalid input syntax for type numeric").
+          fine_powder:       numOrNull(form.fine_powder),
+          crust_papadi:      numOrNull(form.crust_papadi),
+          startup:           numOrNull(form.startup),
+          packed_production: numOrNull(form.packed_production),
 
           // Total Production of the Day = sum of the four parts (derived).
           total_production: computeTotalProduction(form),
@@ -758,8 +772,9 @@ function DryerForm({
       >
 
         <input
-          type="number"
-          inputMode="numeric"
+          type="text"
+          inputMode="text"
+          pattern="-?[0-9]*\.?[0-9]*"
           className={
             isTemperature
               ? 'dr-cell-input dr-temp-input'
@@ -1636,7 +1651,9 @@ function DryerForm({
                 </span>
 
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="text"
+                  pattern="-?[0-9]*\.?[0-9]*"
                   className="dr-input dr-input-sm"
                   placeholder="—"
                   value={form[b.dp]}
@@ -1653,7 +1670,9 @@ function DryerForm({
                 </span>
 
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="text"
+                  pattern="-?[0-9]*\.?[0-9]*"
                   className="dr-input dr-input-sm"
                   placeholder="—"
                   value={form[b.mr]}
@@ -1808,7 +1827,7 @@ function DryerForm({
 
                         <input
                           type="text"
-                          inputMode="decimal"
+                          inputMode="text"
                           className="dr-input dr-cal-input"
                           placeholder="—"
                           value={
@@ -1819,8 +1838,9 @@ function DryerForm({
                           onChange={e => {
                             const value = e.target.value
 
-                            // Allow only numbers and one decimal point
-                            if (/^\d*\.?\d*$/.test(value)) {
+                            // Allow numbers, one decimal point, and an optional
+                            // leading minus sign (negative values permitted).
+                            if (/^-?\d*\.?\d*$/.test(value)) {
                               set(
                                 `cal_${s.key}_temp`,
                                 value
@@ -1838,7 +1858,7 @@ function DryerForm({
 
                         <input
                           type="text"
-                          inputMode="decimal"
+                          inputMode="text"
                           className="dr-input dr-cal-input"
                           placeholder="—"
                           value={
@@ -1849,8 +1869,9 @@ function DryerForm({
                           onChange={e => {
                             const value = e.target.value
 
-                            // Allow only numbers and one decimal point
-                            if (/^\d*\.?\d*$/.test(value)) {
+                            // Allow numbers, one decimal point, and an optional
+                            // leading minus sign (negative values permitted).
+                            if (/^-?\d*\.?\d*$/.test(value)) {
                               set(
                                 `cal_${s.key}_sensor`,
                                 value
@@ -1893,7 +1914,9 @@ function DryerForm({
               <div className="dr-total-part">
                 <span className="dr-total-part-label">Fine Powder (kg)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="text"
+                  pattern="-?[0-9]*\.?[0-9]*"
                   className="dr-total-input"
                   placeholder="0"
                   value={form.fine_powder}
@@ -1906,7 +1929,9 @@ function DryerForm({
               <div className="dr-total-part">
                 <span className="dr-total-part-label">Crust (Papadi) (kg)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="text"
+                  pattern="-?[0-9]*\.?[0-9]*"
                   className="dr-total-input"
                   placeholder="0"
                   value={form.crust_papadi}
@@ -1919,7 +1944,9 @@ function DryerForm({
               <div className="dr-total-part">
                 <span className="dr-total-part-label">Startup (kg)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="text"
+                  pattern="-?[0-9]*\.?[0-9]*"
                   className="dr-total-input"
                   placeholder="0"
                   value={form.startup}
@@ -1932,7 +1959,9 @@ function DryerForm({
               <div className="dr-total-part">
                 <span className="dr-total-part-label">Packed Production (kg)</span>
                 <input
-                  type="number"
+                  type="text"
+                  inputMode="text"
+                  pattern="-?[0-9]*\.?[0-9]*"
                   className="dr-total-input"
                   placeholder="0"
                   value={form.packed_production}

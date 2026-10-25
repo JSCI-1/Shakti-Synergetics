@@ -98,13 +98,13 @@ export default function FormulaCalculator({
             <div className="qc-input-unit">
               {/* data-var-key and data-var-label used by printReport */}
               <input
-                type="number"
+                type="text"
+                inputMode="text"
+                pattern="-?[0-9]*\.?[0-9]*"
                 className="qc-input"
                 placeholder="—"
                 value={inputs[v.key] ?? ''}
                 onChange={e => setInput(v.key, e.target.value)}
-                step="any"
-                min="0"
                 data-var-key={v.key}
                 data-var-label={v.label}
                 data-var-desc={v.desc}
