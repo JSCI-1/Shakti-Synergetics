@@ -290,14 +290,15 @@ function DryerForm({
   // the very first render of a malformed draft cannot throw either.
   const safeForm = normalizeForm(form, dryerType)
 
-  // Auto-fill the Operator box with the logged-in user's name ONLY when they
-  // signed in as a Dryer Operator. An admin (or any other role) viewing the
-  // dryer section must NOT have their name injected — they fill it manually.
-  // Only prefill when the box is still empty so a name the operator typed (or a
-  // restored draft value) is never overwritten, and it never re-runs per render.
+  // Keep the Operator field = the logged-in person's name when a Dryer Operator
+  // is signed in. The footer shows this read-only, and we also force
+  // form.operator to the logged-in name so the SAVED log sheet always carries
+  // the correct operator (even if an older draft had a different/blank value).
+  // An admin (or any other role) viewing the dryer section is NOT affected —
+  // they keep the editable box and fill it manually.
   useEffect(() => {
     if (!isDryerOperator || !userName) return
-    setForm(p => (p.operator ? p : { ...p, operator: userName }))
+    setForm(p => (p.operator === userName ? p : { ...p, operator: userName }))
   }, [isDryerOperator, userName])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Per-row shared-save state (SEPARATE from the form-level `error`
@@ -1692,33 +1693,8 @@ function DryerForm({
 
         <div className="dr-footer-bar">
 
-          {/* Batch */}
-
-          <div className="dr-footer-field">
-
-            <label className="dr-label">
-
-              Batch No. /{' '}
-
-              <span className="dr-label-hi">
-                बैच नं.
-              </span>
-
-            </label>
-
-            <input
-              className="dr-input"
-              placeholder="Batch number / बैच नंबर"
-              value={form.batch_no}
-              onChange={e =>
-                set(
-                  'batch_no',
-                  e.target.value
-                )
-              }
-            />
-
-          </div>
+          {/* Batch No. footer field removed per request — the per-hour Batch
+              No. column in the hourly log table above is kept. */}
 
 
           {/* Calibration */}
@@ -2012,7 +1988,10 @@ function DryerForm({
           </div>
 
 
-          {/* Operator */}
+          {/* Operator — always the logged-in person for this section.
+              When a Dryer Operator is signed in, show their name read-only
+              (they cannot change it). For any other role (e.g. admin) with no
+              name, fall back to the editable box so they can still fill it. */}
 
           <div className="dr-footer-field">
 
@@ -2026,17 +2005,26 @@ function DryerForm({
 
             </label>
 
-            <input
-              className="dr-input"
-              placeholder="Name / नाम"
-              value={form.operator}
-              onChange={e =>
-                set(
-                  'operator',
-                  e.target.value
-                )
-              }
-            />
+            {isDryerOperator && userName ? (
+              <input
+                className="dr-input"
+                value={userName}
+                readOnly
+                title="Logged-in operator / लॉग-इन ऑपरेटर"
+              />
+            ) : (
+              <input
+                className="dr-input"
+                placeholder="Name / नाम"
+                value={form.operator}
+                onChange={e =>
+                  set(
+                    'operator',
+                    e.target.value
+                  )
+                }
+              />
+            )}
 
           </div>
 
