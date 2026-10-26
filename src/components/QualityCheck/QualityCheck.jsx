@@ -1217,6 +1217,11 @@ export default function QualityCheck({ user }) {
   // Last payload signature this browser successfully pushed, so the 15s poll's
   // merge-back of our own write does not echo into another autosave loop.
   const fgSharedPushedSig = useRef('')
+  // Identity key for which an active shared draft was found on the server. The
+  // saved-records restore effect reads this so it does NOT blank the Batch Start
+  // Time for an in-progress batch that another chemist is sharing (that batch
+  // has a time from the shared draft but is not yet in quality_control_records).
+  const fgSharedDraftExistsRef = useRef('')
   // F-1: when the authoritative insert SUCCEEDED but finalizing the shared draft
   // FAILED, we hold the identity to retry finalize — WITHOUT re-inserting.
   const [fgFinalizePending, setFgFinalizePending] = useState(null)
@@ -1337,6 +1342,7 @@ export default function QualityCheck({ user }) {
       fgSharedCreatedByRef.current = ''
       fgSharedReadyRef.current = false
       fgSharedPushedSig.current = ''
+      fgSharedDraftExistsRef.current = ''
       setFgConflicts({})
       setFgFinalizedByOther('')
     }
@@ -1368,6 +1374,11 @@ export default function QualityCheck({ user }) {
 
         fgSharedRevRef.current = data.revision
         if (!fgSharedCreatedByRef.current) fgSharedCreatedByRef.current = data.created_by || ''
+        // Mark that an active shared draft EXISTS for this identity, so the
+        // saved-records restore effect does NOT blank the Batch Start Time it
+        // just merged in (the in-progress batch legitimately has a time from the
+        // other chemist, even though it is not yet in quality_control_records).
+        fgSharedDraftExistsRef.current = key
 
         // Merge remote → current local draft (functional update so we always
         // merge against the freshest local state).
@@ -1719,7 +1730,12 @@ export default function QualityCheck({ user }) {
           //   • On a page RELOAD (flag false), do NOT blank anything — keep the
           //     in-progress draft useDraft just restored, so a refresh/relogin
           //     never loses the values the user already filled.
-          if (userChangedBatch && batchNo) {
+          //   • If an active SHARED draft exists for this identity (another
+          //     chemist is working this in-progress batch), do NOT blank the
+          //     time — it was legitimately merged in from the shared draft even
+          //     though the batch is not yet saved to quality_control_records.
+          const sharedExists = fgSharedDraftExistsRef.current === fgSharedIdentityKey()
+          if (userChangedBatch && batchNo && !sharedExists) {
             setFgDraft(p => ({ ...p, time: '', endTime: '' }))
           }
           return
