@@ -74,14 +74,14 @@ var MOTORS = [
 // Consumption' sits immediately after Diesel and before the 10L Outlet Set Temp.
 var JOBCARD_FIELDS = [
   ['date',           'Date',                                  'date'],
-  ['shift',          'Shift',                                 'stack'],
-  ['log_variant',    'Thermopack Type (active)',              'stack'],
-  ['operator',       'Operator',                              'stack'],
-  ['helper1',        'Helper 1',                              'stack'],
-  ['helper2',        'Helper 2',                              'stack'],
-  ['helper3',        'Helper 3',                              'stack'],
-  ['time_in',        'Time In',                               'stack'],
-  ['time_out',       'Time Out',                              'stack'],
+  ['shift',          'Shift',                                 'plain'],
+  ['log_variant',    'Thermopack Type (active)',              'plain'],
+  ['operator',       'Operator',                              'plain'],
+  ['helper1',        'Helper 1',                              'plain'],
+  ['helper2',        'Helper 2',                              'plain'],
+  ['helper3',        'Helper 3',                              'plain'],
+  ['time_in',        'Time In',                               'plain'],
+  ['time_out',       'Time Out',                              'plain'],
   ['coal_date',      'Coal Received – Date',                  'date'],
   ['coal_qty',       'Coal Received – Qty (MT)',              'stack'],
   ['bugass_date',    'Bugass Received – Date',                'date'],
@@ -89,13 +89,12 @@ var JOBCARD_FIELDS = [
   ['coal_charged',   'Fuel Charged – Coal (MT)',              'stack'],
   ['bugass_charged', 'Fuel Charged – Bugass (MT)',            'stack'],
   ['diesel_charged', 'Diesel (Ltr)',                          'stack'],
-  ['total_fuel_consumption', 'Total fuel Consumption',        'stack'],
   // Summary — 10 L kCal
   ['10l.outlet_set_temp',              '10L – Outlet Set Temp (°C)',          'stack'],
   ['10l.expansion_tank_level',         '10L – Expansion Tank Level',          'stack'],
   ['10l.type_of_fuel',                 '10L – Type of Fuel',                  'stack'],
   ['10l.qty_fuel_used',                '10L – Qty of Fuel Used',              'stack'],
-  ['10l.date_of_last_boiler_cleaning', '10L – Date of Last Boiler Cleaning',  'stack'],
+  ['10l.date_of_last_boiler_cleaning', '10L – Date of Last Boiler Cleaning',  'date'],
   ['10l.total_running_hrs',            '10L – Total Running Hrs',             'stack'],
   ['10l.consumption_per_hr',           '10L – Consumption Per Hr',            'stack'],
   ['10l.total_consumption',            '10L – Total Consumption (kg)',        'stack'],
@@ -105,7 +104,7 @@ var JOBCARD_FIELDS = [
   ['6l.expansion_tank_level',          '6L – Expansion Tank Level',           'stack'],
   ['6l.type_of_fuel',                  '6L – Type of Fuel',                   'stack'],
   ['6l.qty_fuel_used',                 '6L – Qty of Fuel Used',               'stack'],
-  ['6l.date_of_last_boiler_cleaning',  '6L – Date of Last Boiler Cleaning',   'stack'],
+  ['6l.date_of_last_boiler_cleaning',  '6L – Date of Last Boiler Cleaning',   'date'],
   ['6l.total_running_hrs',             '6L – Total Running Hrs',              'stack'],
   ['6l.consumption_per_hr',            '6L – Consumption Per Hr',             'stack'],
   ['6l.total_consumption',             '6L – Total Consumption (kg)',         'stack'],
@@ -259,18 +258,23 @@ function resetThermopackTabsClean() {
 /* ───────────────────────── Sync loop ───────────────────────── */
 
 /**
- * Time-driven entry point. Runs a few internal passes per minute for
- * sub-minute latency. A ScriptLock prevents overlapping runs.
+ * Time-driven entry point. Google's fastest time-driven trigger is every 1
+ * minute, so to get ~30s worst-case latency we run SEVERAL passes within the
+ * single minute, spaced ~30s apart. We do NOT stop early on an empty pass:
+ * data saved a few seconds into the minute is picked up by the next scheduled
+ * pass (~30s later) instead of waiting for the next minute's trigger. A
+ * ScriptLock prevents overlapping runs.
  */
+var SYNC_PASS_INTERVAL_MS = 30000;   // ~30s between passes → 30–40s worst case
+var SYNC_PASSES = 2;                 // 2 passes per minute (t=0s and t=30s)
+
 function syncTick() {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) { return; }
   try {
-    var passes = 3;
-    for (var p = 0; p < passes; p++) {
-      var moved = syncPass_();
-      if (moved === 0) break;     // nothing left; stop early
-      if (p < passes - 1) Utilities.sleep(18000);
+    for (var p = 0; p < SYNC_PASSES; p++) {
+      syncPass_();                              // always run; never break early
+      if (p < SYNC_PASSES - 1) Utilities.sleep(SYNC_PASS_INTERVAL_MS);
     }
   } finally {
     lock.releaseLock();
@@ -363,12 +367,16 @@ function writeJobCard_(ss, row, p) {
 function writeHourly_(ss, row, p) {
   var sh = ensureTab_(ss, TAB.HOURLY, HOURLY_HEADER);
   var v = p.values || {};
-  var ts = p.saved_at || row.record_ts;   // the row's single real save time
-  // Date = the day the hourly row was saved (from the server-side saved_at).
-  var rowVals = [ fmtDate_(ts), p.variant || '', p.hour || '' ];
-  // Each measurement value stacked above its save time in the same cell.
+  // Per-field entry timestamps captured on the website (values.__ts.<field>).
+  var fts = (v.__ts && typeof v.__ts === 'object') ? v.__ts : {};
+  var rowTs = p.saved_at || row.record_ts;   // fallback only
+  // Date = the day the hourly row was saved.
+  var rowVals = [ fmtDate_(rowTs), p.variant || '', p.hour || '' ];
+  // Each measurement value stacked above the time THAT field was entered on the
+  // website. Fall back to the row save time only if a field has no captured ts.
   for (var i = 0; i < HOURLY_VALUE_KEYS.length; i++) {
-    rowVals.push(stackCell_(v[HOURLY_VALUE_KEYS[i]], ts));
+    var fk = HOURLY_VALUE_KEYS[i];
+    rowVals.push(stackCell_(v[fk], fts[fk] || rowTs));
   }
   rowVals.push(p.operator || '');
 

@@ -90,3 +90,51 @@ begin
   return NEW;
 end;
 $$;
+
+
+-- 3. Replace the hourly trigger so a saved hourly row syncs IMMEDIATELY on
+--    save, instead of waiting until it is associated with a job card. The
+--    operator wants each per-row Save to appear in the sheet right away.
+--    job_card_id is still included in the payload (blank until associated),
+--    but it is NO LONGER a gate. UPSERT keeps one row per hourly id, so a later
+--    association (which fires another UPDATE) rewrites the same row — no
+--    duplicate. Nothing else about the hourly flow changes.
+create or replace function tg_thermo_sync_hourly()
+  returns trigger
+  language plpgsql
+  security definer
+  set search_path = public, pg_temp
+as $$
+declare
+  v_source_pk text;
+  v_payload   jsonb;
+begin
+  begin
+    v_source_pk := NEW.id::text;
+
+    v_payload := jsonb_build_object(
+      'job_card_id', NEW.job_card_id,
+      'variant',     NEW.variant,
+      'hour',        NEW.hour,
+      'operator',    NEW.operator,
+      'values',      coalesce(NEW.values, '{}'::jsonb),
+      'saved_at',    NEW.saved_at
+    );
+
+    insert into thermopack_sheets_sync_outbox (
+      event_id, source_table, source_pk, record_kind, event_type,
+      record_ts, payload, status
+    ) values (
+      md5(TG_TABLE_NAME || '|' || v_source_pk || '|' || 'snapshot'),
+      TG_TABLE_NAME, v_source_pk, 'thermo_hourly', 'current_snapshot',
+      NEW.saved_at, v_payload, 'pending'
+    )
+    on conflict (event_id) do nothing;
+
+  exception when others then
+    raise warning 'thermopack_sync trigger %: %', TG_TABLE_NAME, sqlerrm;
+  end;
+
+  return NEW;
+end;
+$$;

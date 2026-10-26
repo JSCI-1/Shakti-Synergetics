@@ -68,6 +68,9 @@ const MOTORS = [
 function emptyRow() {
   return {
     ...Object.fromEntries(LOG_FIELDS_10L.map(f => [f, ''])),
+    // Per-field entry/update timestamps for THIS hourly row (ISO), keyed by
+    // field name. Populated as the operator types each cell.
+    field_ts: {},
     timestamp: '',
     operator: '',
     saved: false,
@@ -125,6 +128,49 @@ function stampFieldTs(tsMap, key, oldVal, newVal) {
   return next
 }
 
+// Header fields that are shared across operators for shift handover (the whole
+// job card header except the hourly tables and the draft bookkeeping keys).
+const HEADER_SHARE_KEYS = [
+  'shift', 'operator', 'helper1', 'helper2', 'helper3', 'time_in', 'time_out',
+  'coal_date', 'coal_qty', 'bugass_date', 'bugass_qty',
+  'coal_charged', 'bugass_charged', 'diesel_charged', 'remarks',
+]
+
+// Build the shared-header blob from the current form state.
+function buildHeaderBlob(form) {
+  const blob = {}
+  HEADER_SHARE_KEYS.forEach(k => { blob[k] = form[k] ?? '' })
+  blob.summary_10l = form.summary_10l || {}
+  blob.summary_6l = form.summary_6l || {}
+  blob.field_ts = form.field_ts || {}
+  return blob
+}
+
+// Does the header have ANY non-empty field worth sharing?
+function headerHasData(form) {
+  if (HEADER_SHARE_KEYS.some(k => String(form[k] ?? '').trim() !== '')) return true
+  const anySummary = (s) => s && Object.values(s).some(v => String(v ?? '').trim() !== '')
+  return anySummary(form.summary_10l) || anySummary(form.summary_6l)
+}
+
+// Build the shared motor-form blob (what gets handed over between operators).
+function buildMotorBlob(mf) {
+  return {
+    checked_by: mf.checked_by ?? '',
+    remark: mf.remark ?? '',
+    motors_10l: mf.motors_10l || [],
+    motors_6l: mf.motors_6l || [],
+  }
+}
+
+// Does the motor form have ANY entered value worth sharing?
+function motorHasData(mf) {
+  if (String(mf.checked_by ?? '').trim() !== '' || String(mf.remark ?? '').trim() !== '') return true
+  const anyRow = (arr) => (arr || []).some(m =>
+    m && (String(m.val ?? '').trim() !== '' || String(m.stop ?? '').trim() !== ''))
+  return anyRow(mf.motors_10l) || anyRow(mf.motors_6l)
+}
+
 // Stable per-fill draft key so each per-row hourly Save for THIS job card
 // groups together and can be associated with the job card id at submit time.
 function newDraftKey() {
@@ -163,10 +209,6 @@ function emptyForm() {
     coal_charged: '',
     bugass_charged: '',
     diesel_charged: '',
-
-    // "Total fuel Consumption" — operator-entered value (no auto-calc; the app
-    // defines no formula for it). Placed after Diesel in the UI and sheet.
-    total_fuel_consumption: '',
 
     log_variant: '10L',
 
@@ -253,6 +295,334 @@ export default function ThermpackJobCard() {
     return () => clearTimeout(t)
   }, [savedMotor])
 
+  // Running Date defaults to today (emptyMotorForm), but the operator can now
+  // pick any date. A restored draft keeps whatever date was selected.
+
+  // ── Shift handover: auto-save the header to a SHARED draft ──────────
+  // So the next operator sees the header even if operator 1 never clicked Save
+  // Job Card. UPSERTS the header blob keyed by (log_date, variant). Fires when
+  // operator 1 saves an hourly row and (debounced) when header fields change.
+  const saveHeaderDraft = React.useRef(null)
+  saveHeaderDraft.current = async () => {
+    if (!supabaseReady || !supabase) return
+    if (!form.date) return                 // need a date to key the shared draft
+    if (!headerHasData(form)) return       // nothing worth sharing yet
+    try {
+      await supabase
+        .from('thermopack_jobcard_draft')
+        .upsert(
+          {
+            log_date: form.date,
+            variant: form.log_variant,
+            header: buildHeaderBlob(form),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'log_date,variant' }
+        )
+    } catch {
+      // Non-fatal — the local draft still holds the data.
+    }
+  }
+
+  // Debounced auto-save of the shared header whenever header fields change.
+  React.useEffect(() => {
+    if (!supabaseReady || !supabase) return
+    if (!form.date) return
+    const t = setTimeout(() => saveHeaderDraft.current(), 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    form.date, form.log_variant, form.shift, form.operator,
+    form.helper1, form.helper2, form.helper3, form.time_in, form.time_out,
+    form.coal_date, form.coal_qty, form.bugass_date, form.bugass_qty,
+    form.coal_charged, form.bugass_charged, form.diesel_charged, form.remarks,
+    form.summary_10l, form.summary_6l,
+  ])
+
+  // ── Shift handover: prefill the job-card HEADER from a saved card ──
+  // When operator 2 (next shift) selects the SAME date as a job card operator 1
+  // already saved, show everything operator 1 filled (operator, helpers, time
+  // in/out, stock, fuel, summary, remarks). Reads the most recent saved
+  // thermopack_job_cards row for that date and fills ONLY fields the current
+  // operator has left empty — never overwriting what operator 2 is typing.
+  const prefillHeader = React.useRef(null)
+  prefillHeader.current = async () => {
+    if (!supabaseReady || !supabase) return
+    if (!form.date) return
+
+    // 1. Prefer the SHARED working draft (live, even before Save Job Card),
+    //    keyed by (date, variant). 2. Fall back to the most recent saved job
+    //    card for the date. Whichever is found provides `card` (same field set).
+    let card = null
+    try {
+      const d = await supabase
+        .from('thermopack_jobcard_draft')
+        .select('header')
+        .eq('log_date', form.date)
+        .eq('variant', form.log_variant)
+        .maybeSingle()
+      if (!d.error && d.data && d.data.header && typeof d.data.header === 'object') {
+        card = d.data.header
+      }
+    } catch { /* ignore, try the saved card */ }
+
+    if (!card) {
+      try {
+        const res = await supabase
+          .from('thermopack_job_cards')
+          .select('shift, operator, helper1, helper2, helper3, time_in, time_out, '
+            + 'coal_date, coal_qty, bugass_date, bugass_qty, '
+            + 'coal_charged, bugass_charged, diesel_charged, '
+            + 'summary_10l, summary_6l, remarks, field_ts, created_at')
+          .eq('date', form.date)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (res.error) return
+        card = res.data
+      } catch {
+        return
+      }
+    }
+    if (!card) return
+
+    // Fill only EMPTY scalar header fields from the saved card.
+    const scalarKeys = [
+      'shift', 'operator', 'helper1', 'helper2', 'helper3', 'time_in', 'time_out',
+      'coal_date', 'coal_qty', 'bugass_date', 'bugass_qty',
+      'coal_charged', 'bugass_charged', 'diesel_charged', 'remarks',
+    ]
+    setForm(prev => {
+      let changed = false
+      const next = { ...prev }
+
+      scalarKeys.forEach(k => {
+        const cur = String(prev[k] ?? '').trim()
+        const saved = card[k]
+        if (cur === '' && saved !== null && saved !== undefined && String(saved) !== '') {
+          next[k] = saved
+          changed = true
+        }
+      })
+
+      // Summary objects (10L / 6L): fill only sub-fields the operator left empty.
+      ;['summary_10l', 'summary_6l'].forEach(sk => {
+        const savedSummary = card[sk]
+        if (!savedSummary || typeof savedSummary !== 'object') return
+        const merged = { ...prev[sk] }
+        let summaryChanged = false
+        Object.keys(merged).forEach(field => {
+          const cur = String(merged[field] ?? '').trim()
+          const sv = savedSummary[field]
+          if (cur === '' && sv !== null && sv !== undefined && String(sv) !== '') {
+            merged[field] = sv
+            summaryChanged = true
+          }
+        })
+        if (summaryChanged) { next[sk] = merged; changed = true }
+      })
+
+      // Carry over the saved per-field timestamps for any field we just filled,
+      // so the sheet keeps operator 1's original entry times (not overwritten).
+      if (card.field_ts && typeof card.field_ts === 'object') {
+        next.field_ts = { ...(card.field_ts || {}), ...(prev.field_ts || {}) }
+        changed = true
+      }
+
+      return changed ? next : prev
+    })
+  }
+
+  React.useEffect(() => {
+    if (!supabaseReady || !supabase) return
+    prefillHeader.current()
+    // Poll so an operator who opens the same date+variant sees header updates
+    // the other operator makes, without a manual refresh.
+    const id = setInterval(() => prefillHeader.current(), 15000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') prefillHeader.current()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.date, form.log_variant])
+
+  // ── Shift handover / restore: shared Running Motor Amp Status draft ──
+  // Auto-save the motor form to a shared draft keyed by (running_date, variant)
+  // so the next operator (or the same operator after reload / re-login on
+  // another device) sees the entered values even before "Save Motor Status".
+  const saveMotorDraft = React.useRef(null)
+  saveMotorDraft.current = async () => {
+    if (!supabaseReady || !supabase) return
+    if (!motorForm.running_date) return
+    if (!motorHasData(motorForm)) return
+    try {
+      await supabase
+        .from('thermopack_motor_draft')
+        .upsert(
+          {
+            running_date: motorForm.running_date,
+            variant: motorForm.motor_variant,
+            form: buildMotorBlob(motorForm),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'running_date,variant' }
+        )
+    } catch { /* non-fatal; localStorage still holds it */ }
+  }
+
+  // Debounced auto-save whenever the motor form changes.
+  React.useEffect(() => {
+    if (!supabaseReady || !supabase) return
+    if (!motorForm.running_date) return
+    const t = setTimeout(() => saveMotorDraft.current(), 1200)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    motorForm.running_date, motorForm.motor_variant, motorForm.checked_by,
+    motorForm.remark, motorForm.motors_10l, motorForm.motors_6l,
+  ])
+
+  // Prefill the motor form from the shared draft on date/variant selection,
+  // filling ONLY empty fields (never overwriting what the operator is typing).
+  // Polls + refocus so another operator's updates appear without a refresh.
+  const prefillMotorDraft = React.useRef(null)
+  prefillMotorDraft.current = async () => {
+    if (!supabaseReady || !supabase) return
+    if (!motorForm.running_date) return
+    let blob = null
+    try {
+      const res = await supabase
+        .from('thermopack_motor_draft')
+        .select('form')
+        .eq('running_date', motorForm.running_date)
+        .eq('variant', motorForm.motor_variant)
+        .maybeSingle()
+      if (res.error) return
+      blob = res.data && res.data.form
+    } catch { return }
+    if (!blob || typeof blob !== 'object') return
+
+    const varKey = motorForm.motor_variant === '10L' ? 'motors_10l' : 'motors_6l'
+    const savedRows = blob[varKey] || []
+
+    setMotorForm(prev => {
+      let changed = false
+      const next = { ...prev }
+
+      if (String(prev.checked_by ?? '').trim() === '' && String(blob.checked_by ?? '').trim() !== '') {
+        next.checked_by = blob.checked_by; changed = true
+      }
+      if (String(prev.remark ?? '').trim() === '' && String(blob.remark ?? '').trim() !== '') {
+        next.remark = blob.remark; changed = true
+      }
+
+      // Fill only empty motor rows for the active variant.
+      const curRows = prev[varKey] || []
+      const mergedRows = curRows.map((m, idx) => {
+        const localHas = m && (String(m.val ?? '').trim() !== '' || String(m.stop ?? '').trim() !== '')
+        if (localHas) return m
+        const rem = savedRows[idx]
+        if (!rem || (String(rem.val ?? '').trim() === '' && String(rem.stop ?? '').trim() === '')) return m
+        changed = true
+        return { ...m, val: rem.val ?? '', stop: rem.stop ?? '', timestamp: rem.timestamp || '', isoTime: rem.isoTime || '' }
+      })
+      if (changed) next[varKey] = mergedRows
+      return changed ? next : prev
+    })
+  }
+
+  React.useEffect(() => {
+    if (!supabaseReady || !supabase) return
+    prefillMotorDraft.current()
+    const id = setInterval(() => prefillMotorDraft.current(), 15000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') prefillMotorDraft.current()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [motorForm.running_date, motorForm.motor_variant])
+
+  // ── Shared hourly log across operators ──────────────────────
+  // There are multiple Thermopack operators. The hourly draft is shared by
+  // (log_date, variant, hour), so an hour one operator saves appears for the
+  // others. This pulls every saved hour for the current (date, variant) and
+  // fills ONLY empty local slots — a row the current operator is editing (has
+  // any data) is never overwritten. Runs on mount/date/variant change and on a
+  // 15s poll so new saves from other operators appear without a refresh.
+  const mergeSharedHours = React.useRef(null)
+  mergeSharedHours.current = async () => {
+    if (!supabaseReady || !supabase) return
+    const logDate = form.date || new Date().toISOString().slice(0, 10)
+    const variant = form.log_variant
+    const rowsKey = variant === '10L' ? 'rows_10l' : 'rows_6l'
+
+    let data = null
+    try {
+      const res = await supabase
+        .from('thermopack_hourly_draft')
+        .select('hour, values, operator, saved_at')
+        .eq('log_date', logDate)
+        .eq('variant', variant)
+        .order('saved_at', { ascending: true })
+      if (res.error) return
+      data = res.data
+    } catch {
+      return
+    }
+    if (!data) return
+
+    const byHour = {}
+    data.forEach(r => { byHour[r.hour] = r })
+
+    const rowHasData = (r) =>
+      !!r && LOG_FIELDS_10L.some(f => String(r[f] ?? '').trim() !== '')
+
+    setForm(prev => {
+      let changed = false
+      const nextRows = TIME_SLOTS.map((slot, idx) => {
+        const local = prev[rowsKey][idx]
+        if (rowHasData(local)) return local   // keep in-progress / own edits
+        const remote = byHour[slot]
+        if (!remote) return local
+        const v = remote.values || {}
+        changed = true
+        return {
+          ...emptyRow(),
+          ...Object.fromEntries(LOG_FIELDS_10L.map(f => [f, v[f] ?? ''])),
+          field_ts: (v.__ts && typeof v.__ts === 'object') ? v.__ts : {},
+          operator: remote.operator || '',
+          timestamp: stamp12hr(),
+          saved: true,
+        }
+      })
+      if (!changed) return prev
+      return { ...prev, [rowsKey]: nextRows }
+    })
+  }
+
+  React.useEffect(() => {
+    if (!supabaseReady || !supabase) return
+    mergeSharedHours.current()
+    const id = setInterval(() => mergeSharedHours.current(), 15000)
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') mergeSharedHours.current()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.date, form.log_variant])
+
   const set = (name, value) =>
     setForm(prev => ({
       ...prev,
@@ -269,7 +639,10 @@ export default function ThermpackJobCard() {
     }
   }
 
-  // setRow targets the currently active variant's rows
+  // setRow targets the currently active variant's rows. Each field keeps its
+  // OWN entry/update timestamp in the row's field_ts map (set when the value
+  // changes to non-empty, preserved when unchanged), so the sheet can show the
+  // time the operator entered THAT field — not one shared row-save time.
   const setRow = (i, field, value) => {
     const key = form.log_variant === '10L'
       ? 'rows_10l'
@@ -282,6 +655,7 @@ export default function ThermpackJobCard() {
           ? {
               ...r,
               [field]: value,
+              field_ts: stampFieldTs(r.field_ts, field, r[field], value),
             }
           : r
       ),
@@ -311,15 +685,26 @@ export default function ThermpackJobCard() {
     const values = Object.fromEntries(
       LOG_FIELDS_10L.map(f => [f, rowData[f] ?? ''])
     )
+    // Carry the per-field entry timestamps inside values under '__ts' so the
+    // sheet shows the time each cell was entered (not the row-save time). No
+    // schema change needed — values is already jsonb.
+    values.__ts = { ...(rowData.field_ts || {}) }
 
     setSavingRow(`${variant}:${i}`)
     setError('')
+
+    // Shared across operators by (log_date, variant, hour): the per-row Save
+    // UPSERTS onto that key, so every Thermopack operator viewing the same
+    // date + variant sees this hour. log_date = the job card date if set, else
+    // today (IST).
+    const logDate = form.date || new Date().toISOString().slice(0, 10)
 
     const { error: eRow } = await supabase
       .from('thermopack_hourly_draft')
       .upsert(
         {
           draft_key: draftKey,
+          log_date: logDate,
           variant,
           hour: slot,
           values,
@@ -329,7 +714,7 @@ export default function ThermpackJobCard() {
           saved_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         },
-        { onConflict: 'draft_key,variant,hour' }
+        { onConflict: 'log_date,variant,hour' }
       )
 
     setSavingRow('')
@@ -338,6 +723,10 @@ export default function ThermpackJobCard() {
       setError(eRow.message)
       return
     }
+
+    // Also push the current header to the shared draft so the next operator
+    // gets it even if Save Job Card is never clicked.
+    if (saveHeaderDraft.current) saveHeaderDraft.current()
 
     const ts = stamp12hr()
     const opName = loggedInUserName() || form.operator || ''
@@ -397,7 +786,16 @@ export default function ThermpackJobCard() {
           const hasAmp = next.val !== undefined && next.val !== null && String(next.val).trim() !== ''
           const hasStatus = next.stop !== undefined && next.stop !== null && String(next.stop).trim() !== ''
           if (!next.saved) {
-            next.timestamp = (hasAmp && hasStatus) ? stamp12hr() : ''
+            if (hasAmp && hasStatus) {
+              // Capture the FILL moment (display + ISO) once both fields are in.
+              if (!next.timestamp) {
+                next.timestamp = stamp12hr()
+                next.isoTime = new Date().toISOString()
+              }
+            } else {
+              next.timestamp = ''
+              next.isoTime = ''
+            }
           }
           return next
         }),
@@ -432,9 +830,6 @@ export default function ThermpackJobCard() {
     const nowIso = new Date().toISOString()
     const fieldTs = { ...(form.field_ts || {}) }
     if (operatorName && !fieldTs.operator) fieldTs.operator = nowIso
-    if (String(form.total_fuel_consumption || '').trim() !== '' && !fieldTs.total_fuel_consumption) {
-      fieldTs.total_fuel_consumption = nowIso
-    }
 
     const payload = {
       date: form.date || null,
@@ -470,11 +865,6 @@ export default function ThermpackJobCard() {
 
       diesel_charged: form.diesel_charged
         ? parseFloat(form.diesel_charged)
-        : null,
-
-      // "Total fuel Consumption" — operator-entered (no auto-calc).
-      total_fuel_consumption: form.total_fuel_consumption
-        ? parseFloat(form.total_fuel_consumption)
         : null,
 
       // Summary fields
@@ -554,11 +944,10 @@ export default function ThermpackJobCard() {
 
     setSaving(false)
     setSavedMain(true)
-    // Remember the saved job card id so re-clicking Save Job Card UPDATES the
-    // same record instead of creating a duplicate. Data stays in the fields
-    // until the user clicks Reset.
-    if (inserted && inserted.id) setSubmittedJobCardId(inserted.id)
-    // Inline confirmation (auto-dismisses) — set via savedMain above.
+    setSubmittedJobCardId(null)
+    // Clear the job card form after a successful save (fresh draft_key for the
+    // next card). Inline confirmation (auto-dismisses) is set via savedMain.
+    clearFormDraft()
   }
 
   async function handleMotorSubmit(e) {
@@ -574,13 +963,21 @@ export default function ThermpackJobCard() {
       (m.val !== undefined && m.val !== null && String(m.val).trim() !== '') ||
       (m.stop !== undefined && m.stop !== null && String(m.stop).trim() !== '')
 
-    // Stamp each completed row's save moment; drop incomplete rows (never saved
-    // silently). Keep the per-motor slot order by writing nulls for blanks.
+    // Preserve the time captured when the operator FILLED the row (set live in
+    // setMotorCell). Only fall back to now() if a completed row somehow has no
+    // fill-time yet. Drop incomplete rows (never saved silently).
     const nowIso = new Date().toISOString()
     const prepare = (motors) =>
       motors.map(m =>
         isComplete(m)
-          ? { val: m.val, stop: m.stop, timestamp: stamp12hr(), isoTime: nowIso, saved: true }
+          ? {
+              val: m.val,
+              stop: m.stop,
+              // Keep the fill-time display stamp + its ISO; fall back to now.
+              timestamp: m.timestamp || stamp12hr(),
+              isoTime: m.isoTime || nowIso,
+              saved: true,
+            }
           : null
       )
 
@@ -598,11 +995,14 @@ export default function ThermpackJobCard() {
     setError('')
     setSavedMotor(false)
 
+    // Use the operator-selected running date (defaults to today).
+    const runDate = motorForm.running_date || new Date().toISOString().slice(0, 10)
+
     const { error: e2 } = await supabase
       .from('motor_amp_status')
       .insert([
         {
-          running_date:   motorForm.running_date || null,
+          running_date:   runDate,
           checked_by:     motorForm.checked_by,
           remark:         motorForm.remark,
           motor_variant:  motorForm.motor_variant,
@@ -617,19 +1017,19 @@ export default function ThermpackJobCard() {
       setError(e2.message)
     } else {
       setSavedMotor(true)
-      // Keep the entered data in the fields until the user clicks Reset.
-      // Mark the saved rows (stamp their timestamps in the live form) so the
-      // Timestamp column reflects the persisted save moment.
-      setMotorForm(prev => ({
-        ...prev,
-        motors_10l: prev.motors_10l.map((m, idx) =>
-          prepared10[idx] ? { ...m, timestamp: prepared10[idx].timestamp, saved: true } : m
-        ),
-        motors_6l: prev.motors_6l.map((m, idx) =>
-          prepared6[idx] ? { ...m, timestamp: prepared6[idx].timestamp, saved: true } : m
-        ),
-      }))
-      // Inline confirmation (auto-dismisses) — set via savedMotor above.
+      // Remove the shared working draft for this (date, variant) so the just-
+      // cleared form is not immediately refilled from it by the prefill poll.
+      // The permanent record is already in motor_amp_status.
+      try {
+        await supabase
+          .from('thermopack_motor_draft')
+          .delete()
+          .eq('running_date', runDate)
+          .eq('variant', motorForm.motor_variant)
+      } catch { /* non-fatal */ }
+      // Clear the motor form after a successful save. Inline confirmation
+      // (auto-dismisses) is set via savedMotor above.
+      clearMotorDraft()
     }
   }
 
@@ -925,25 +1325,6 @@ export default function ThermpackJobCard() {
                 value={form.diesel_charged}
                 onChange={e =>
                   set('diesel_charged', e.target.value)
-                }
-              />
-
-            </div>
-
-            <div className="common-entry-field">
-
-              <div className="cell-mini-label">
-                Total fuel Consumption
-              </div>
-
-              <input
-                type="text"
-                inputMode="decimal"
-                className="tjc-input"
-                placeholder="0"
-                value={form.total_fuel_consumption}
-                onChange={e =>
-                  setNumeric('total_fuel_consumption', e.target.value)
                 }
               />
 
@@ -1622,14 +2003,10 @@ export default function ThermpackJobCard() {
             {/* ── Meta ── */}
             <div className="sc-meta-row">
               <div className="sc-meta-field">
-                <Label en="Running Date" hi="चलने की तारीख" />
+                <Label en="Select Date" hi="तारीख चुनें" />
                 <input type="date" className="tjc-input"
                   value={motorForm.running_date}
-                  min={motorForm.running_date} max={motorForm.running_date}
-                  readOnly style={{ background: '#f5f0ea', cursor: 'not-allowed' }} />
-                <div style={{ fontSize: '10px', color: '#999', marginTop: '3px' }}>
-                  Today only — {motorForm.running_date.split('-').reverse().join('/')}
-                </div>
+                  onChange={e => setMotorForm(p => ({ ...p, running_date: e.target.value }))} />
               </div>
               <div className="sc-meta-field sc-meta-wide">
                 <Label en="Checked By" hi="जाँच की गई" />
