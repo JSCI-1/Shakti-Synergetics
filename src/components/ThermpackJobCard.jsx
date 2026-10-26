@@ -298,6 +298,16 @@ export default function ThermpackJobCard() {
   // Running Date defaults to today (emptyMotorForm), but the operator can now
   // pick any date. A restored draft keeps whatever date was selected.
 
+  // After a Save Job Card / Save Motor Status, a debounced auto-save timer may
+  // still be pending (queued from the last keystroke). If it fires after the
+  // drafts are deleted, it RE-CREATES the draft and the data reappears. These
+  // guards suppress draft auto-save AND prefill for a short window after a
+  // submit, so the just-saved data stays gone. Keyed nothing-fancy: a simple
+  // "ignore until this time" per feature.
+  const suppressJobcardUntil = React.useRef(0)
+  const suppressMotorUntil = React.useRef(0)
+  const SUPPRESS_MS = 8000   // > debounce (1.2s) + a poll cycle (15s) is overkill; 8s covers the debounce + delete settle
+
   // ── Shift handover: auto-save the header to a SHARED draft ──────────
   // So the next operator sees the header even if operator 1 never clicked Save
   // Job Card. UPSERTS the header blob keyed by (log_date, variant). Fires when
@@ -305,6 +315,7 @@ export default function ThermpackJobCard() {
   const saveHeaderDraft = React.useRef(null)
   saveHeaderDraft.current = async () => {
     if (!supabaseReady || !supabase) return
+    if (Date.now() < suppressJobcardUntil.current) return   // just submitted — don't re-create
     if (!form.date) return                 // need a date to key the shared draft
     if (!headerHasData(form)) return       // nothing worth sharing yet
     try {
@@ -348,11 +359,14 @@ export default function ThermpackJobCard() {
   const prefillHeader = React.useRef(null)
   prefillHeader.current = async () => {
     if (!supabaseReady || !supabase) return
+    if (Date.now() < suppressJobcardUntil.current) return   // just submitted — don't refill
     if (!form.date) return
 
-    // 1. Prefer the SHARED working draft (live, even before Save Job Card),
-    //    keyed by (date, variant). 2. Fall back to the most recent saved job
-    //    card for the date. Whichever is found provides `card` (same field set).
+    // Prefill ONLY from the SHARED WORKING draft (keyed by date, variant),
+    // which exists while a card is in progress. We do NOT fall back to the
+    // permanent thermopack_job_cards record: once the operator clicks Save Job
+    // Card, the working draft is DELETED, so a saved/submitted card never
+    // re-appears in the form (it lives only in Supabase + the Google Sheet).
     let card = null
     try {
       const d = await supabase
@@ -364,26 +378,7 @@ export default function ThermpackJobCard() {
       if (!d.error && d.data && d.data.header && typeof d.data.header === 'object') {
         card = d.data.header
       }
-    } catch { /* ignore, try the saved card */ }
-
-    if (!card) {
-      try {
-        const res = await supabase
-          .from('thermopack_job_cards')
-          .select('shift, operator, helper1, helper2, helper3, time_in, time_out, '
-            + 'coal_date, coal_qty, bugass_date, bugass_qty, '
-            + 'coal_charged, bugass_charged, diesel_charged, '
-            + 'summary_10l, summary_6l, remarks, field_ts, created_at')
-          .eq('date', form.date)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        if (res.error) return
-        card = res.data
-      } catch {
-        return
-      }
-    }
+    } catch { return }
     if (!card) return
 
     // Fill only EMPTY scalar header fields from the saved card.
@@ -457,6 +452,7 @@ export default function ThermpackJobCard() {
   const saveMotorDraft = React.useRef(null)
   saveMotorDraft.current = async () => {
     if (!supabaseReady || !supabase) return
+    if (Date.now() < suppressMotorUntil.current) return   // just submitted — don't re-create
     if (!motorForm.running_date) return
     if (!motorHasData(motorForm)) return
     try {
@@ -492,6 +488,7 @@ export default function ThermpackJobCard() {
   const prefillMotorDraft = React.useRef(null)
   prefillMotorDraft.current = async () => {
     if (!supabaseReady || !supabase) return
+    if (Date.now() < suppressMotorUntil.current) return   // just submitted — don't refill
     if (!motorForm.running_date) return
     let blob = null
     try {
@@ -560,6 +557,7 @@ export default function ThermpackJobCard() {
   const mergeSharedHours = React.useRef(null)
   mergeSharedHours.current = async () => {
     if (!supabaseReady || !supabase) return
+    if (Date.now() < suppressJobcardUntil.current) return   // just submitted — don't refill
     const logDate = form.date || new Date().toISOString().slice(0, 10)
     const variant = form.log_variant
     const rowsKey = variant === '10L' ? 'rows_10l' : 'rows_6l'
@@ -942,6 +940,22 @@ export default function ThermpackJobCard() {
       }
     }
 
+    // The card is now permanently saved (thermopack_job_cards + Google Sheet).
+    // Delete the SHARED WORKING drafts for this date so the just-saved data is
+    // NOT re-prefilled into the form afterwards — it should live only in
+    // Supabase + the sheet now. Covers both variants (the card owns both).
+    // Block the debounced header auto-save + prefill/merge polls from
+    // re-creating or re-reading the draft right after we delete it.
+    suppressJobcardUntil.current = Date.now() + SUPPRESS_MS
+
+    const savedDate = form.date
+    if (savedDate) {
+      const delJc = await supabase.from('thermopack_jobcard_draft').delete().eq('log_date', savedDate)
+      if (delJc.error) console.warn('jobcard_draft delete failed:', delJc.error.message)
+      const delHr = await supabase.from('thermopack_hourly_draft').delete().eq('log_date', savedDate)
+      if (delHr.error) console.warn('hourly_draft delete failed:', delHr.error.message)
+    }
+
     setSaving(false)
     setSavedMain(true)
     setSubmittedJobCardId(null)
@@ -1020,13 +1034,16 @@ export default function ThermpackJobCard() {
       // Remove the shared working draft for this (date, variant) so the just-
       // cleared form is not immediately refilled from it by the prefill poll.
       // The permanent record is already in motor_amp_status.
-      try {
-        await supabase
-          .from('thermopack_motor_draft')
-          .delete()
-          .eq('running_date', runDate)
-          .eq('variant', motorForm.motor_variant)
-      } catch { /* non-fatal */ }
+      // Block the debounced motor auto-save + prefill poll from re-creating or
+      // re-reading the draft right after we delete it.
+      suppressMotorUntil.current = Date.now() + SUPPRESS_MS
+
+      const delMotor = await supabase
+        .from('thermopack_motor_draft')
+        .delete()
+        .eq('running_date', runDate)
+        .eq('variant', motorForm.motor_variant)
+      if (delMotor.error) console.warn('motor_draft delete failed:', delMotor.error.message)
       // Clear the motor form after a successful save. Inline confirmation
       // (auto-dismisses) is set via savedMotor above.
       clearMotorDraft()

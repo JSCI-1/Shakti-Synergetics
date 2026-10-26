@@ -89,6 +89,9 @@ var JOBCARD_FIELDS = [
   ['coal_charged',   'Fuel Charged – Coal (MT)',              'stack'],
   ['bugass_charged', 'Fuel Charged – Bugass (MT)',            'stack'],
   ['diesel_charged', 'Diesel (Ltr)',                          'stack'],
+  // Total fuel Consumption = Coal + Bugass (computed in the writer, not a
+  // stored field). mode 'sum_fuel' → plain numeric sum, no timestamp line.
+  ['total_fuel_consumption', 'Total fuel Consumption',        'sum_fuel'],
   // Summary — 10 L kCal
   ['10l.outlet_set_temp',              '10L – Outlet Set Temp (°C)',          'stack'],
   ['10l.expansion_tank_level',         '10L – Expansion Tank Level',          'stack'],
@@ -259,14 +262,15 @@ function resetThermopackTabsClean() {
 
 /**
  * Time-driven entry point. Google's fastest time-driven trigger is every 1
- * minute, so to get ~30s worst-case latency we run SEVERAL passes within the
- * single minute, spaced ~30s apart. We do NOT stop early on an empty pass:
- * data saved a few seconds into the minute is picked up by the next scheduled
- * pass (~30s later) instead of waiting for the next minute's trigger. A
- * ScriptLock prevents overlapping runs.
+ * minute, so to get sub-minute latency we run SEVERAL passes WITHIN the single
+ * minute, spaced ~20s apart (t≈0s, 20s, 40s). We do NOT stop early on an empty
+ * pass, so data saved anywhere in the minute is picked up by the next pass
+ * ~20s later instead of waiting for the next minute's trigger. Worst-case
+ * latency is therefore ~20–25s (well inside the 30–40s target). A ScriptLock
+ * prevents overlapping runs; each run stays ~40s, far under the 6-min limit.
  */
-var SYNC_PASS_INTERVAL_MS = 30000;   // ~30s between passes → 30–40s worst case
-var SYNC_PASSES = 2;                 // 2 passes per minute (t=0s and t=30s)
+var SYNC_PASS_INTERVAL_MS = 20000;   // ~20s between passes
+var SYNC_PASSES = 3;                 // 3 passes per minute (t≈0s, 20s, 40s)
 
 function syncTick() {
   var lock = LockService.getScriptLock();
@@ -355,6 +359,18 @@ function writeJobCard_(ss, row, p) {
       rowVals.push(fmtDate_(val));          // Date-type: no timestamp line
     } else if (mode === 'plain') {
       rowVals.push(valOrBlank_(val));
+    } else if (mode === 'sum_fuel') {
+      // Total fuel Consumption = Fuel Charged Coal + Fuel Charged Bugass.
+      // Blank only if BOTH are blank; otherwise the numeric sum (no timestamp).
+      var coal = parseFloat(p.coal_charged);
+      var bug  = parseFloat(p.bugass_charged);
+      var hasCoal = !isNaN(coal);
+      var hasBug  = !isNaN(bug);
+      if (!hasCoal && !hasBug) {
+        rowVals.push('');
+      } else {
+        rowVals.push((hasCoal ? coal : 0) + (hasBug ? bug : 0));
+      }
     } else {
       // 'stack': value on line 1, its own entry/update time on line 2.
       rowVals.push(stackCell_(val, fts[key]));
@@ -362,6 +378,7 @@ function writeJobCard_(ss, row, p) {
   }
 
   upsertByKey_(sh, JOBCARD_HEADER, rowVals, row.source_pk);
+  formatTab_(sh, JOBCARD_HEADER.length);   // format AFTER writing the row
 }
 
 function writeHourly_(ss, row, p) {
@@ -381,6 +398,7 @@ function writeHourly_(ss, row, p) {
   rowVals.push(p.operator || '');
 
   upsertByKey_(sh, HOURLY_HEADER, rowVals, row.source_pk);
+  formatTab_(sh, HOURLY_HEADER.length);   // format AFTER writing the row
 }
 
 function writeMotor_(ss, row, p) {
@@ -423,6 +441,7 @@ function writeMotor_(ss, row, p) {
       upsertByKey_(sh, MOTOR_HEADER, rowVals, dedupKey);
     }
   }
+  formatTab_(sh, MOTOR_HEADER.length);   // format AFTER writing all rows
 }
 
 
@@ -432,7 +451,8 @@ function ensureTab_(ss, name, header) {
   var sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
   ensureHeader_(sh, header);
-  formatTab_(sh, header.length);
+  // NOTE: formatting is applied AFTER the row is written (see each writer's
+  // trailing formatTab_ call), so auto-resize/centering include the new data.
   return sh;
 }
 
