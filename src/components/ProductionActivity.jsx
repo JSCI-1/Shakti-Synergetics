@@ -87,7 +87,21 @@ function groupRows(rows) {
     // Store values + the row's own last_saved_at so the Timestamp column can
     // render the precise per-row save time (ISO, seconds precision) rather than
     // the values.timestamp string (HH:MM only, same for bulk-saved rows).
-    g.hours[r.hour] = { ...(r.values || {}), _last_saved_at: r.last_saved_at }
+    //
+    // IMPORTANT: for a given hour there can be more than one row (e.g. a Day and
+    // a Night shift row for the same hour, or a re-saved/edited row). The query
+    // is ordered only by log_date, so row arrival order does NOT guarantee the
+    // newest one is processed last. Keep the MOST RECENTLY SAVED row per hour
+    // (by last_saved_at) so an EDIT (which bumps last_saved_at) always wins and
+    // its new value is shown — not an older, unedited duplicate.
+    const rSavedMs = r.last_saved_at ? new Date(r.last_saved_at).getTime() : 0
+    const existingHour = g.hours[r.hour]
+    const existingMs = existingHour && existingHour._last_saved_at
+      ? new Date(existingHour._last_saved_at).getTime()
+      : -1
+    if (!existingHour || rSavedMs >= existingMs) {
+      g.hours[r.hour] = { ...(r.values || {}), _last_saved_at: r.last_saved_at }
+    }
     // Track the newest submission timestamp across all hours in this group
     if (r.last_saved_at && (!g.lastSavedAt || new Date(r.last_saved_at) > new Date(g.lastSavedAt))) {
       g.lastSavedAt = r.last_saved_at

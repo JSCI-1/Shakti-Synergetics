@@ -9,6 +9,7 @@ import {
   buildEventsTrail,
   latestFieldEditIso,
   fmtIstTs,
+  HISTORY_SCALAR_FIELDS,
 } from './dryerHistory.js'
 import './DryerSection.css'
 
@@ -330,6 +331,13 @@ function DryerForm({
   //   rowSnapshot[i] — pre-edit local snapshot of the row, for Cancel (A4)
   const [rowEditing, setRowEditing] = useState({})
   const rowSnapshotRef = useRef({})
+  // Fields the operator ACTIVELY TOUCHED during the current edit session, keyed
+  // by row index → Set(fieldKey). "Touched" = any keystroke/toggle on the field
+  // while in edit mode, EVEN IF the value ends up identical (e.g. clear + retype
+  // the same number). On Save Changes we stamp a fresh edit timestamp + history
+  // entry for every touched field (Option 2), unioned with the real value diff.
+  // Reset when edit mode is entered/left so a later session starts clean.
+  const rowTouchedRef = useRef({})
 
   // Transient success toast ("… saved successfully"). Positioned bottom-center
   // on mobile and bottom-right on larger screens (see .dr-toast in the CSS),
@@ -377,6 +385,13 @@ function DryerForm({
 
 
   const setRow = (i, field, val) => {
+    // Record that this field was actively touched during an edit session, so a
+    // clear-and-retype-same-value still counts as an edit (Option 2).
+    if (rowEditing[i]) {
+      const cur = rowTouchedRef.current[i] || new Set()
+      cur.add(field)
+      rowTouchedRef.current[i] = cur
+    }
     setForm(p => ({
       ...p,
       rows: p.rows.map((r, idx) => {
@@ -402,6 +417,12 @@ function DryerForm({
   // timestamp (now); unselecting clears it. Both options are independent — the
   // user can select one, the other, or both. Editing un-saves the hour.
   const toggleMaintenance = (i, optKey) => {
+    // Touching maintenance during an edit session counts as an edit (Option 2).
+    if (rowEditing[i]) {
+      const cur = rowTouchedRef.current[i] || new Set()
+      cur.add('maintenance')
+      rowTouchedRef.current[i] = cur
+    }
     setForm(p => ({
       ...p,
       rows: p.rows.map((r, idx) => {
@@ -489,29 +510,63 @@ function DryerForm({
       return scalarsEmpty && maintenanceEmpty
     }
 
+    // Build a merged-in row from a remote record (shared, already-saved hour).
+    const fromRemote = (remote) => {
+      const base = emptyRow()
+      const v = remote.values || {}
+      return {
+        ...base,
+        ...v,
+        // Preserve per-field entry times from the shared draft so unchanged
+        // fields keep their ORIGINAL timestamp across reloads/handover.
+        __ts: (v && v.__ts && typeof v.__ts === 'object') ? v.__ts : {},
+        // remote rows represent an already-shared (saved) hour
+        saved: true,
+        // Track the shared save time so a LATER remote edit (newer
+        // last_saved_at) can be detected and pulled in below.
+        __last_saved_at: remote.last_saved_at || '',
+      }
+    }
+
     setForm(p => {
       let changed = false
       const nextRows = TIME_SLOTS.map((slot, idx) => {
         const prev = p.rows[idx]
-        // Local row has data → KEEP it as-is (restored draft / in-progress /
-        // an hour this operator is currently editing). Never overwrite it.
-        if (!rowIsEmpty(prev)) return prev
-
         const remote = byHour[slot]
-        if (!remote) return prev || emptyRow()   // nothing remote → keep local (empty) row
 
-        const base = emptyRow()
-        const v = remote.values || {}
-        changed = true
-        return {
-          ...base,
-          ...v,
-          // Preserve per-field entry times from the shared draft so unchanged
-          // fields keep their ORIGINAL timestamp across reloads/handover.
-          __ts: (v && v.__ts && typeof v.__ts === 'object') ? v.__ts : {},
-          // remote rows represent an already-shared (saved) hour
-          saved: true,
+        // Empty local slot → fill from remote if present (original additive
+        // live-share behavior: a hour another operator saved appears here).
+        if (rowIsEmpty(prev)) {
+          if (!remote) return prev || emptyRow()
+          changed = true
+          return fromRemote(remote)
         }
+
+        // Local row HAS data. Normally we keep it as-is. But we must also
+        // propagate an EDIT another operator made to a hour this operator
+        // already has — otherwise edited values never reach the other operator.
+        // Overwrite ONLY when ALL of these hold, so we never clobber work in
+        // progress:
+        //   • there is a matching remote row,
+        //   • this row is NOT currently being edited here (rowEditing[idx]),
+        //   • this row is already saved (not a fresh local draft being typed),
+        //   • the remote was saved STRICTLY LATER than what we last pulled
+        //     (remote.last_saved_at > local __last_saved_at) → a genuine newer
+        //     edit, not the same record we already show.
+        if (
+          remote &&
+          !rowEditing[idx] &&
+          prev && prev.saved &&
+          remote.last_saved_at &&
+          String(remote.last_saved_at) > String(prev.__last_saved_at || '')
+        ) {
+          changed = true
+          return fromRemote(remote)
+        }
+
+        // Otherwise keep the local row untouched (in-progress / being edited /
+        // not newer remotely).
+        return prev
       })
       // Avoid a needless state update (and re-render) when nothing new arrived.
       if (!changed) return p
@@ -622,6 +677,7 @@ function DryerForm({
     // clear the spinner, and — crucially — NEVER touch form.rows, so every
     // entered value stays intact and the row remains re-savable.
     let err = null
+    let saveTokenRef = null   // the last_saved_at we write, stored on the row below
     try {
       // Re-read persisted history so a re-save merges (not clobbers) any newer
       // edit from another device. A never-before-saved hour reads nothing and
@@ -641,6 +697,8 @@ function DryerForm({
         // Transient read failure — proceed with the local values.
       }
 
+      const savedToken = new Date().toISOString()
+      saveTokenRef = savedToken
       const res = await supabase
         .from('dryer_hourly_draft')
         .upsert(
@@ -653,8 +711,8 @@ function DryerForm({
             // timestamp is display-only (en-IN); never used for expiry/order.
             // operator_name = who pressed Save for this hour (per-row).
             values: mergedValues,
-            updated_at: new Date().toISOString(),
-            last_saved_at: new Date().toISOString(),
+            updated_at: savedToken,
+            last_saved_at: savedToken,
           },
           // Identity now includes shift, matching the Google Sheet row key
           // (H|date|shift|hour) and the widened Supabase unique key (migration
@@ -700,6 +758,9 @@ function DryerForm({
                 : (r && r.__hist) || {},
               operator_name: savedBy,
               timestamp: ts,
+              // Baseline shared save time so the poll doesn't re-pull our own
+              // just-saved record as if it were a newer remote edit.
+              __last_saved_at: saveTokenRef || '',
               saved: true,
             }
           : r
@@ -716,6 +777,7 @@ function DryerForm({
     const row = (form.rows && form.rows[i]) ? form.rows[i] : emptyRow()
     if (!row.saved || row.__finalized) return
     rowSnapshotRef.current[i] = JSON.parse(JSON.stringify(row))
+    rowTouchedRef.current[i] = new Set()   // fresh touched-field tracking for this session
     setRowErrors(prev => {
       const next = { ...prev }
       delete next[i]
@@ -737,6 +799,7 @@ function DryerForm({
       ),
     }))
     delete rowSnapshotRef.current[i]
+    delete rowTouchedRef.current[i]
     setRowErrors(prev => {
       const next = { ...prev }
       delete next[i]
@@ -772,6 +835,7 @@ function DryerForm({
       rows: (Array.isArray(p.rows) ? p.rows : []).map((r, idx) => (idx === i ? restored : r)),
     }))
     delete rowSnapshotRef.current[i]
+    delete rowTouchedRef.current[i]
     setRowEditing(prev => {
       const next = { ...prev }
       delete next[i]
@@ -811,6 +875,14 @@ function DryerForm({
     const savedBy = userName || form.operator || localFields.operator_name || ''
     const identity = { dryer_type: dryerType, log_date: form.date, hour, shift: form.shift }
 
+    // Option 2: fields the operator ACTIVELY TOUCHED this session (even if the
+    // value ended up identical) count as edits. Snapshot the touched set now;
+    // it is unioned with the real value-diff below. Only history-tracked fields
+    // qualify (a stray touch of a non-tracked field is ignored by the union).
+    const touchedFields = rowTouchedRef.current[i] instanceof Set
+      ? new Set(rowTouchedRef.current[i])
+      : new Set()
+
     setRowSaving(prev => ({ ...prev, [i]: true }))
 
     const MAX_ATTEMPTS = 3
@@ -831,34 +903,70 @@ function DryerForm({
         const persisted = (readRes && readRes.data && readRes.data.values) ? readRes.data.values : {}
         const persistedToken = readRes && readRes.data ? readRes.data.last_saved_at : null
 
-        // (2) No-op gate against the FRESH values.
+        // (2) Determine the fields to record as edited:
+        //   • the real value diff vs the fresh persisted values, UNION
+        //   • the fields the operator actively touched this session (Option 2),
+        //     restricted to history-tracked fields.
+        // No-op ONLY when the operator touched nothing AND nothing differs — so
+        // opening Edit and immediately Saving (with no interaction) still writes
+        // nothing, but clearing + retyping the SAME value DOES record an edit.
         const changed = computeRowDiff(persisted, localFields)
+        const validTouched = new Set([...HISTORY_SCALAR_FIELDS, 'maintenance'])
+        touchedFields.forEach(f => { if (validTouched.has(f)) changed.add(f) })
         if (changed.size === 0) { noOp = true; noOpSnapshot = persisted; break }
 
-        // (3) One shared commit instant; seed legacy originals; apply edit;
-        //     merge history-by-ts against the fresh persisted history.
+        // (3) One shared commit instant. The ORDER here is critical:
+        //
+        //   a) seed legacy originals FROM THE PERSISTED snapshot — this must see
+        //      the OLD values and the OLD __ts so __events[0] = the original
+        //      save time and __hist[field][0] = the OLD value at its OLD time.
+        //      (If we seeded after overlaying the new values, the "original"
+        //      would wrongly capture the new value/edit time — the cause of the
+        //      "only edited timestamp" and "no previous value" bugs.)
+        //   b) THEN overlay the operator's new flat values + new __ts.
+        //   c) THEN applyEdit appends {v:new, ts:commitIso} to __hist[field] and
+        //      one {type:'edit', ts:commitIso} to __events.
+        //   d) THEN merge-by-ts against the fresh persisted history.
         const commitIso = new Date().toISOString()
-        // Build the committed local values: fresh persisted history as the base,
-        // the operator's new flat values on top.
+
+        // Base = persisted snapshot (old values, old __ts, existing history).
         let local = {
           ...persisted,
-          ...localFields,
           operator_name: savedBy,
           __hist: (persisted && persisted.__hist && typeof persisted.__hist === 'object' && !Array.isArray(persisted.__hist))
             ? persisted.__hist
             : {},
           __events: Array.isArray(persisted && persisted.__events) ? persisted.__events : [],
-          __ts: {
-            ...((persisted && persisted.__ts && typeof persisted.__ts === 'object' && !Array.isArray(persisted.__ts)) ? persisted.__ts : {}),
-            ...((localFields && localFields.__ts && typeof localFields.__ts === 'object' && !Array.isArray(localFields.__ts)) ? localFields.__ts : {}),
-          },
+          __ts: (persisted && persisted.__ts && typeof persisted.__ts === 'object' && !Array.isArray(persisted.__ts))
+            ? { ...persisted.__ts }
+            : {},
         }
         // operator_name/timestamp preserved; keep the persisted display timestamp.
         if (persisted && persisted.timestamp !== undefined) local.timestamp = persisted.timestamp
         else local.timestamp = localFields.timestamp
 
+        // (3a) Seed originals from the PERSISTED (old) state.
         local = seedLegacyHistory(local, commitIso, changed)
+
+        // (3b) Overlay the operator's new flat values for the changed fields,
+        //      and record each changed field's new __ts as commitIso.
+        const nextTs = { ...local.__ts }
+        changed.forEach(f => {
+          if (f === 'maintenance') {
+            local.maintenance = (localFields.maintenance && typeof localFields.maintenance === 'object' && !Array.isArray(localFields.maintenance))
+              ? localFields.maintenance
+              : { shifter_screen: '', atomizer_water: '' }
+          } else {
+            local[f] = localFields[f] === undefined ? '' : localFields[f]
+          }
+          nextTs[f] = commitIso
+        })
+        local.__ts = nextTs
+
+        // (3c) Append the new value to each changed field's history + one edit event.
         local = applyEdit(local, changed, commitIso, localFields)
+
+        // (3d) Union-merge history against the fresh persisted history.
         local = mergeHistoryByTs(persisted, local)
 
         // (4) Guarded upsert on last_saved_at (optimistic version token).
@@ -892,6 +1000,10 @@ function DryerForm({
                     __ts: committed.__ts,
                     __hist: committed.__hist,
                     __events: committed.__events,
+                    // Record the new shared save time as our baseline so the
+                    // poll does not treat our own just-committed edit as a
+                    // newer remote change and re-pull it.
+                    __last_saved_at: newToken,
                     saved: true,
                   }
                 : r
@@ -926,7 +1038,12 @@ function DryerForm({
     if (noOp) {
       // TRUE no-op: wrote nothing. Return the row to a clean non-editing
       // end-state sourced from the freshly-read persisted snapshot (design §8).
+      // Show a toast so the operator gets clear feedback — otherwise exiting
+      // edit mode silently looks like the Save Changes button "did nothing"
+      // (e.g. after backspacing a value and retyping the SAME value, which is
+      // correctly detected as no change and must not create a new timestamp).
       restoreFromPersisted(i, noOpSnapshot)
+      showToast('No changes to save')
       return
     }
 
@@ -1118,6 +1235,9 @@ function DryerForm({
     const r = safeForm.rows[ri] || {}
     const hist = (r.__hist && typeof r.__hist === 'object' && !Array.isArray(r.__hist)) ? r.__hist : {}
     const arr = Array.isArray(hist[field]) ? hist[field] : []
+    // Only a field that was actually EDITED (an original entry + at least one
+    // later change → length >= 2) shows anything. Never-edited fields render
+    // nothing (bug: no timestamp under untouched fields).
     if (arr.length < 2) return null
     const latestIso = latestFieldEditIso(hist, field)
     const latest = fmtIstTs(latestIso)
@@ -1133,23 +1253,41 @@ function DryerForm({
       }
       return (v !== undefined && v !== null && v !== '') ? String(v) : '—'
     }
+    // Show, directly under the current value (which is the normal input above):
+    //   • the latest edit timestamp (muted), and
+    //   • each previous value in a LIGHT/muted style with its own timestamp —
+    // all inline and always visible (no click-to-expand), as requested.
     return (
       <div className="dr-field-hist">
         {latest && <span className="dr-field-hist-latest">{latest}</span>}
-        <details className="dr-field-hist-details">
-          <summary className="dr-field-hist-summary">history</summary>
-          <ul className="dr-field-hist-list">
-            {previous.map((e, k) => (
-              <li key={k}>
-                {fmtVal(e && e.v)}
-                {' '}
-                <span className="dr-field-hist-ts">({fmtIstTs(e && e.ts)})</span>
-              </li>
-            ))}
-          </ul>
-        </details>
+        {previous.map((e, k) => (
+          <span key={k} className="dr-field-hist-prev">
+            Previous: {fmtVal(e && e.v)}
+            {' '}
+            <span className="dr-field-hist-ts">{fmtIstTs(e && e.ts)}</span>
+          </span>
+        ))}
       </div>
     )
+  }
+
+  // A saved hourly row is LOCKED (read-only) unless it is in edit mode. A row
+  // that was never saved stays freely editable (the normal new-entry flow). So
+  // the operator can only change a saved row's values AFTER clicking Edit —
+  // never by typing directly into a saved cell (bug 1).
+  const isCellLocked = (ri) => {
+    const r = safeForm.rows[ri] || {}
+    return !!r.saved && !rowEditing[ri]
+  }
+
+  // True when this field has edit history to show under it (edited at least
+  // once). Used to tag the cell so CSS can vertically CENTER the value + its
+  // history block as one group — matching the vertical centering of plain
+  // (unedited) cells, instead of the value riding at the top.
+  const cellHasHistory = (field, ri) => {
+    const r = safeForm.rows[ri] || {}
+    const hist = (r.__hist && typeof r.__hist === 'object' && !Array.isArray(r.__hist)) ? r.__hist : {}
+    return Array.isArray(hist[field]) && hist[field].length >= 2
   }
 
   const renderNC = (field, ri) => {
@@ -1162,14 +1300,14 @@ function DryerForm({
       field === 'temp_fbd2' ||
       field === 'temp_chamber'
 
+    const locked = isCellLocked(ri)
+    const hasHist = cellHasHistory(field, ri)
 
     return (
       <td
         key={`${field}-${ri}`}
         className={
-          isTemperature
-            ? 'dr-temp-cell'
-            : ''
+          (isTemperature ? 'dr-temp-cell' : '') + (hasHist ? ' dr-cell-has-hist' : '')
         }
       >
 
@@ -1178,19 +1316,21 @@ function DryerForm({
           inputMode="text"
           pattern="-?[0-9]*\.?[0-9]*"
           className={
-            isTemperature
+            (isTemperature
               ? 'dr-cell-input dr-temp-input'
-              : 'dr-cell-input'
+              : 'dr-cell-input') + (locked ? ' dr-cell-locked' : '')
           }
           placeholder="—"
+          readOnly={locked}
           value={safeForm.rows[ri][field]}
-          onChange={e =>
+          onChange={e => {
+            if (locked) return
             setRow(
               ri,
               field,
               e.target.value
             )
-          }
+          }}
         />
 
         {renderFieldHistory(field, ri)}
@@ -1200,27 +1340,33 @@ function DryerForm({
   }
 
 
-  const renderTC = (field, ri) => (
-    <td key={`${field}-${ri}`}>
+  const renderTC = (field, ri) => {
+    const locked = isCellLocked(ri)
+    const hasHist = cellHasHistory(field, ri)
+    return (
+    <td key={`${field}-${ri}`} className={hasHist ? 'dr-cell-has-hist' : undefined}>
 
       <input
         type="text"
-        className="dr-cell-input"
+        className={'dr-cell-input' + (locked ? ' dr-cell-locked' : '')}
         placeholder="—"
+        readOnly={locked}
         value={safeForm.rows[ri][field]}
-        onChange={e =>
+        onChange={e => {
+          if (locked) return
           setRow(
             ri,
             field,
             e.target.value
           )
-        }
+        }}
       />
 
       {renderFieldHistory(field, ri)}
 
     </td>
-  )
+    )
+  }
 
 
   return (
@@ -1951,7 +2097,11 @@ function DryerForm({
                             <input
                               type="checkbox"
                               checked={selected}
-                              onChange={() => toggleMaintenance(i, opt.key)}
+                              disabled={isCellLocked(i)}
+                              onChange={() => {
+                                if (isCellLocked(i)) return
+                                toggleMaintenance(i, opt.key)
+                              }}
                             />
                             <span className="dr-maint-label">{opt.label}</span>
                             {selected && (() => {

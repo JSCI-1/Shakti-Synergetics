@@ -394,10 +394,12 @@
 
 /* SAVE */
 
+/* Wide enough to hold the edit-mode controls ("Save Changes" / "Cancel")
+   without clipping their borders. The 💾/✓/✎ icons sit comfortably too. */
 .dr-col-save {
-  width: 55px !important;
-  min-width: 55px !important;
-  max-width: 55px !important;
+  width: 96px !important;
+  min-width: 96px !important;
+  max-width: 96px !important;
 }
 
 
@@ -870,6 +872,19 @@
   outline: none !important;
 
   background: rgba(184, 92, 44, 0.06);
+}
+
+/* A saved cell that is NOT in edit mode is locked (read-only). It reads as a
+   plain value, not an editable field, so the operator cannot type into it
+   without first clicking Edit. */
+.dr-cell-input.dr-cell-locked {
+  background: transparent;
+  cursor: default;
+  color: #333;
+}
+
+.dr-cell-input.dr-cell-locked:focus {
+  background: transparent;
 }
 
 
@@ -1394,9 +1409,9 @@
 
   font-weight: 600;
 
-  padding: 2px 5px;
+  padding: 3px 7px;
 
-  border-radius: 4px;
+  border-radius: 5px;
 
   border: 1px solid #a5d6a7;
 
@@ -1419,11 +1434,11 @@
 
   padding: 2px;
 
-  width: 55px !important;
+  width: 96px !important;
 
-  min-width: 55px !important;
+  min-width: 96px !important;
 
-  max-width: 55px !important;
+  max-width: 96px !important;
 }
 
 .dr-row-save-btn {
@@ -1577,14 +1592,18 @@ details[open] .dr-cal-summary::after {
 .dr-td-operator {
   text-align: center;
   padding: 2px 4px;
-  white-space: nowrap;
-  width: 120px !important;
-  min-width: 120px !important;
-  max-width: 120px !important;
+  /* Match the column's own width (dr-col-text = 105px). An earlier 120px here
+     was WIDER than the column, so the nowrap badge overflowed into the
+     Maintenance column. Keep it within the column and let a long name wrap. */
+  width: 105px !important;
+  min-width: 105px !important;
+  max-width: 105px !important;
+  overflow: hidden;
 }
 
 .dr-operator-badge {
   display: inline-block;
+  max-width: 100%;
   background: #e3f2fd;
   color: #1565c0;
   font-size: 10px;
@@ -1592,7 +1611,11 @@ details[open] .dr-cal-summary::after {
   padding: 2px 5px;
   border-radius: 4px;
   border: 1px solid #90caf9;
-  white-space: nowrap;
+  /* Wrap a long operator name inside the cell instead of spilling over the
+     Maintenance column. */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
 }
 
 /* ════════════════════════════════════
@@ -1794,8 +1817,9 @@ details[open] .dr-cal-summary::after {
    instead of overflowing the fixed column width. */
 .dr-td-ts .dr-ts-badge {
   white-space: normal;
-  line-height: 1.25;
-  text-align: left;
+  line-height: 1.4;
+  text-align: center;
+  max-width: 100%;
 }
 
 /* Edit / Save Changes / Cancel controls, stacked in the Save cell. */
@@ -1803,19 +1827,44 @@ details[open] .dr-cal-summary::after {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 3px;
 }
 
+/* In-cell row buttons size to their content and sit centred in the Save
+   column, so the icon buttons (✓ / ✎) are compact and the wider text buttons
+   ("Save Changes" / "Cancel") stay only as wide as they need. */
+.dr-row-edit-controls .dr-row-save-btn,
 .dr-row-edit-btn,
 .dr-row-cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  min-width: 30px;
+  min-height: 22px;
+  box-sizing: border-box;
   background: transparent;
   border: 1px solid #ccc;
   border-radius: 4px;
-  padding: 2px 6px;
+  padding: 3px 8px;
   font-size: 10px;
+  white-space: nowrap;
   cursor: pointer;
-  line-height: 1;
+  line-height: 1.2;
   transition: background 0.15s, border-color 0.15s;
+}
+
+/* Save Changes — a clear primary (green) bordered button so it reads as the
+   main action while editing. */
+.dr-row-edit-controls .dr-row-save-btn {
+  border-color: #4caf50;
+  color: #2e7d32;
+  font-weight: 700;
+}
+
+.dr-row-edit-controls .dr-row-save-btn:hover {
+  background: #eafaea;
+  border-color: #2e7d32;
 }
 
 .dr-row-edit-btn:hover {
@@ -1828,48 +1877,57 @@ details[open] .dr-cal-summary::after {
   border-color: #c0392b;
 }
 
+.dr-row-edit-controls .dr-row-save-btn:disabled,
 .dr-row-edit-btn:disabled,
 .dr-row-cancel-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-/* Per-field edit history — muted latest-edit time + collapsible previous
-   values. Kept small so it does not reflow the fixed-colgroup log table. */
-.dr-field-hist {
-  margin-top: 2px;
-  font-size: 9px;
-  line-height: 1.2;
-  color: #8a7f70;
-  text-align: left;
+/* Per-field edit history — muted latest-edit time + previous values, shown
+   directly under the current value. Centred and compact so it does not reflow
+   the fixed-colgroup log table. */
+/* A cell that shows edit history stacks the value input + the history block.
+   Keep it a normal table-cell (so column widths are unaffected) and rely on its
+   vertical-align:middle to centre the whole group in the row. The input drops
+   its rigid 34px height here so the value + history form a compact block that
+   sits in the MIDDLE of the row — matching plain, unedited cells — instead of
+   the value riding at the top. */
+.dr-cell-has-hist {
+  vertical-align: middle !important;
 }
 
+.dr-cell-has-hist .dr-cell-input {
+  height: auto !important;
+  padding: 2px 4px !important;
+}
+
+.dr-field-hist {
+  margin-top: 3px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: #8a7f70;
+  text-align: center;
+}
+
+/* Latest-edit timestamp, shown directly under the current value. */
 .dr-field-hist-latest {
   display: block;
   color: #1565c0;
   font-weight: 600;
+  white-space: nowrap;
 }
 
-.dr-field-hist-details {
+/* Each previous value, shown in a LIGHT/muted form (always visible —
+   no click-to-expand), newest-first, each with its own timestamp. */
+.dr-field-hist-prev {
+  display: block;
   margin-top: 1px;
-}
-
-.dr-field-hist-summary {
-  cursor: pointer;
-  color: #999;
-  list-style: none;
-}
-
-.dr-field-hist-summary::-webkit-details-marker {
-  display: none;
-}
-
-.dr-field-hist-list {
-  margin: 2px 0 0;
-  padding-left: 12px;
-  color: #999;
+  color: #a79d8f;
+  font-style: italic;
+  white-space: nowrap;
 }
 
 .dr-field-hist-ts {
-  color: #bbb;
+  color: #b7ab99;
 }
