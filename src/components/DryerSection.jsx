@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
+import {
+  computeRowDiff,
+  seedLegacyHistory,
+  applyEdit,
+  mergeHistoryByTs,
+  buildEventsTrail,
+  latestFieldEditIso,
+  fmtIstTs,
+} from './dryerHistory.js'
 import './DryerSection.css'
 
 
@@ -224,6 +233,14 @@ function normalizeForm(raw, dryerType) {
     row.__ts = (row.__ts && typeof row.__ts === 'object' && !Array.isArray(row.__ts))
       ? row.__ts
       : {}
+    // Edit-history structures (FEAT-001): preserve existing values, default to
+    // {} / [] when absent/malformed. A missing structure means "original save
+    // only" (design §8, §9a). NEVER strip these — they ride inside `values` and
+    // the per-hour Save path relies on them surviving the destructure.
+    row.__hist = (row.__hist && typeof row.__hist === 'object' && !Array.isArray(row.__hist))
+      ? row.__hist
+      : {}
+    row.__events = Array.isArray(row.__events) ? row.__events : []
     return row
   })
 
@@ -307,6 +324,12 @@ function DryerForm({
   //   rowErrors[i] — the last shared-save error message for row i
   const [rowSaving, setRowSaving] = useState({})
   const [rowErrors, setRowErrors] = useState({})
+
+  // Per-row EDIT state (FEAT-001, design §8):
+  //   rowEditing[i]  — row i is in edit mode (Save Changes / Cancel shown)
+  //   rowSnapshot[i] — pre-edit local snapshot of the row, for Cancel (A4)
+  const [rowEditing, setRowEditing] = useState({})
+  const rowSnapshotRef = useRef({})
 
   // Transient success toast ("… saved successfully"). Positioned bottom-center
   // on mobile and bottom-right on larger screens (see .dr-toast in the CSS),
@@ -566,11 +589,29 @@ function DryerForm({
     const row = (form.rows && form.rows[i]) ? form.rows[i] : emptyRow()
     const { timestamp: _ts, saved: _sv, ...fields } = row
     const ts = stamp12hr()
+    const nowIso = new Date().toISOString()   // SAME instant the `ts` string represents
     // The operator who pressed Save for THIS hour = the logged-in user's name
     // (falls back to the form's Operator box, then the row's existing value).
     const savedBy = userName || form.operator || fields.operator_name || ''
 
     setRowSaving(prev => ({ ...prev, [i]: true }))
+
+    // History-safe save (FEAT-001, design §9a). `__hist`/`__events`/`__ts` ride
+    // inside `fields` (captured by the ...fields destructure). A plain per-hour
+    // Save must NOT lose them and must NOT append an `edit` event:
+    //   • FIRST save of an hour (no existing __events) → seed exactly one
+    //     {type:'save', ts: nowIso} captured at the same instant as `ts`.
+    //   • re-save of an already-saved/edited hour → route through the SAME
+    //     read-before-write + mergeHistoryByTs path as Save Changes so a stale
+    //     in-memory row cannot overwrite newer history (D6/AT7). The flat value
+    //     still follows last-write-wins (unchanged operator-facing behavior).
+    const existingEvents = Array.isArray(fields.__events) ? fields.__events : []
+    const localValues = {
+      ...fields,
+      __events: existingEvents.length ? existingEvents : [{ type: 'save', ts: nowIso }],
+      operator_name: savedBy,
+      timestamp: ts,
+    }
 
     // Wrap the whole network call in try/catch. supabase-js RESOLVES with
     // { error } for a clean PostgREST error, but it REJECTS (throws) when the
@@ -582,6 +623,24 @@ function DryerForm({
     // entered value stays intact and the row remains re-savable.
     let err = null
     try {
+      // Re-read persisted history so a re-save merges (not clobbers) any newer
+      // edit from another device. A never-before-saved hour reads nothing and
+      // simply uses the seeded localValues. Read errors are non-fatal here — we
+      // fall back to the local values (same as before this feature).
+      let mergedValues = localValues
+      try {
+        const readRes = await supabase
+          .from('dryer_hourly_draft')
+          .select('values')
+          .match({ dryer_type: dryerType, log_date: form.date, hour, shift: form.shift })
+          .maybeSingle()
+        if (readRes && !readRes.error && readRes.data && readRes.data.values) {
+          mergedValues = mergeHistoryByTs(readRes.data.values, localValues)
+        }
+      } catch {
+        // Transient read failure — proceed with the local values.
+      }
+
       const res = await supabase
         .from('dryer_hourly_draft')
         .upsert(
@@ -593,7 +652,7 @@ function DryerForm({
             operator: form.operator || userName || null,
             // timestamp is display-only (en-IN); never used for expiry/order.
             // operator_name = who pressed Save for this hour (per-row).
-            values: { ...fields, operator_name: savedBy, timestamp: ts },
+            values: mergedValues,
             updated_at: new Date().toISOString(),
             last_saved_at: new Date().toISOString(),
           },
@@ -625,15 +684,264 @@ function DryerForm({
       return
     }
 
-    // Success — stamp timestamp + operator name + mark saved locally. Guard the
-    // rows map so a transient malformed state can never throw here.
+    // Success — stamp timestamp + operator name + mark saved locally, and keep
+    // the seeded/merged history (__events/__hist/__ts) on the local row so a
+    // later re-save or edit builds on it. Guard the rows map so a transient
+    // malformed state can never throw here.
     setForm(p => ({
       ...p,
       rows: (Array.isArray(p.rows) ? p.rows : []).map((r, idx) =>
-        idx === i ? { ...(r || emptyRow()), operator_name: savedBy, timestamp: ts, saved: true } : r
+        idx === i
+          ? {
+              ...(r || emptyRow()),
+              __events: localValues.__events,
+              __hist: (localValues.__hist && typeof localValues.__hist === 'object' && !Array.isArray(localValues.__hist))
+                ? localValues.__hist
+                : (r && r.__hist) || {},
+              operator_name: savedBy,
+              timestamp: ts,
+              saved: true,
+            }
+          : r
       ),
     }))
     showToast('Data saved successfully')
+  }
+
+
+  // ── Edit mode (FEAT-001, design §8) ─────────────────────────
+  // Edit is offered only on a saved, non-finalized row (A1 / Option A). Entering
+  // edit mode snapshots the current row so Cancel can restore it byte-for-byte.
+  function startEdit(i) {
+    const row = (form.rows && form.rows[i]) ? form.rows[i] : emptyRow()
+    if (!row.saved || row.__finalized) return
+    rowSnapshotRef.current[i] = JSON.parse(JSON.stringify(row))
+    setRowErrors(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
+    })
+    setRowEditing(prev => ({ ...prev, [i]: true }))
+  }
+
+  // Cancel (A4): restore the row from the pre-edit local snapshot; write
+  // nothing. Falls back to flipping saved:true if no snapshot exists.
+  function cancelEdit(i) {
+    const snap = rowSnapshotRef.current[i]
+    setForm(p => ({
+      ...p,
+      rows: (Array.isArray(p.rows) ? p.rows : []).map((r, idx) =>
+        idx === i
+          ? (snap ? JSON.parse(JSON.stringify(snap)) : { ...(r || emptyRow()), saved: true })
+          : r
+      ),
+    }))
+    delete rowSnapshotRef.current[i]
+    setRowErrors(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
+    })
+    setRowEditing(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
+    })
+  }
+
+  // Restore a row to a clean non-editing end-state from a freshly-read persisted
+  // `values` snapshot (the no-op Save Changes end-state, design §8). Identical
+  // to Cancel in effect, but sourced from the authoritative fresh read rather
+  // than the pre-edit snapshot.
+  function restoreFromPersisted(i, persistedValues) {
+    const base = emptyRow()
+    const v = (persistedValues && typeof persistedValues === 'object') ? persistedValues : {}
+    const restored = {
+      ...base,
+      ...v,
+      maintenance: (v.maintenance && typeof v.maintenance === 'object' && !Array.isArray(v.maintenance))
+        ? { shifter_screen: '', atomizer_water: '', ...v.maintenance }
+        : { shifter_screen: '', atomizer_water: '' },
+      __ts: (v.__ts && typeof v.__ts === 'object' && !Array.isArray(v.__ts)) ? v.__ts : {},
+      __hist: (v.__hist && typeof v.__hist === 'object' && !Array.isArray(v.__hist)) ? v.__hist : {},
+      __events: Array.isArray(v.__events) ? v.__events : [],
+      saved: true,
+    }
+    setForm(p => ({
+      ...p,
+      rows: (Array.isArray(p.rows) ? p.rows : []).map((r, idx) => (idx === i ? restored : r)),
+    }))
+    delete rowSnapshotRef.current[i]
+    setRowEditing(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
+    })
+  }
+
+  // Save Changes commit (FEAT-001, design §6/§7). Read-before-write + no-op gate
+  // against the FRESH persisted values + history merge-by-ts, GUARDED on
+  // last_saved_at (optimistic version token — no schema column). Bounded to 3
+  // attempts; on guard exhaustion the operator's values are kept intact and
+  // nothing is written (non-destructive conflict).
+  async function saveRowChanges(i) {
+    const hour = TIME_SLOTS[i]
+
+    setRowErrors(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
+    })
+
+    if (!supabaseReady || !supabase) {
+      setRowErrors(prev => ({ ...prev, [i]: 'Supabase not configured.' }))
+      return
+    }
+    if (!form.date) {
+      setRowErrors(prev => ({ ...prev, [i]: 'Set the production date first.' }))
+      return
+    }
+    if (!form.shift) {
+      setRowErrors(prev => ({ ...prev, [i]: 'Select the shift (Day/Night) first.' }))
+      return
+    }
+
+    const row = (form.rows && form.rows[i]) ? form.rows[i] : emptyRow()
+    const { timestamp: _ts, saved: _sv, ...localFields } = row
+    const savedBy = userName || form.operator || localFields.operator_name || ''
+    const identity = { dryer_type: dryerType, log_date: form.date, hour, shift: form.shift }
+
+    setRowSaving(prev => ({ ...prev, [i]: true }))
+
+    const MAX_ATTEMPTS = 3
+    let resultMsg = null       // non-null → error message to surface
+    let noOp = false
+    let noOpSnapshot = null     // freshly-read persisted values for the no-op end-state
+
+    try {
+      for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+        // (1) Re-read persisted values + last_saved_at by identity.
+        const readRes = await supabase
+          .from('dryer_hourly_draft')
+          .select('values,last_saved_at')
+          .match(identity)
+          .maybeSingle()
+        if (readRes && readRes.error) { resultMsg = readRes.error.message || 'Could not read the latest saved data.'; break }
+
+        const persisted = (readRes && readRes.data && readRes.data.values) ? readRes.data.values : {}
+        const persistedToken = readRes && readRes.data ? readRes.data.last_saved_at : null
+
+        // (2) No-op gate against the FRESH values.
+        const changed = computeRowDiff(persisted, localFields)
+        if (changed.size === 0) { noOp = true; noOpSnapshot = persisted; break }
+
+        // (3) One shared commit instant; seed legacy originals; apply edit;
+        //     merge history-by-ts against the fresh persisted history.
+        const commitIso = new Date().toISOString()
+        // Build the committed local values: fresh persisted history as the base,
+        // the operator's new flat values on top.
+        let local = {
+          ...persisted,
+          ...localFields,
+          operator_name: savedBy,
+          __hist: (persisted && persisted.__hist && typeof persisted.__hist === 'object' && !Array.isArray(persisted.__hist))
+            ? persisted.__hist
+            : {},
+          __events: Array.isArray(persisted && persisted.__events) ? persisted.__events : [],
+          __ts: {
+            ...((persisted && persisted.__ts && typeof persisted.__ts === 'object' && !Array.isArray(persisted.__ts)) ? persisted.__ts : {}),
+            ...((localFields && localFields.__ts && typeof localFields.__ts === 'object' && !Array.isArray(localFields.__ts)) ? localFields.__ts : {}),
+          },
+        }
+        // operator_name/timestamp preserved; keep the persisted display timestamp.
+        if (persisted && persisted.timestamp !== undefined) local.timestamp = persisted.timestamp
+        else local.timestamp = localFields.timestamp
+
+        local = seedLegacyHistory(local, commitIso, changed)
+        local = applyEdit(local, changed, commitIso, localFields)
+        local = mergeHistoryByTs(persisted, local)
+
+        // (4) Guarded upsert on last_saved_at (optimistic version token).
+        const newToken = new Date().toISOString()
+        let q = supabase
+          .from('dryer_hourly_draft')
+          .update({
+            operator: form.operator || userName || null,
+            values: local,
+            updated_at: newToken,
+            last_saved_at: newToken,
+          })
+          .match(identity)
+        q = persistedToken === null ? q.is('last_saved_at', null) : q.eq('last_saved_at', persistedToken)
+        const upRes = await q.select('last_saved_at')
+        if (upRes && upRes.error) { resultMsg = upRes.error.message || 'Save failed.'; break }
+
+        const rows = (upRes && Array.isArray(upRes.data)) ? upRes.data : []
+        if (rows.length > 0) {
+          // Committed. Persist the merged history to local state and exit edit.
+          const committed = local
+          setForm(p => ({
+            ...p,
+            rows: (Array.isArray(p.rows) ? p.rows : []).map((r, idx) =>
+              idx === i
+                ? {
+                    ...(r || emptyRow()),
+                    ...localFields,
+                    operator_name: committed.operator_name,
+                    timestamp: committed.timestamp,
+                    __ts: committed.__ts,
+                    __hist: committed.__hist,
+                    __events: committed.__events,
+                    saved: true,
+                  }
+                : r
+            ),
+          }))
+          delete rowSnapshotRef.current[i]
+          setRowEditing(prev => {
+            const next = { ...prev }
+            delete next[i]
+            return next
+          })
+          setRowSaving(prev => {
+            const next = { ...prev }
+            delete next[i]
+            return next
+          })
+          showToast('Changes saved successfully')
+          return
+        }
+        // Zero rows → guard mismatch (another device committed). Loop and retry.
+      }
+    } catch (e) {
+      resultMsg = (e && e.message) ? e.message : 'Save failed. Please check your connection and try again.'
+    }
+
+    setRowSaving(prev => {
+      const next = { ...prev }
+      delete next[i]
+      return next
+    })
+
+    if (noOp) {
+      // TRUE no-op: wrote nothing. Return the row to a clean non-editing
+      // end-state sourced from the freshly-read persisted snapshot (design §8).
+      restoreFromPersisted(i, noOpSnapshot)
+      return
+    }
+
+    if (resultMsg) {
+      // Query/upsert error — keep the row editable with values intact.
+      setRowErrors(prev => ({ ...prev, [i]: resultMsg }))
+      return
+    }
+
+    // Guard exhaustion after the bounded retries: non-destructive conflict.
+    // Keep the operator's entered values and edit mode intact; write nothing.
+    setRowErrors(prev => ({
+      ...prev,
+      [i]: 'This hour was changed on another device — review and Save Changes again.',
+    }))
   }
 
 
@@ -802,6 +1110,48 @@ function DryerForm({
    */
 
 
+  // Per-field edit history (A7/A8). Under a field whose __hist[field] has
+  // length >= 2 (edited at least once), show a muted latest-edit timestamp (IST)
+  // and the previous values newest-first as muted history (collapsible). Fields
+  // never edited (no __hist or length 1) render nothing extra.
+  const renderFieldHistory = (field, ri) => {
+    const r = safeForm.rows[ri] || {}
+    const hist = (r.__hist && typeof r.__hist === 'object' && !Array.isArray(r.__hist)) ? r.__hist : {}
+    const arr = Array.isArray(hist[field]) ? hist[field] : []
+    if (arr.length < 2) return null
+    const latestIso = latestFieldEditIso(hist, field)
+    const latest = fmtIstTs(latestIso)
+    // Previous values newest-first = every entry except the current (last) one.
+    const previous = arr.slice(0, arr.length - 1).reverse()
+    // maintenance history entries store the whole {shifter_screen, atomizer_water}
+    // object; render the selected option labels instead of [object Object].
+    const fmtVal = (v) => {
+      if (field === 'maintenance') {
+        const m = (v && typeof v === 'object') ? v : {}
+        const picks = MAINTENANCE_OPTIONS.filter(o => m[o.key]).map(o => o.label)
+        return picks.length ? picks.join(', ') : '(none)'
+      }
+      return (v !== undefined && v !== null && v !== '') ? String(v) : '—'
+    }
+    return (
+      <div className="dr-field-hist">
+        {latest && <span className="dr-field-hist-latest">{latest}</span>}
+        <details className="dr-field-hist-details">
+          <summary className="dr-field-hist-summary">history</summary>
+          <ul className="dr-field-hist-list">
+            {previous.map((e, k) => (
+              <li key={k}>
+                {fmtVal(e && e.v)}
+                {' '}
+                <span className="dr-field-hist-ts">({fmtIstTs(e && e.ts)})</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      </div>
+    )
+  }
+
   const renderNC = (field, ri) => {
 
     const isTemperature =
@@ -843,6 +1193,8 @@ function DryerForm({
           }
         />
 
+        {renderFieldHistory(field, ri)}
+
       </td>
     )
   }
@@ -864,6 +1216,8 @@ function DryerForm({
           )
         }
       />
+
+      {renderFieldHistory(field, ri)}
 
     </td>
   )
@@ -1558,6 +1912,7 @@ function DryerForm({
                         <option value="OMRI">OMRI</option>
                         <option value="Normal">Normal</option>
                       </select>
+                      {renderFieldHistory('colour', i)}
                     </td>
 
                     {renderTC(
@@ -1613,43 +1968,81 @@ function DryerForm({
                           </label>
                         )
                       })}
+                      {renderFieldHistory('maintenance', i)}
                     </td>
 
 
-                    {/* Timestamp */}
+                    {/* Timestamp — a trail built from the row-level __events
+                        (Original / Edited …, IST), falling back to the legacy
+                        single timestamp string for pre-feature rows (A6). */}
 
                     <td className="dr-td-ts">
 
-                      {safeForm.rows[i].timestamp ? (
-
-                        <span className="dr-ts-badge">
-                          {safeForm.rows[i].timestamp}
-                        </span>
-
-                      ) : (
-
-                        <span className="dr-ts-empty">
-                          —
-                        </span>
-
-                      )}
+                      {(() => {
+                        const trail = buildEventsTrail(
+                          safeForm.rows[i].__events,
+                          safeForm.rows[i].timestamp
+                        )
+                        return trail ? (
+                          <span className="dr-ts-badge">{trail}</span>
+                        ) : (
+                          <span className="dr-ts-empty">—</span>
+                        )
+                      })()}
 
                     </td>
 
 
-                    {/* Save */}
+                    {/* Save / Edit — Save Changes + Cancel while editing (A1–A5).
+                        Edit is offered only on a saved, non-finalized row. */}
 
                     <td className="dr-td-save">
 
-                      <button
-                        type="button"
-                        className="dr-row-save-btn"
-                        disabled={!!rowSaving[i]}
-                        title={safeForm.rows[i].saved ? 'Saved — click to re-save this hour' : 'Save this hour'}
-                        onClick={() => saveRow(i)}
-                      >
-                        {rowSaving[i] ? '…' : safeForm.rows[i].saved ? '✓' : '💾'}
-                      </button>
+                      {rowEditing[i] ? (
+                        <div className="dr-row-edit-controls">
+                          <button
+                            type="button"
+                            className="dr-row-save-btn"
+                            disabled={!!rowSaving[i]}
+                            title="Save changes to this hour"
+                            onClick={() => saveRowChanges(i)}
+                          >
+                            {rowSaving[i] ? '…' : 'Save Changes'}
+                          </button>
+                          <button
+                            type="button"
+                            className="dr-row-cancel-btn"
+                            disabled={!!rowSaving[i]}
+                            title="Discard changes"
+                            onClick={() => cancelEdit(i)}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="dr-row-edit-controls">
+                          <button
+                            type="button"
+                            className="dr-row-save-btn"
+                            disabled={!!rowSaving[i]}
+                            title={safeForm.rows[i].saved ? 'Saved — click to re-save this hour' : 'Save this hour'}
+                            onClick={() => saveRow(i)}
+                          >
+                            {rowSaving[i] ? '…' : safeForm.rows[i].saved ? '✓' : '💾'}
+                          </button>
+                          {safeForm.rows[i].saved && !safeForm.rows[i].__finalized && (
+                            <button
+                              type="button"
+                              className="dr-row-edit-btn"
+                              disabled={!!rowSaving[i]}
+                              title="Edit this saved hour"
+                              onClick={() => startEdit(i)}
+                            >
+                              ✎
+                            </button>
+                          )}
+                        </div>
+                      )}
 
                       {rowErrors[i] && (
                         <div className="dr-row-save-err" title={rowErrors[i]}>

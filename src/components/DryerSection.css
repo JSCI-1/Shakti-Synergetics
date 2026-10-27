@@ -1782,3 +1782,94 @@ details[open] .dr-cal-summary::after {
     }
   }
 }
+
+
+/* ════════════════════════════════════
+   EDIT HISTORY (FEAT-001)
+   Timestamp trail (Original / Edited …), per-row Edit / Save Changes / Cancel
+   controls, and per-field muted edit-history under edited fields.
+   ════════════════════════════════════ */
+
+/* The Timestamp column now carries a multi-entry trail; allow it to wrap
+   instead of overflowing the fixed column width. */
+.dr-td-ts .dr-ts-badge {
+  white-space: normal;
+  line-height: 1.25;
+  text-align: left;
+}
+
+/* Edit / Save Changes / Cancel controls, stacked in the Save cell. */
+.dr-row-edit-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.dr-row-edit-btn,
+.dr-row-cancel-btn {
+  background: transparent;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.dr-row-edit-btn:hover {
+  background: #eef5ff;
+  border-color: #1565c0;
+}
+
+.dr-row-cancel-btn:hover {
+  background: #fdecea;
+  border-color: #c0392b;
+}
+
+.dr-row-edit-btn:disabled,
+.dr-row-cancel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Per-field edit history — muted latest-edit time + collapsible previous
+   values. Kept small so it does not reflow the fixed-colgroup log table. */
+.dr-field-hist {
+  margin-top: 2px;
+  font-size: 9px;
+  line-height: 1.2;
+  color: #8a7f70;
+  text-align: left;
+}
+
+.dr-field-hist-latest {
+  display: block;
+  color: #1565c0;
+  font-weight: 600;
+}
+
+.dr-field-hist-details {
+  margin-top: 1px;
+}
+
+.dr-field-hist-summary {
+  cursor: pointer;
+  color: #999;
+  list-style: none;
+}
+
+.dr-field-hist-summary::-webkit-details-marker {
+  display: none;
+}
+
+.dr-field-hist-list {
+  margin: 2px 0 0;
+  padding-left: 12px;
+  color: #999;
+}
+
+.dr-field-hist-ts {
+  color: #bbb;
+}
