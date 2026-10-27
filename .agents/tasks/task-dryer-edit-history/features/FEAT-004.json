@@ -1,0 +1,100 @@
+{
+  "id": "FEAT-004",
+  "type": "test",
+  "description": "Verification and isolated-environment test checklist. Runs the frontend build and all .mjs unit harnesses (new + existing) to catch regressions (AT9), then produces the authoritative isolated-environment (DB + Apps Script) test checklist mapped to Acceptance Tests 1-9 for the behaviors the frontend build cannot cover (N1: no push/deploy, no production touch). Depends on FEAT-001/002/003 being complete. No production migration is applied and no sync is run against the production Sheet by this feature; it only runs local builds/tests and writes the checklist.",
+  "status": "completed",
+  "steps": [
+    "Run `npm run build` and confirm success after all of FEAT-001/003's changes.",
+    "Run every .mjs harness and confirm each exits 0: node src/components/dryerHistory.test.mjs; node supabase/google_sheets/apps-script/dryer_cell_history.test.mjs; node supabase/google_sheets/apps-script/dryer_row_identity.test.mjs; node supabase/google_sheets/apps-script/dryer_form_normalize.test.mjs (the last two are the AT9 regression guards).",
+    "Write the isolated-environment checklist into this FEAT's findings (and summarize in the step output), mapping each item to an Acceptance Test: AT1 initial save (one dryer_hourly_draft row on (dryer_type,log_date,hour,shift); Timestamp shows Original: only; entered cells show value+original ts; no Previous lines); AT2 single-field edit (same row updated in place, one cell rewritten value+edit-time on top + Previous beneath, one Edited: appended, other cells byte-unchanged); AT3 multi-field edit (one Edited:, independent per-field histories, untouched fields gain nothing); AT4 three sequential edits (newest-first in cell, original oldest preserved, Timestamp reads Original.../Edited.../Edited.../Edited...); AT5 no-op/cancel (no new row-timestamp, no per-field history, no changed stored value, no new distinct outbox event_id); AT6 retry (no duplicate sheet row) + replay (no duplicated Previous lines) + genuine edit yields new event_id while identical re-emit dedups + older event cannot overwrite newer; AT7 persistence across reload + logout/login + app restart (sourced from values, not client state); AT8 ND1('new') vs ND2('old') identical and separate, never cross-contaminate; AT9 regression (QC records/tabs, Production->Activity, ND1/ND2 selection, other Dryer fields/sections, bottom-form Save Log Sheet, date/shift/hour identity, existing new-row per-hour Save, Sheets headers/column order/structure unchanged).",
+    "For each isolated-env item, state WHERE it is verified: AT1-AT8 DB-trigger/event_id parts in a non-production Supabase project applying 018->030->047; the Sheets cell-rewrite parts with a non-production Spreadsheet + pull/ack Edge Functions. Explicitly note that none of these may run against production (N1).",
+    "Clean up any temporary files created during verification."
+  ],
+  "acceptance_criteria": [
+    "`npm run build` succeeds.",
+    "All four .mjs harnesses exit 0 (dryerHistory, dryer_cell_history, dryer_row_identity, dryer_form_normalize).",
+    "The isolated-environment checklist covering AT1-AT9 is written to this FEAT's findings and summarized in the step output, each item mapped to its environment and to an Acceptance Test, with the N1 no-production constraint stated."
+  ],
+  "verification": [
+    "Run `npm run build` and confirm exit code 0.",
+    "Run `node src/components/dryerHistory.test.mjs && node supabase/google_sheets/apps-script/dryer_cell_history.test.mjs && node supabase/google_sheets/apps-script/dryer_row_identity.test.mjs && node supabase/google_sheets/apps-script/dryer_form_normalize.test.mjs` and confirm all pass (exit 0)."
+  ],
+  "blocked_reason": null,
+  "findings": {
+    "automated_verification": {
+      "ran_from": "c:\\Users\\tokek\\Nashik JSCI\\shakti-synergetics (worktree root, branch main)",
+      "build": "`npm run build` (vite v6.4.3) -> SUCCESS, exit 0, 108 modules transformed, dist/ emitted.",
+      "harnesses": [
+        "node src/components/dryerHistory.test.mjs -> PASS, exit 0 (coerceHistory, computeRowDiff scalar+maintenance, seedLegacyHistory, applyEdit single-commitIso, mergeHistoryByTs dedup/union, buildEventsTrail/latestFieldEditIso/fmtIstTs IST).",
+        "node supabase/google_sheets/apps-script/dryer_cell_history.test.mjs -> PASS, exit 0 (newest-first stacking, Previous lines, cleared-field rewrite from history, maintenance collapsed Previous, fallback to dryerCellWithTs_, replay-determinism).",
+        "node supabase/google_sheets/apps-script/dryer_row_identity.test.mjs -> PASS, exit 0 (AT9 regression guard: 4 distinct keys, Day/Night + hour separation, re-save stable key, order-independence).",
+        "node supabase/google_sheets/apps-script/dryer_form_normalize.test.mjs -> PASS, exit 0 (AT9 regression guard: garbage/short/missing-nested drafts normalize to 24 safe rows, top-level fields + maintenance preserved)."
+      ],
+      "temp_files_created": "none (only the normal vite dist/ build artifact).",
+      "limits": "The build + harnesses mirror (redefine) logic rather than importing Code.gs/JSX. They CANNOT exercise the live Postgres trigger (tg_dryer_v2_hourly / migration 047), the sheets_sync_outbox event_id dedup, the pull/ack Edge Functions, or the actual Google Sheets cell rewrite. Those are covered by the isolated-environment checklist below."
+    },
+    "isolated_environment_checklist": {
+      "constraint_N1": "NONE of the items below may be run against production. No git push, no deploy, no migration applied to the production Supabase project, no sync run against the production Google Sheet. Use a throwaway (non-production) Supabase project and a throwaway Spreadsheet only.",
+      "environments": {
+        "DB": "A non-production Supabase project with migrations applied by hand in numeric order 018 -> 030 -> 047 (SQL Editor). Used to verify the dryer_hourly_draft row identity, the history-aware trigger, and the sheets_sync_outbox event_id behavior.",
+        "SHEETS": "A non-production Spreadsheet bound to the shared Apps Script (Code.gs), driven by the pull/ack Edge Functions + claim-batch, to verify the one-cell value+timestamp+history rewrite and row-find-by-identity."
+      },
+      "items": [
+        {
+          "acceptance_test": "AT1",
+          "name": "Initial save",
+          "environment": "DB + SHEETS",
+          "verify": "Enter a fresh hour and save. DB: exactly ONE dryer_hourly_draft row on identity (dryer_type, log_date, hour, shift); values has flat current values, values.__ts per entered field, values.__events = [{type:'save', ts}], NO values.__hist entries yet. UI Timestamp column shows 'Original: <ts>' only (no 'Edited:' lines). SHEETS: entered cells show value + original timestamp; NO 'Previous' lines in any cell; one new sheet row (no Timestamp column)."
+        },
+        {
+          "acceptance_test": "AT2",
+          "name": "Single-field edit",
+          "environment": "DB + SHEETS",
+          "verify": "Edit exactly one field on the saved hour and Save Changes. DB: SAME row updated in place (identity unchanged, no new row); that field's __hist gains one prior {v,ts}; __events gains exactly ONE {type:'edit', ts}; other fields' __ts/__hist byte-unchanged. UI Timestamp column appends one 'Edited: <ts>'. SHEETS: exactly ONE cell rewritten -> new value + edit-time on top, 'Previous' line with the old value+original ts beneath; every other cell byte-identical to before."
+        },
+        {
+          "acceptance_test": "AT3",
+          "name": "Multi-field edit",
+          "environment": "DB + SHEETS",
+          "verify": "Edit two or more fields in one Save Changes. DB: exactly ONE {type:'edit', ts} event (single shared commitIso) regardless of field count; each edited field gets its OWN independent __hist entry sharing that commitIso; untouched fields gain nothing. SHEETS: each edited cell rewritten independently with its own Previous history; untouched cells unchanged."
+        },
+        {
+          "acceptance_test": "AT4",
+          "name": "Three sequential edits",
+          "environment": "DB + SHEETS",
+          "verify": "Edit the same field three times across three Save Changes. DB: __hist for that field preserves the ORIGINAL value as the oldest entry and all intermediate values in order; __events = [save, edit, edit, edit]. SHEETS cell shows entries NEWEST-FIRST (current value+latest ts on top, older values below, original oldest at bottom). UI Timestamp column reads 'Original:.../Edited:.../Edited:.../Edited:...'."
+        },
+        {
+          "acceptance_test": "AT5",
+          "name": "No-op / cancel",
+          "environment": "DB + SHEETS",
+          "verify": "Enter edit mode, change nothing (or revert then cancel/save). DB: no new row-level timestamp event, no new per-field __hist entry, stored flat value unchanged; the computed outbox event_id (md5 of the fingerprint) is NOT distinct from the prior emit (no new distinct event). SHEETS: no cell rewritten, no new Previous line. (Whitespace-only differences must be treated as no-ops per computeRowDiff/trim.)"
+        },
+        {
+          "acceptance_test": "AT6",
+          "name": "Retry + replay + ordering (idempotency)",
+          "environment": "DB + SHEETS",
+          "verify": "DB: event_id = md5('dryer_hour|'||source_pk||'|'||md5(v_fp)); source_pk = dryer_type|log_date|shift|hour (NEW.log_date::text while payload key is 'date' — do NOT transpose). Retry of the SAME save re-emits an identical event_id and dedups (no duplicate outbox row). A genuine edit changes v_fp -> NEW event_id. An older event must NOT overwrite a newer one. SHEETS: a retried/replayed ack does NOT create a duplicate sheet row (row found by identity) and does NOT duplicate 'Previous' lines (renderer is deterministic/replay-safe)."
+        },
+        {
+          "acceptance_test": "AT7",
+          "name": "Persistence",
+          "environment": "DB + SHEETS",
+          "verify": "After saves+edits, reload the page, log out/in, and restart the app. The Timestamp trail and per-field edit timestamps + full cell history re-render identically, sourced from values (__events/__ts/__hist) in dryer_hourly_draft — NOT from client state. SHEETS cells persist their stacked history independently of any browser session."
+        },
+        {
+          "acceptance_test": "AT8",
+          "name": "ND1 vs ND2 separation",
+          "environment": "DB + SHEETS",
+          "verify": "Perform identical sequences for ND1 (dryer_type 'new') and ND2 ('old') at the same log_date/shift/hour. DB: two distinct rows (identity differs only by dryer_type), distinct event_ids, histories never cross-contaminate. SHEETS: separate rows/cells per dryer_type; editing ND1 never touches ND2 and vice-versa."
+        },
+        {
+          "acceptance_test": "AT9",
+          "name": "Regression (no collateral damage)",
+          "environment": "DB + SHEETS (plus the local build/harnesses already run)",
+          "verify": "Confirm unchanged behavior for: QC records + QC sheet tabs; Production -> Activity view; ND1/ND2 selection; other Dryer fields/sections; bottom-form 'Save Log Sheet' finalize; date/shift/hour identity; the existing new-row per-hour Save; and Google Sheets headers, column order, and overall structure (no new/removed columns, no Timestamp column added). The two regression-guard harnesses (dryer_row_identity, dryer_form_normalize) already pass locally (exit 0) as the automated portion of AT9; the items here are the manual DB/Sheets portion."
+        }
+      ]
+    }
+  }
+}
