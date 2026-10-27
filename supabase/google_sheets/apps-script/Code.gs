@@ -1763,7 +1763,10 @@ function dryerFindRow_(sh, keyCol, wantKey) {
 
 /**
  * 'dryer_hour' → write/replace ONE hourly row in a single setValues call.
- * payload: { dryer_type, date, shift, hour, values:{key:val}, ts:{key:iso} }
+ * payload: { dryer_type, date, shift, hour, values:{key:val}, ts:{key:iso},
+ *            hist:{key:[{v,ts}, ...]} }  — hist[] is OLDEST-first per field (and
+ * for 'maintenance' each entry's v is the whole {shifter_screen, atomizer_water}
+ * object); a field appears in hist only when it was edited (FEAT-002).
  */
 function writeDryerHourRow_(ss, row) {
   var p = row.payload || {};
