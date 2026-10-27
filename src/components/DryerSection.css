@@ -188,6 +188,18 @@
   background: #fff;
 }
 
+/* Read-only auto Shift box — looks like an input but is not editable; it just
+   displays the shift derived from the hour the operator is currently filling. */
+.dr-shift-auto {
+  display: flex;
+  align-items: center;
+  background: #f0ede8;
+  color: #4a4a4a;
+  font-weight: 600;
+  cursor: default;
+  user-select: none;
+}
+
 .dr-input-sm {
   width: 70px;
 }

@@ -20,6 +20,24 @@ const TIME_SLOTS = [
   '00:00', '01:00', '02:00', '03:00', '04:00', '05:00', '06:00', '07:00',
 ]
 
+// Hours that belong to the DAY shift (08:00–19:00). Every other TIME_SLOT
+// (20:00–23:00 and 00:00–07:00) belongs to the NIGHT shift. Used to auto-pick a
+// shift per hour when the operator did not select one manually.
+const DAY_SHIFT_HOURS = new Set([
+  '08:00', '09:00', '10:00', '11:00', '12:00', '13:00',
+  '14:00', '15:00', '16:00', '17:00', '18:00', '19:00',
+])
+
+// Resolve the shift a given hour is SAVED under. The hour ALWAYS decides:
+//   • 08:00–19:00 → 'Day'
+//   • 20:00–07:00 → 'Night'
+// This holds even if the operator picked the other shift in the dropdown — e.g.
+// an hour of 20:00 is ALWAYS saved as Night even when 'Day' is selected. The
+// dropdown no longer controls a row's stored shift; the row's own time does.
+function shiftForHour(hour) {
+  return DAY_SHIFT_HOURS.has(hour) ? 'Day' : 'Night'
+}
+
 
 function stamp12hr() {
   // Include SECONDS so rows saved together in one sitting (e.g. backfilling
@@ -326,6 +344,11 @@ function DryerForm({
   const [rowSaving, setRowSaving] = useState({})
   const [rowErrors, setRowErrors] = useState({})
 
+  // The hour the operator most recently interacted with (typed into / toggled).
+  // The read-only Shift box reflects THIS hour's shift (Day for 08:00–19:00,
+  // Night for 20:00–07:00) so it auto-shows the right shift as they fill rows.
+  const [lastActiveHour, setLastActiveHour] = useState('')
+
   // Per-row EDIT state (FEAT-001, design §8):
   //   rowEditing[i]  — row i is in edit mode (Save Changes / Cancel shown)
   //   rowSnapshot[i] — pre-edit local snapshot of the row, for Cancel (A4)
@@ -357,6 +380,15 @@ function DryerForm({
   // Guards the once-per-(dryer,date) cross-device load so it does not
   // thrash against useDraft's 600ms debounced localStorage writer.
   const loadedKeyRef = useRef(null)
+
+  // Tracks the date the hourly rows currently belong to, so that CHANGING the
+  // date clears the previous date's rows before loading the new date's shared
+  // data. Without this, switching e.g. 26 → 27 left 26's hourly rows (notably
+  // the 00:00–07:00 night tail that 27 has not filled yet) lingering in the
+  // form — the "yesterday's night data shows under today" bug. Initialized to
+  // the restored draft's date so a same-date reload is NOT treated as a change
+  // (an in-progress draft for that date is preserved).
+  const rowsDateRef = useRef(form.date || '')
 
 
   // Record the genuine per-field entry/change time (ISO) the FIRST time a field
@@ -392,6 +424,8 @@ function DryerForm({
       cur.add(field)
       rowTouchedRef.current[i] = cur
     }
+    // Reflect this hour's shift in the read-only Shift box.
+    setLastActiveHour(TIME_SLOTS[i])
     setForm(p => ({
       ...p,
       rows: p.rows.map((r, idx) => {
@@ -423,6 +457,8 @@ function DryerForm({
       cur.add('maintenance')
       rowTouchedRef.current[i] = cur
     }
+    // Reflect this hour's shift in the read-only Shift box.
+    setLastActiveHour(TIME_SLOTS[i])
     setForm(p => ({
       ...p,
       rows: p.rows.map((r, idx) => {
@@ -483,6 +519,15 @@ function DryerForm({
     // (the reset must stay empty, for this operator and every other). They stay
     // in the table so Production → Activity keeps showing them for 36h — only
     // the operator-form merge ignores them.
+    // Index remote rows by hour for THIS exact log_date. We do NOT filter by
+    // shift here: the yesterday-bleed bug is fully fixed by clearing the hourly
+    // rows when the selected date changes (see the date-change effect), so no
+    // shift gate is needed. Filtering on shift wrongly HID legitimately-filled
+    // rows that were saved under the old manual-shift logic with a shift value
+    // that doesn't match the hour's auto-shift (e.g. 23:00 saved as 'Day'),
+    // which is why 23:00 vanished on localhost. The exact log_date match plus
+    // last_saved_at ordering already guarantee the right rows; when the same
+    // (hour) exists more than once, the most recently saved record wins.
     const byHour = {}
     data.forEach(r => {
       if (r && r.values && r.values.__finalized) return
@@ -583,6 +628,21 @@ function DryerForm({
     if (!supabaseReady || !supabase) return
     if (!form.date) return
 
+    // If the DATE actually changed from a previous (different) date, clear all
+    // 24 hourly rows first so the previous date's rows — especially the
+    // 00:00–07:00 night tail — do NOT linger into the newly-selected date.
+    // mergeRemoteHours then re-fills only from THIS date's shared data. A reload
+    // on the SAME date is NOT a change, so an in-progress draft is preserved.
+    if (rowsDateRef.current && rowsDateRef.current !== form.date) {
+      setForm(p => ({ ...p, rows: TIME_SLOTS.map(() => emptyRow()) }))
+      setRowSaving({})
+      setRowErrors({})
+      setRowEditing({})
+      rowSnapshotRef.current = {}
+      rowTouchedRef.current = {}
+    }
+    rowsDateRef.current = form.date
+
     const loadKey = `${dryerType}|${form.date}`
     loadedKeyRef.current = loadKey
 
@@ -633,13 +693,10 @@ function DryerForm({
       setRowErrors(prev => ({ ...prev, [i]: 'Set the production date first.' }))
       return
     }
-    // Shift is part of the record identity (dryer, date, shift, hour). Requiring
-    // it before save prevents a row from silently landing under the wrong/empty
-    // shift (the root cause of the mismatched 21-10 Night vs 22-10 Day rows).
-    if (!form.shift) {
-      setRowErrors(prev => ({ ...prev, [i]: 'Select the shift (Day/Night) first.' }))
-      return
-    }
+    // Shift is now AUTO-derived from the hour (08:00–19:00 → Day, 20:00–07:00 →
+    // Night), so the operator no longer has to select it before saving. The
+    // dropdown selection does NOT change a row's stored shift — the hour does.
+    const rowShift = shiftForHour(hour)
 
     const row = (form.rows && form.rows[i]) ? form.rows[i] : emptyRow()
     const { timestamp: _ts, saved: _sv, ...fields } = row
@@ -688,7 +745,7 @@ function DryerForm({
         const readRes = await supabase
           .from('dryer_hourly_draft')
           .select('values')
-          .match({ dryer_type: dryerType, log_date: form.date, hour, shift: form.shift })
+          .match({ dryer_type: dryerType, log_date: form.date, hour, shift: rowShift })
           .maybeSingle()
         if (readRes && !readRes.error && readRes.data && readRes.data.values) {
           mergedValues = mergeHistoryByTs(readRes.data.values, localValues)
@@ -706,7 +763,7 @@ function DryerForm({
             dryer_type: dryerType,
             log_date: form.date,
             hour,
-            shift: form.shift,
+            shift: rowShift,
             operator: form.operator || userName || null,
             // timestamp is display-only (en-IN); never used for expiry/order.
             // operator_name = who pressed Save for this hour (per-row).
@@ -865,15 +922,14 @@ function DryerForm({
       setRowErrors(prev => ({ ...prev, [i]: 'Set the production date first.' }))
       return
     }
-    if (!form.shift) {
-      setRowErrors(prev => ({ ...prev, [i]: 'Select the shift (Day/Night) first.' }))
-      return
-    }
+    // Shift is AUTO-derived from the hour (hour always decides), so no manual
+    // shift selection is required to save an edit.
+    const rowShift = shiftForHour(hour)
 
     const row = (form.rows && form.rows[i]) ? form.rows[i] : emptyRow()
     const { timestamp: _ts, saved: _sv, ...localFields } = row
     const savedBy = userName || form.operator || localFields.operator_name || ''
-    const identity = { dryer_type: dryerType, log_date: form.date, hour, shift: form.shift }
+    const identity = { dryer_type: dryerType, log_date: form.date, hour, shift: rowShift }
 
     // Option 2: fields the operator ACTIVELY TOUCHED this session (even if the
     // value ended up identical) count as edits. Snapshot the touched set now;
@@ -1081,7 +1137,11 @@ function DryerForm({
           dryer_type: form.dryer_type,
 
           date: form.date || null,
-          shift: form.shift,
+          // Shift is no longer selected manually; it is auto-derived PER HOUR at
+          // save time (shiftForHour). The bottom-form log spans both shifts, so
+          // this record carries no single shift (null) — the per-hour shift
+          // lives on each dryer_hourly_draft row / Google Sheet hourly row.
+          shift: form.shift || null,
 
           id_blower_dp: form.id_blower_dp,
           id_blower_mr: form.id_blower_mr,
@@ -1430,6 +1490,10 @@ function DryerForm({
           </div>
 
 
+          {/* Shift — READ-ONLY, auto-derived from the hour the operator is
+              currently filling (08:00–19:00 = Day, 20:00–07:00 = Night). There
+              is no manual selection; it simply reflects the active row's shift.
+              Each hourly row is still saved under its own hour's shift. */}
           <div className="dr-meta-field">
 
             <label className="dr-label">
@@ -1442,30 +1506,13 @@ function DryerForm({
 
             </label>
 
-            <select
-              className="dr-input"
-              value={form.shift}
-              onChange={e =>
-                set(
-                  'shift',
-                  e.target.value
-                )
-              }
-            >
-
-              <option value="">
-                — Select / चुनें —
-              </option>
-
-              <option value="Day">
-                Day / दिन
-              </option>
-
-              <option value="Night">
-                Night / रात
-              </option>
-
-            </select>
+            <div className="dr-input dr-shift-auto" aria-readonly="true">
+              {lastActiveHour
+                ? (shiftForHour(lastActiveHour) === 'Day'
+                    ? 'Day / दिन'
+                    : 'Night / रात')
+                : '— Auto / स्वतः —'}
+            </div>
 
           </div>
 

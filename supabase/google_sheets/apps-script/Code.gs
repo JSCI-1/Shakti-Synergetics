@@ -1825,9 +1825,255 @@ function writeDryerHourRow_(ss, row) {
   }
   out[keyCol] = wantKey;
 
-  if (rIdx > 0) sh.getRange(rIdx, 1, 1, out.length).setValues([out]);
-  else          sh.appendRow(out);
+  if (rIdx > 0) {
+    sh.getRange(rIdx, 1, 1, out.length).setValues([out]);
+  } else {
+    sh.appendRow(out);
+    // Flush immediately so a LATER event for the SAME (date,shift,hour) in this
+    // same batch/pass — e.g. an edit or re-save of the hour just written —
+    // finds the row via dryerFindRow_ and UPDATES it in place, instead of not
+    // seeing the un-flushed append and adding a DUPLICATE row for the hour.
+    SpreadsheetApp.flush();
+  }
   try { sh.hideColumns(keyCol + 1); } catch (e) {}
+
+  // Keep the hourly table sorted by Date -> Shift -> chronological hour, so the
+  // rows always read 08:00,09:00,10:00,... regardless of the order events
+  // arrived (operators may save/edit hours out of order, which previously left
+  // the sheet as e.g. 8,10,11,9).
+  sortDryerHourTab_(sh, keyCol);
+}
+
+// 24 chronological TIME_SLOT labels -> rank, for sorting the hourly table in
+// hour order (08:00 first ... 07:00 last), matching the website's TIME_SLOTS.
+var DRYER_HOUR_RANK = (function () {
+  var m = {};
+  for (var i = 0; i < TIME_SLOTS.length; i++) m[TIME_SLOTS[i]] = i;
+  return m;
+})();
+
+/**
+ * Convert a Dryer "Date" cell to a sortable YYYYMMDD integer for chronological
+ * ordering. Handles every shape the cell may hold:
+ *   • a real JS Date object (Sheets auto-converted the YYYY-MM-DD text),
+ *   • an ISO string 'YYYY-MM-DD' (e.g. '2026-10-19'),
+ *   • 'DD-MM-YYYY' or 'DD/MM/YYYY',
+ *   • 'DD-MM' or 'DD/MM' (assumes the current year).
+ * Returns 0 when it cannot parse, so unparseable dates sort first and never
+ * throw. This fixes dates (19..27) landing out of order after a raw-string sort.
+ */
+function dryerDateKey_(val) {
+  if (val === null || val === undefined || val === '') return 0;
+
+  // Real Date object (common: Sheets converts 'YYYY-MM-DD' to a Date value).
+  if (Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val.getTime())) {
+    return val.getFullYear() * 10000 + (val.getMonth() + 1) * 100 + val.getDate();
+  }
+
+  var s = String(val).trim();
+  var m;
+
+  // ISO 'YYYY-MM-DD' (optionally with time).
+  m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (m) return parseInt(m[1], 10) * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[3], 10);
+
+  // 'DD-MM-YYYY' or 'DD/MM/YYYY'.
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (m) return parseInt(m[3], 10) * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
+
+  // 'DD-MM' or 'DD/MM' (no year) → assume the current year so the DAY/MONTH
+  // still order correctly within the sheet's data window.
+  m = s.match(/^(\d{1,2})[-/](\d{1,2})$/);
+  if (m) {
+    var y = new Date().getFullYear();
+    return y * 10000 + parseInt(m[2], 10) * 100 + parseInt(m[1], 10);
+  }
+
+  // Last resort: let the engine try to parse it.
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    return d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+  }
+  return 0;
+}
+
+/**
+ * Normalize a Dryer "Time" cell to the canonical 'HH:MM' label used by
+ * TIME_SLOTS / DRYER_HOUR_RANK. Handles:
+ *   • a plain string already like '08:00' (returned zero-padded),
+ *   • a JS Date/time value (Sheets auto-converted '08:00' into a time cell) →
+ *     formatted as 'HH:MM' from its hours/minutes,
+ *   • strings like '8:00', '8.00', or '8' → '08:00'.
+ * Returns '' when it cannot normalize.
+ */
+function dryerHourLabel_(val) {
+  if (val === null || val === undefined || val === '') return '';
+
+  // Real Date/time object (Sheets converted '08:00' to a time cell value).
+  if (Object.prototype.toString.call(val) === '[object Date]' && !isNaN(val.getTime())) {
+    var hh = val.getHours();
+    var mm = val.getMinutes();
+    return (hh < 10 ? '0' + hh : '' + hh) + ':' + (mm < 10 ? '0' + mm : '' + mm);
+  }
+
+  var s = String(val).trim();
+  // 'H:MM' / 'HH:MM' / 'H.MM' → pad hour, keep minutes.
+  var m = s.match(/^(\d{1,2})[:.](\d{1,2})/);
+  if (m) {
+    var h = parseInt(m[1], 10);
+    var mi = parseInt(m[2], 10);
+    return (h < 10 ? '0' + h : '' + h) + ':' + (mi < 10 ? '0' + mi : '' + mi);
+  }
+  // Bare hour 'H' / 'HH' → ':00'.
+  m = s.match(/^(\d{1,2})$/);
+  if (m) {
+    var h2 = parseInt(m[1], 10);
+    return (h2 < 10 ? '0' + h2 : '' + h2) + ':00';
+  }
+  return s;   // already some other exact label; let the rank lookup decide
+}
+
+/**
+ * DEDUPE + SORT the data rows (row 2 .. lastRow) of a Dryer hourly tab.
+ *
+ * Guarantees, no matter what order events arrived or how many duplicates exist:
+ *   • NO DUPLICATES — at most ONE row per hidden key (date|shift|hour). When
+ *     duplicates are present the LAST occurrence wins (most recently written =
+ *     the freshest value/history), and the earlier duplicate rows are removed.
+ *   • PROPER ORDER — rows are ordered Date (ascending) -> Shift -> chronological
+ *     hour, where the hour rank follows the website's TIME_SLOTS, i.e.
+ *     08:00,09:00,…,23:00,00:00,01:00,…,07:00.
+ *
+ * Idempotent and cheap: reads the block once, dedupes + sorts in memory, and
+ * rewrites only when something changed. When dedup shrank the row count, the
+ * now-surplus trailing rows are deleted so no stale duplicate is left behind.
+ * The hidden key column is carried with each row so identity is preserved.
+ * Header row and column structure are untouched.
+ */
+function sortDryerHourTab_(sh, keyCol) {
+  var lr = sh.getLastRow();
+  if (lr < 3) return;   // 0 or 1 data rows -> nothing to dedupe/order
+  var width = Math.max(sh.getLastColumn(), keyCol + 1);
+  var rng = sh.getRange(2, 1, lr - 1, width);
+  var data = rng.getValues();
+  var origCount = data.length;
+
+  // Remember the original order so we can skip the write when nothing changed.
+  var before = data.map(function (r) { return r.join('\u0001'); }).join('\u0002');
+
+  // Robust per-row accessors (the Date and Hour CELLS may be real Date/time
+  // values auto-converted by Sheets, so we never compare them as raw strings).
+  // The hidden key 'H|YYYY-MM-DD|Shift|HH:MM' is the canonical source; cells are
+  // the fallback.
+  var keyParts = function (row) {
+    var k = coalesce_(row[keyCol]);           // 'H|YYYY-MM-DD|Shift|HH:MM'
+    return k ? k.split('|') : null;
+  };
+  var dateKeyFor = function (row) {
+    var parts = keyParts(row);
+    if (parts && parts.length >= 2 && parts[1]) {
+      var fromKey = dryerDateKey_(parts[1]);
+      if (fromKey > 0) return fromKey;
+    }
+    return dryerDateKey_(row[0]);
+  };
+  var hourLabelFor = function (row) {
+    var parts = keyParts(row);
+    var label = (parts && parts.length >= 4) ? parts[3] : '';
+    if (!label || DRYER_HOUR_RANK[label] === undefined) {
+      label = dryerHourLabel_(row[2]);
+    }
+    return label;
+  };
+  var hourRankFor = function (row) {
+    var r = DRYER_HOUR_RANK[hourLabelFor(row)];
+    return (r === undefined) ? 999 : r;
+  };
+
+  // 1) DEDUPE by DATE + HOUR ONLY (shift is NOT part of the dedup key) — so for
+  //    a given date there is AT MOST ONE row per hour, even if the same hour was
+  //    saved under both Day and Night. Keep the LAST occurrence in the sheet
+  //    (the freshest write). Rows whose date+hour can't be derived are all kept
+  //    (never drop real data we can't key).
+  var dedupKeyFor = function (row) {
+    var dk = dateKeyFor(row);
+    var hl = hourLabelFor(row);
+    if (!dk || !hl) return '';          // unkeyable → keep (handled below)
+    return dk + '|' + hl;               // e.g. '20261027|19:00'
+  };
+  var lastByKey = {};        // 'date|hour' -> index of its last occurrence
+  for (var i = 0; i < data.length; i++) {
+    var k = dedupKeyFor(data[i]);
+    if (k !== '') lastByKey[k] = i;
+  }
+  var deduped = [];
+  for (var j = 0; j < data.length; j++) {
+    var key = dedupKeyFor(data[j]);
+    if (key === '') { deduped.push(data[j]); continue; }   // keep unkeyable rows
+    if (lastByKey[key] === j) deduped.push(data[j]);        // keep only the last
+  }
+  // Order: Date -> HOUR -> Shift. Hour is ranked BEFORE shift so the hours flow
+  // continuously within a date (08:00,09:00,…,23:00,00:00,…,07:00) instead of
+  // all Day hours first then all Night hours (which made the sequence appear to
+  // jump back, e.g. Day 18,19,23 then Night 19,20,21,22). Shift is only the
+  // tiebreaker when the SAME hour exists under both Day and Night (Day first).
+  deduped.sort(function (a, b) {
+    var da = dateKeyFor(a), db = dateKeyFor(b);               // Date (chronological)
+    if (da !== db) return da - db;
+    var ha = hourRankFor(a), hb = hourRankFor(b);             // Hour (chronological)
+    if (ha !== hb) return ha - hb;
+    var sa = coalesce_(a[1]), sb = coalesce_(b[1]);           // Shift (tiebreak)
+    if (sa !== sb) return sa < sb ? -1 : 1;
+    return 0;
+  });
+
+  var after = deduped.map(function (r) { return r.join('\u0001'); }).join('\u0002');
+  if (after === before && deduped.length === origCount) return;   // nothing to do
+
+  // 3) Write the deduped+sorted block back starting at row 2.
+  sh.getRange(2, 1, deduped.length, width).setValues(deduped);
+
+  // 4) If dedup removed rows, delete the now-surplus trailing rows so no stale
+  //    duplicate remains below the rewritten block.
+  var removed = origCount - deduped.length;
+  if (removed > 0) {
+    sh.deleteRows(2 + deduped.length, removed);
+  }
+}
+
+/**
+ * ONE-TIME CLEANUP (run manually from the Apps Script editor).
+ *
+ * Fixes BOTH Dryer hourly tabs ("New Dryer" / "Old Dryer") that are ALREADY out
+ * of order or already contain duplicate hour rows from before the dedupe+sort
+ * fix. It removes duplicate rows (keeping the last/freshest per date|shift|hour)
+ * and reorders every row to 08:00,09:00,…,23:00,00:00,…,07:00 per date+shift.
+ *
+ * SAFE and NON-DESTRUCTIVE to real data: it never wipes the tab, never clears
+ * the header, and keeps the freshest row for each hour. Touches ONLY the two
+ * Dryer hourly tabs — QC, the Dryer bottom-form tabs, and Thermopack are not
+ * opened. Idempotent: running it again when already clean does nothing.
+ */
+function dedupeAndSortDryerTabs() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[dedupeAndSortDryerTabs] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[dedupeAndSortDryerTabs] Tab not found: ' + tabName); continue; }
+    var keyCol = dryerKeyCol_(sh);
+    sortDryerHourTab_(sh, keyCol);
+    formatQcTab_(sh);   // reapply wrap/row heights after the rewrite
+    Logger.log('[dedupeAndSortDryerTabs] Cleaned + ordered: ' + tabName);
+  }
+  Logger.log('[dedupeAndSortDryerTabs] Done.');
 }
 
 /**
