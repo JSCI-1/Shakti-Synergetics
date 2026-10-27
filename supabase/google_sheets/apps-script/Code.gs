@@ -1663,6 +1663,60 @@ function dryerCellWithTs_(value, iso) {
   return t ? (v + '\n' + t) : v;
 }
 
+/**
+ * Render a SCALAR hourly field cell from its edit history, newest-first, in a
+ * SINGLE cell (mirrors the FG-sieve stacked-cell pattern, joined by
+ * FG_SIEVE_LINE_SEP). Rebuilt deterministically from the payload so a replay
+ * yields identical content (no duplicated Previous lines).
+ *
+ *   hist = [{v, ts}, ...]   OLDEST-first (as produced by FEAT-002)
+ *
+ * The newest entry (hist[n-1]) renders on top as the current value line + its
+ * own IST edit time; each earlier entry (n-2 .. 0) renders beneath as
+ *   "Previous: <value> / <IST time>".
+ * A cleared current value renders a BLANK top line followed by its edit time,
+ * so the viewer still sees WHEN it was cleared (design §3.2/§3.3).
+ */
+function dryerCellWithHistory_(hist) {
+  var cur = hist[hist.length - 1];
+  var lines = [];
+  lines.push(coalesce_(cur.v));                        // current value (may be blank)
+  lines.push(renderFieldTs_('qc_fg', cur.ts));         // its IST edit time
+  for (var i = hist.length - 2; i >= 0; i--) {
+    lines.push('Previous: ' + coalesce_(hist[i].v) + ' / ' + renderFieldTs_('qc_fg', hist[i].ts));
+  }
+  return lines.join(FG_SIEVE_LINE_SEP);
+}
+
+/**
+ * Render the MAINTENANCE object field from its edit history, newest-first, in a
+ * SINGLE cell. The maintenance history stores the WHOLE object per edit:
+ *
+ *   hist = [{v: {shifter_screen, atomizer_water}, ts}, ...]  OLDEST-first
+ *
+ * The newest entry renders VERBATIM via renderDryerMaintenance_(cur.v) — which
+ * may be multi-line, each selected option carrying its OWN per-option IST time
+ * from the object's ISO (C6); if that render is '' (nothing selected) no current
+ * line is emitted. Each earlier entry renders as a SINGLE "Previous: " line with
+ * the object's internal newlines collapsed to " ; "; a prior all-deselected
+ * state renders as the literal "Previous: (none)" (design §3.3).
+ */
+function dryerMaintCellWithHistory_(hist) {
+  var cur = hist[hist.length - 1];
+  var lines = [];
+  var curRendered = renderDryerMaintenance_(cur.v);
+  if (curRendered !== '') lines.push(curRendered);     // verbatim (may be multi-line)
+  for (var i = hist.length - 2; i >= 0; i--) {
+    var prior = renderDryerMaintenance_(hist[i].v);
+    if (prior === '') {
+      lines.push('Previous: (none)');
+    } else {
+      lines.push('Previous: ' + prior.split('\n').join(' ; '));
+    }
+  }
+  return lines.join(FG_SIEVE_LINE_SEP);
+}
+
 // Locate (creating if needed) the hidden "_dryer_row_key" column; return its
 // 0-based index. The key column must sit AFTER the WIDER of the two blocks
 // (hourly header vs bottom-form header), so every data column of BOTH blocks
@@ -1739,9 +1793,17 @@ function writeDryerHourRow_(ss, row) {
   out[0] = coalesce_(p.date);
   out[1] = coalesce_(p.shift);
   out[2] = coalesce_(p.hour);
+  var hist = p.hist || {};
   for (var c = 0; c < DRYER_V2_HOURLY_COLS.length; c++) {
     var fk = DRYER_V2_HOURLY_COLS[c][0];
     if (fk === 'maintenance') {
+      // History FIRST (design §3.2 ordering): if this field was edited, rebuild
+      // the whole cell newest-first from the maintenance history so a cleared
+      // selection is rewritten instead of leaving the stale value.
+      if (hist.maintenance && Array.isArray(hist.maintenance) && hist.maintenance.length) {
+        out[3 + c] = dryerMaintCellWithHistory_(hist.maintenance);
+        continue;
+      }
       // Maintenance is an object { shifter_screen: '<ISO>'|'', atomizer_water:
       // '<ISO>'|'' } — render each SELECTED option on its own line with its own
       // recorded time: "Shifter-Screen Cleaning — 03:12:40 PM".
@@ -1749,9 +1811,14 @@ function writeDryerHourRow_(ss, row) {
       if (mCell !== '') out[3 + c] = mCell;
       continue;
     }
-    if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
+    // Scalar field: history FIRST (design §3.2 load-bearing ordering) so a
+    // cleared-but-edited field is rewritten from history, not left stale.
+    if (hist[fk] && Array.isArray(hist[fk]) && hist[fk].length) {
+      out[3 + c] = dryerCellWithHistory_(hist[fk]);
+    } else if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
       out[3 + c] = dryerCellWithTs_(vals[fk], ts[fk]);
     }
+    // else: leave the cell as read (unchanged cell untouched — C3).
   }
   out[keyCol] = wantKey;
 
