@@ -433,8 +433,17 @@ function DryerForm({
 
     if ((cancelledRef && cancelledRef.cancelled) || !data) return
 
+    // Skip rows that were FINALIZED by a "Save Log Sheet" submission
+    // (values.__finalized === true). Those hours now live permanently in
+    // dryer_logs; they must NOT be re-pulled into any operator's blank form
+    // (the reset must stay empty, for this operator and every other). They stay
+    // in the table so Production → Activity keeps showing them for 36h — only
+    // the operator-form merge ignores them.
     const byHour = {}
-    data.forEach(r => { byHour[r.hour] = r })
+    data.forEach(r => {
+      if (r && r.values && r.values.__finalized) return
+      byHour[r.hour] = r
+    })
 
     // Merge: keep every local row that has ANY data; only fill a truly-empty
     // local slot from a matching remote hour. NEVER blank a populated row.
@@ -719,6 +728,48 @@ function DryerForm({
     } else {
       setSaved(true)
       showToast('Log sheet saved successfully')
+
+      // Stop live-sharing the just-submitted hours to the OPERATOR forms,
+      // WITHOUT removing them from Production → Activity (which must keep
+      // showing them for its 36h window). We therefore do NOT delete the
+      // shared rows — deleting would also wipe the Activity view. Instead we
+      // mark every draft row for this (dryer_type, log_date) as FINALIZED by
+      // setting a flag inside its existing `values` JSONB. mergeRemoteHours
+      // skips finalized rows, so no operator (this one or another, now or after
+      // a reload/logout) re-pulls the submitted data into a blank form — while
+      // Production → Activity, which ignores the flag and only filters on the
+      // 36h last_saved_at window, keeps displaying them unchanged.
+      //
+      // This is a plain UPDATE of `values` (covered by the existing update RLS
+      // policy from migration 018) — NO schema change and NO new policy needed.
+      // We do NOT touch last_saved_at, so Activity's 36h countdown is unaffected.
+      // Fresh data entered afterwards creates new, unflagged rows and
+      // live-shares again as before. Failures here are non-fatal to the
+      // already-saved permanent log.
+      const clearedDate = form.date
+      if (supabaseReady && supabase && clearedDate) {
+        try {
+          const { data: draftRows } = await supabase
+            .from('dryer_hourly_draft')
+            .select('id, values')
+            .eq('dryer_type', dryerType)
+            .eq('log_date', clearedDate)
+          if (Array.isArray(draftRows)) {
+            await Promise.all(
+              draftRows.map(r =>
+                supabase
+                  .from('dryer_hourly_draft')
+                  .update({ values: { ...(r.values || {}), __finalized: true } })
+                  .eq('id', r.id)
+              )
+            )
+          }
+        } catch {
+          // Transient/permission failure — the permanent log is already saved.
+          // At worst the operator form re-pulls once; the data is not lost.
+        }
+      }
+
       // Reset EVERYTHING after a successful Save Log Sheet: clear the
       // localStorage draft and reset the form to a blank emptyForm (all hourly
       // rows, blower/footer/calibration fields, date and shift). Also clear the
