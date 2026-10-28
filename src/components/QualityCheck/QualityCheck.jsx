@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, Fragment } from 'react'
 import { RAW_MATERIALS, IN_PROCESS, IN_PROCESS_PINNED, FINISHED_GOODS } from '../../data/qualityData.js'
-import { UPL_GRADES } from '../../data/uplData.js'
+import { UPL_GRADES, TABLE_GRADES } from '../../data/uplData.js'
 import { evaluate, calcSuspensibility } from '../../utils/qualityUtils.js'
 import { overallResult } from './OverallResult.jsx'
 import SpecTable from './SpecTable.jsx'
@@ -357,7 +357,7 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
     brand         = fgBrand
   }
 
-  const gradeLabel        = uplGrade === 'export' ? 'UPL Export Grade' : uplGrade === 'omri' ? 'UPL OMRI Grade' : uplGrade === 'colour' ? 'Colour' : 'Normal'
+  const gradeLabel        = uplGrade === 'export' ? 'UPL Export Grade' : uplGrade === 'omri' ? 'UPL OMRI Grade' : uplGrade === 'colour' ? 'Colour' : uplGrade === 'sumitomo' ? 'SUMITOMO CHEMICAL INDIA' : uplGrade === 'hemani_v' ? 'HEMANI INDUSTRIES UNIT - V' : uplGrade === 'lohiya' ? 'LOHIYA CHEMICAL LTD.' : uplGrade === 'adama' ? 'ADAMA INDIA P LTD.' : uplGrade === 'biostadt' ? 'BIOSTADT INDIA LTD.' : uplGrade === 'sanaca' ? 'Sanaca Dubai' : uplGrade === 'villacrop' ? 'Villa Crop' : uplGrade === 'yellowstone' ? 'Yellowstone' : uplGrade === 'iffco' ? 'IFFCO' : 'Normal'
   const uplSuffix         = (activeTab === 'fg' && uplGrade) ? ` (${gradeLabel})` : ''
   const materialWithBrand = brand ? `${materialLabel} – ${brand}${uplSuffix}` : `${materialLabel}${uplSuffix}`
 
@@ -425,8 +425,16 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
   }
 
   // UPL Parameters table (Finished Goods only, when a grade is active)
-  if (activeTab === 'fg' && uplGrade && uplValues) {
-    const rows = UPL_GRADES[uplGrade]
+  // UPL grades (export/omri) use UPL_GRADES; parameter-table grades (ADMA,
+  // Lohiya, …) use their own extra-param rows. Other grades (normal/colour)
+  // have no extra table → rows stays undefined.
+  const printTableGrade = TABLE_GRADES[uplGrade] || null
+  const fgExtraRows = printTableGrade
+    ? printTableGrade.rows
+    : UPL_GRADES[uplGrade]
+  if (activeTab === 'fg' && uplGrade && uplValues && fgExtraRows) {
+    const rows = fgExtraRows
+    const tableTitle = printTableGrade ? printTableGrade.title : 'UPL Parameters'
     const groups = []
     let cur = null
     rows.forEach(row => {
@@ -456,13 +464,13 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
     }).join('')
 
     contentHtml += `<div style="page-break-inside:avoid;margin-bottom:16px">
-      <div style="font-weight:bold;font-size:13px;color:#b85c2c;margin-bottom:6px">UPL Parameters – ${gradeLabel}</div>
+      <div style="font-weight:bold;font-size:13px;color:#b85c2c;margin-bottom:6px">${tableTitle} – ${gradeLabel}</div>
       <table style="width:100%;border-collapse:collapse;table-layout:fixed;word-break:break-word">
         <tr>
           <th style="${TH};width:30%">Parameter</th>
           <th style="${TH};width:25%">Specification</th>
-          <th style="${TH};width:22%;text-align:center">Result</th>
-          <th style="${TH};width:23%;text-align:center">Status</th>
+          <th style="${TH};width:22%;text-align:center">${printTableGrade ? 'Observation' : 'Result'}</th>
+          <th style="${TH};width:23%;text-align:center">${printTableGrade ? 'Result' : 'Status'}</th>
         </tr>
         ${grpRows}
       </table>
@@ -910,6 +918,15 @@ export default function QualityCheck({ user }) {
   // Latest computed Suspensibility result (fg_susp is a formula card, so its
   // result lives in the card's local state — capture it for the live feed).
   const [suspResult, setSuspResult] = useState(null)
+
+  // Latest computed Sulphur Content result (fg_sulphur formula card). Captured
+  // so the ADMA parameter table can mirror it into its read-only Observation
+  // column. Other grades do not use this value.
+  const [fgSulphurResult, setFgSulphurResult] = useState(null)
+
+  // Latest computed Bulk Density result (fg_bulk formula card). Captured so the
+  // Sanaca Dubai table can mirror it into its read-only Observation column.
+  const [fgBulkResult, setFgBulkResult] = useState(null)
 
   // ── Live push to Production → Activity (qc_activity_draft) ──────────
   // Upserts the current Finished Goods snapshot keyed on
@@ -2016,7 +2033,30 @@ export default function QualityCheck({ user }) {
       activeTab, rmSelected, ipSelected, fgSelected, date, testedBy,
       rmBrand, ipBrand, fgBrand,
       rmSupplierName, rmInvoiceNo, rmBatchNo,
-      uplGrade, uplValues,
+      uplGrade,
+      // Parameter-table grades (ADMA, Lohiya, …): the Sulphur table row is a
+      // read-only mirror of the live formula result (not stored in uplValues),
+      // so inject it under that grade's sulphur row id for the printout.
+      uplValues: (() => {
+        // 'calc' rows are read-only mirrors of a live formula result (not stored
+        // in uplValues). Inject each one's current value under its row id so the
+        // printout shows the computed Observation. Rows come from the company
+        // parameter-table grades (ADMA, Lohiya, …) OR from the UPL Export/OMRI
+        // grade tables, both of which may now carry 'calc' rows.
+        const rows = (TABLE_GRADES[uplGrade] && TABLE_GRADES[uplGrade].rows)
+          || UPL_GRADES[uplGrade]
+          || null
+        if (!rows) return uplValues
+        const injected = { ...uplValues }
+        rows.filter(r => r.type === 'calc').forEach(r => {
+          const v = r.sourceResult === 'fg_sulphur' ? fgSulphurResult
+            : r.sourceResult === 'fg_susp' ? suspResult
+            : r.sourceResult === 'fg_bulk' ? fgBulkResult
+            : null
+          injected[r.id] = (v !== null && v !== undefined && v !== '') ? String(v) : ''
+        })
+        return injected
+      })(),
       fgDryer,
     })
   }
@@ -2182,10 +2222,27 @@ export default function QualityCheck({ user }) {
 
       const captured = collectReportValues()
 
-      // Light validation — require a date or at least one captured value.
-      const hasValue = Object.values(captured).some(v => v !== '' && v != null)
-      if (!date && !hasValue) {
-        setQcError('Enter at least one value before saving.')
+      // Required batch-identification fields BEFORE saving, named explicitly so
+      // the chemist knows exactly what to fill (same approach as Finished Goods).
+      // These match each tab's identity columns in the Google Sheet + the
+      // qc_raw_materials / qc_in_process views.
+      const missingRmIp = []
+      if (activeTab === 'rm') {
+        if (!date) missingRmIp.push('Received Date')
+        if (!rmBatchNo) missingRmIp.push('Batch Number')
+        if (!testedBy) missingRmIp.push('Tested By')
+        if (!rmSelected) missingRmIp.push('Material')
+        if (!rmSupplierName) missingRmIp.push('Supplier Name')
+        if (!rmInvoiceNo) missingRmIp.push('Invoice Number')
+        if (!rmTime) missingRmIp.push('Time')
+      } else { // ip
+        if (!date) missingRmIp.push('Manufacturing Date')
+        if (!ipBatchNo) missingRmIp.push('Batch No.')
+        if (!testedBy) missingRmIp.push('Tested By')
+        if (!ipTime) missingRmIp.push('Time')
+      }
+      if (missingRmIp.length > 0) {
+        setQcError('Please fill these required fields before saving: ' + missingRmIp.join(', ') + '.')
         return
       }
 
@@ -2264,7 +2321,27 @@ export default function QualityCheck({ user }) {
     // saved record matches the printed report exactly.
     const captured = collectReportValues()
 
-    // Light validation — require a date or at least one captured value.
+    // Finished Goods: require the batch-identification fields BEFORE saving, and
+    // name exactly which are missing. These fields form the record identity
+    // (date|batch|product|grade|dryer) and the shared-draft key, so saving
+    // without them both misroutes the sheet row and leaves the shared draft
+    // unfinalizable (the old confusing "Finalizing the shared draft is pending"
+    // banner). A clear, specific message is shown instead.
+    if (activeTab === 'fg') {
+      const missing = []
+      if (!date) missing.push('Manufactured Date')
+      if (!fgBatchNo) missing.push('Batch No.')
+      if (!fgTime) missing.push('Batch Start Time')
+      if (!uplGrade) missing.push('Grade')
+      if (!fgDryer) missing.push('Dryer')
+      if (!fgSelected) missing.push('Product')
+      if (missing.length > 0) {
+        setQcError('Please fill these required fields before saving: ' + missing.join(', ') + '.')
+        return
+      }
+    }
+
+    // Light validation (RM/IP) — require a date or at least one captured value.
     const hasValue = Object.values(captured).some(v => v !== '' && v != null)
     if (!date && !hasValue) {
       setQcError('Enter at least one value before saving.')
@@ -2667,9 +2744,18 @@ export default function QualityCheck({ user }) {
 
     // Grade label for display and print
     const gradeLabel =
-      uplGrade === 'export'  ? 'UPL Export Grade' :
-      uplGrade === 'omri'    ? 'UPL OMRI Grade'   :
-      uplGrade === 'colour'  ? 'Colour'            : 'Normal'
+      uplGrade === 'export'   ? 'UPL Export Grade' :
+      uplGrade === 'omri'     ? 'UPL OMRI Grade'   :
+      uplGrade === 'colour'   ? 'Colour'            :
+      uplGrade === 'sumitomo' ? 'SUMITOMO CHEMICAL INDIA' :
+      uplGrade === 'hemani_v' ? 'HEMANI INDUSTRIES UNIT - V' :
+      uplGrade === 'lohiya'   ? 'LOHIYA CHEMICAL LTD.' :
+      uplGrade === 'adama'    ? 'ADAMA INDIA P LTD.' :
+      uplGrade === 'biostadt' ? 'BIOSTADT INDIA LTD.' :
+      uplGrade === 'sanaca'   ? 'Sanaca Dubai' :
+      uplGrade === 'villacrop'? 'Villa Crop' :
+      uplGrade === 'yellowstone' ? 'Yellowstone' :
+      uplGrade === 'iffco'    ? 'IFFCO' : 'Normal'
 
     const displayLabel = fgBrand
       ? `${product.label} – ${fgBrand}${isWDG ? ` (${gradeLabel})` : ''}`
@@ -2686,9 +2772,37 @@ export default function QualityCheck({ user }) {
       return groups
     })() : []
 
-    // WDG tests hidden when UPL grade covers them
+    // Parameter-table grade config (ADMA, Lohiya, …). null for every other grade.
+    const tableGrade = TABLE_GRADES[uplGrade] || null
+
+    // Resolve a 'calc' table row's read-only Observation from the matching live
+    // formula-card result. Supports the Sulphur and Suspensibility cards.
+    const calcRowObserved = (sourceResult) => {
+      const v = sourceResult === 'fg_sulphur' ? fgSulphurResult
+        : sourceResult === 'fg_susp' ? suspResult
+        : sourceResult === 'fg_bulk' ? fgBulkResult
+        : null
+      return (v !== null && v !== undefined && v !== '') ? String(v) : ''
+    }
+
+    // Table-grade extra-param rows grouped by heading.
+    const admaGroups = tableGrade ? (() => {
+      const groups = []
+      let cur = null
+      tableGrade.rows.forEach(row => {
+        if (row.group !== cur) { groups.push({ heading: row.group, rows: [] }); cur = row.group }
+        groups[groups.length - 1].rows.push(row)
+      })
+      return groups
+    })() : []
+
+    // WDG tests hidden when UPL grade covers them. Parameter-table grades hide
+    // pH + Wettability (moved into their table) plus Dry Sieve / Moisture / Bulk
+    // (not parameters for those grades).
     const hiddenTests = (uplGrade === 'export' || uplGrade === 'omri')
       ? (UPL_GRADES[uplGrade].hideTests ?? [])
+      : tableGrade
+      ? tableGrade.hiddenCards
       : []
 
     return (
@@ -2753,6 +2867,15 @@ export default function QualityCheck({ user }) {
                 <option value="export">UPL Export</option>
                 <option value="omri">UPL OMRI</option>
                 <option value="colour">Colour</option>
+                <option value="sumitomo">SUMITOMO CHEMICAL INDIA</option>
+                <option value="hemani_v">HEMANI INDUSTRIES UNIT - V</option>
+                <option value="lohiya">LOHIYA CHEMICAL LTD.</option>
+                <option value="adama">ADAMA INDIA P LTD.</option>
+                <option value="biostadt">BIOSTADT INDIA LTD.</option>
+                <option value="sanaca">Sanaca Dubai</option>
+                <option value="villacrop">Villa Crop</option>
+                <option value="yellowstone">Yellowstone</option>
+                <option value="iffco">IFFCO</option>
               </select>
             </div>
           )}
@@ -2915,8 +3038,27 @@ export default function QualityCheck({ user }) {
           if (test.calcFn) return (
             <FormulaCalculator
               key={`${test.id}-${resetKey}`}
-              formula={test}
-              onResult={test.id === 'fg_susp' ? setSuspResult : undefined}
+              // Parameter-table grades (ADMA, Lohiya, …) override the displayed
+              // card name for Wet Sieve to carry the spec text. Does not mutate
+              // the shared test definition, so other grades keep the original
+              // "Wet Sieve" name.
+              formula={
+                tableGrade && tableGrade.nameOverrides[test.id]
+                  ? { ...test, name: tableGrade.nameOverrides[test.id] }
+                  : test
+              }
+              onResult={
+                test.id === 'fg_susp'
+                  ? setSuspResult
+                  // Grades that mirror the Sulphur result into a table row:
+                  // company parameter-table grades AND UPL Export/OMRI.
+                  : (test.id === 'fg_sulphur' && (tableGrade || uplGrade === 'export' || uplGrade === 'omri'))
+                  ? setFgSulphurResult
+                  // Sanaca mirrors the Bulk Density result into its table.
+                  : (test.id === 'fg_bulk' && tableGrade)
+                  ? setFgBulkResult
+                  : undefined
+              }
               // CONTROLLED: persist this card's inputs in the FG draft (per
               // grade) so Suspensibility (and any FG formula) SURVIVES a refresh
               // / relogin and is part of the shared draft.
@@ -2982,7 +3124,10 @@ export default function QualityCheck({ user }) {
                     </div>
                   </div>
 
-                  {/* Recorded moisture readings — result + time */}
+                  {/* Recorded moisture readings — result + time. For the UPL
+                      Export and UPL OMRI grades ONLY, each reading also shows a
+                      Pass/Fail status against the moisture spec (range 1.5–2.2).
+                      Other grades keep the original columns unchanged. */}
                   <div className="qc-sieve-log" data-moisture-log={test.id}>
                     <div className="qc-sieve-log-title">{test.name} — recorded</div>
                     {mLog.length === 0 ? (
@@ -2991,20 +3136,38 @@ export default function QualityCheck({ user }) {
                       <div className="qc-sieve-log-scroll">
                         <table className="qc-sieve-log-table">
                           <thead>
-                            <tr><th>#</th><th>Result ({test.unit})</th><th>Time</th><th></th></tr>
+                            <tr>
+                              <th>#</th>
+                              <th>Result ({test.unit})</th>
+                              {(uplGrade === 'export' || uplGrade === 'omri') && <th>Status</th>}
+                              <th>Time</th>
+                              <th></th>
+                            </tr>
                           </thead>
                           <tbody>
-                            {mLog.map((e, idx) => (
+                            {mLog.map((e, idx) => {
+                              // Export + OMRI per-reading Pass/Fail (range 1.5–2.2).
+                              const mStatus = (uplGrade === 'export' || uplGrade === 'omri')
+                                ? evaluate(e.result, { type: 'range', min: 1.5, max: 2.2 })
+                                : null
+                              return (
                               <tr key={idx}>
                                 <td>{idx + 1}</td>
                                 <td>{e.result}</td>
+                                {(uplGrade === 'export' || uplGrade === 'omri') && (
+                                  <td>
+                                    {mStatus === 'PASS' && <span className="qc-upl-pass">Pass</span>}
+                                    {mStatus === 'FAIL' && <span className="qc-upl-fail">Fail</span>}
+                                    {mStatus === null   && <span className="qc-upl-na">—</span>}
+                                  </td>
+                                )}
                                 <td>{e.time}</td>
                                 <td>
                                   <button type="button" className="qc-sieve-log-del"
                                     title="Remove" onClick={() => removeMoistureEntry(idx)}>×</button>
                                 </td>
                               </tr>
-                            ))}
+                            )})}
                           </tbody>
                         </table>
                       </div>
@@ -3059,14 +3222,27 @@ export default function QualityCheck({ user }) {
                         <td colSpan={4}>{g.heading}</td>
                       </tr>
                       {g.rows.map(row => {
-                        const val    = uplValues[row.id] ?? ''
+                        // 'calc' rows mirror a formula-card result (read-only);
+                        // all others take the stored value.
+                        const val = row.type === 'calc'
+                          ? calcRowObserved(row.sourceResult)
+                          : (uplValues[row.id] ?? '')
                         const status = evaluate(val, row.rule)
                         return (
                           <tr key={row.id}>
                             <td>{row.parameter}{row.unit ? ` (${row.unit})` : ''}</td>
                             <td>{row.specDisplay}</td>
                             <td>
-                              {row.type === 'complies' ? (
+                              {row.type === 'calc' ? (
+                                <input
+                                  type="text"
+                                  readOnly
+                                  className="qc-upl-input"
+                                  placeholder="—"
+                                  value={val}
+                                  data-upl-id={row.id}
+                                />
+                              ) : row.type === 'complies' ? (
                                 <select
                                   className="qc-upl-select"
                                   value={val}
@@ -3106,12 +3282,151 @@ export default function QualityCheck({ user }) {
           </div>
         )}
 
+        {/* Parameter-table grades (ADMA, Lohiya, …). Four-column table:
+            Parameter / Specification / Observation / Result. The Sulphur 'calc'
+            row mirrors the live formula-card result; pH + Wettability take
+            operator observations; Appearance + Drop Test are dropdowns. Each
+            such grade also hides pH/Wettability/DrySieve/Moisture/Bulk cards. */}
+        {tableGrade && (
+          <div className="qc-upl-table-wrap" data-adma-table>
+            <div className="qc-upl-table-title">
+              {tableGrade.title} – {gradeLabel}
+            </div>
+            <div className="qc-upl-scroll">
+              <table className="qc-upl-table">
+                <thead>
+                  <tr>
+                    <th>Parameter / पैरामीटर</th>
+                    <th>Specification / विनिर्देश</th>
+                    <th>Observation / निरीक्षण</th>
+                    <th>Result / परिणाम</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {admaGroups.map(g => (
+                    <Fragment key={g.heading}>
+                      <tr className="qc-upl-group-row">
+                        <td colSpan={4}>{g.heading}</td>
+                      </tr>
+                      {g.rows.map(row => {
+                        // 'calc' rows mirror a formula-card result (read-only);
+                        // all others take the stored observation value.
+                        const observed = row.type === 'calc'
+                          ? calcRowObserved(row.sourceResult)
+                          : (uplValues[row.id] ?? '')
+                        const status = evaluate(observed, row.rule)
+                        return (
+                          <tr key={row.id}>
+                            <td>{row.parameter}{row.unit ? ` (${row.unit})` : ''}</td>
+                            <td>{row.specDisplay}</td>
+                            <td>
+                              {row.type === 'calc' ? (
+                                // Read-only observation sourced from the live
+                                // formula card. data-upl-id so Print/Download and
+                                // the save snapshot capture the computed value.
+                                <input
+                                  type="text"
+                                  readOnly
+                                  className="qc-upl-input"
+                                  placeholder="—"
+                                  value={observed}
+                                  data-upl-id={row.id}
+                                />
+                              ) : row.type === 'complies' ? (
+                                <select
+                                  className="qc-upl-select"
+                                  value={observed}
+                                  data-upl-id={row.id}
+                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                >
+                                  <option value="">— Select —</option>
+                                  <option value="Complies">Complies</option>
+                                  <option value="Does not comply">Does not comply</option>
+                                </select>
+                              ) : row.type === 'droptest' ? (
+                                <select
+                                  className="qc-upl-select"
+                                  value={observed}
+                                  data-upl-id={row.id}
+                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                >
+                                  <option value="">— Select —</option>
+                                  <option value="Found OK no leakage">Found OK no leakage</option>
+                                  <option value="Fail">Fail</option>
+                                </select>
+                              ) : row.type === 'text' ? (
+                                // Free-text observation (e.g. Arsenic Content).
+                                <input
+                                  type="text"
+                                  className="qc-upl-input"
+                                  placeholder="—"
+                                  value={observed}
+                                  data-upl-id={row.id}
+                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                />
+                              ) : row.type === 'arsenic' ? (
+                                // Arsenic Content — Not Detected (Pass) / Detected (Fail).
+                                <select
+                                  className="qc-upl-select"
+                                  value={observed}
+                                  data-upl-id={row.id}
+                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                >
+                                  <option value="">— Select —</option>
+                                  <option value="Not Detected">Not Detected</option>
+                                  <option value="Detected">Detected</option>
+                                </select>
+                              ) : (
+                                <input
+                                  type="text"
+                                  inputMode="text"
+                                  pattern="-?[0-9]*\.?[0-9]*"
+                                  className="qc-upl-input"
+                                  placeholder="—"
+                                  value={observed}
+                                  data-upl-id={row.id}
+                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                />
+                              )}
+                            </td>
+                            <td className="qc-upl-status-cell">
+                              {status === 'PASS' && <span className="qc-upl-pass">Pass</span>}
+                              {status === 'FAIL' && <span className="qc-upl-fail">Fail</span>}
+                              {status === null   && <span className="qc-upl-na">—</span>}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Overall result */}
         <OverallResult results={{
           ...collectFGResults(product, values, hiddenTests),
           ...((uplGrade === 'export' || uplGrade === 'omri')
             ? Object.fromEntries(
-                UPL_GRADES[uplGrade].map(row => [row.id, evaluate(uplValues[row.id] ?? '', row.rule)])
+                UPL_GRADES[uplGrade].map(row => [
+                  row.id,
+                  evaluate(row.type === 'calc' ? calcRowObserved(row.sourceResult) : (uplValues[row.id] ?? ''), row.rule),
+                ])
+              )
+            : {}),
+          ...(tableGrade
+            // Only ruled table-grade rows count toward Overall (mirrors
+            // collectFGResults, which excludes rule-less params so an unruled
+            // field never forces a permanent "Incomplete"). 'calc' rows read
+            // their live formula result; others read the stored observation.
+            ? Object.fromEntries(
+                tableGrade.rows.filter(row => row.rule)
+                  .map(row => [
+                    row.id,
+                    evaluate(row.type === 'calc' ? calcRowObserved(row.sourceResult) : (uplValues[row.id] ?? ''), row.rule),
+                  ])
               )
             : {}),
         }} />

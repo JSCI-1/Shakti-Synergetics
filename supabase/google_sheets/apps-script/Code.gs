@@ -360,6 +360,283 @@ var QC_FIELD_CATALOG = {
   qc_fg: QC_FIELDS_FG
 };
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * FINISHED GOODS — GRADE-SPECIFIC TABS (additive, FG-only)
+ * ───────────────────────────────────────────────────────────────────────────
+ * Each configured FG grade gets its OWN narrow tab inside the SAME Quality
+ * Control spreadsheet, so a grade's records are easy to read without scrolling
+ * past every other grade's parameters. This is PURELY ADDITIVE and FG-only:
+ *   • Dryer, Raw Material, In-Process paths are NOT touched.
+ *   • The ORIGINAL 'Finished Goods' tab is preserved unchanged. It still
+ *     receives blank/unknown-grade records (the fallback), and buildQcLayout_
+ *     with NO grade argument returns the EXACT pre-existing global FG layout,
+ *     so that tab is byte-for-byte identical to before.
+ *   • Row matching, dedup (_fg_key + _SyncState + event_id), timestamps, and
+ *     the merged value+timestamp cell format are reused verbatim — only the
+ *     DESTINATION TAB and the per-grade FIELD CATALOG change.
+ *
+ * Source of truth: the Grade dropdown values in QualityCheck.jsx and the
+ * per-grade parameter config in src/data/uplData.js (UPL_GRADES.export/omri and
+ * TABLE_GRADES[grade]). Grade is ALREADY part of the FG business key
+ * (QC_BUSINESS_KEY.qc_fg / fgBizKey_), so grade-based routing collides with
+ * nothing and needs no key change.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+// Grade key (values.grade, lowercased) → destination tab name. The key is the
+// AUTHORITATIVE stored value from the website dropdown; it is NEVER renamed.
+// NOTE: 'adama' is the stored key; its tab is 'FG - ADAMA' (correct spelling).
+var FG_GRADE_TABS = {
+  normal:      'FG - Normal',
+  colour:      'FG - Colour',
+  omri:        'FG - UPL OMRI',
+  export:      'FG - UPL Export',
+  adama:       'FG - ADAMA',
+  lohiya:      'FG - Lohiya',
+  biostadt:    'FG - Biostadt',
+  sumitomo:    'FG - SUMITOMO',
+  hemani_v:    'FG - Hemani Unit V',
+  sanaca:      'FG - Sanaca Dubai',
+  villacrop:   'FG - Villa Crop',
+  yellowstone: 'FG - Yellowstone',
+  iffco:       'FG - IFFCO'
+};
+
+// The ORIGINAL (pre-existing) Finished Goods tab. Used as the fallback
+// destination for blank or UNKNOWN grades (never guessed from other fields).
+var FG_ORIGINAL_TAB = 'Finished Goods';
+
+// Core WDG field keys (subset of QC_FIELDS_FG) shared by the standard grades.
+// A grade's catalog = these MINUS the grade's hidden cards, PLUS the grade's
+// own UPL/table parameter rows. Keys/labels come straight from QC_FIELDS_FG so
+// nothing is re-invented.
+var FG_CORE_WDG_KEYS = [
+  'fg_sulphur__N', 'fg_sulphur__BR', 'fg_sulphur__W', 'fg_sulphur',
+  'fg_susp__sulphurContent', 'fg_susp__sampleWeight', 'fg_susp__N', 'fg_susp__BR', 'fg_susp',
+  'fg_moisture',
+  'fg_bulk__mass', 'fg_bulk__volume', 'fg_bulk',
+  'fg_wetSieve__M', 'fg_wetSieve__m', 'fg_wetSieve',
+  'fg_drySieve__M', 'fg_drySieve__m', 'fg_drySieve',
+  'fg_ph', 'fg_wettability', 'fg_foam_start', 'fg_foam_1min'
+];
+
+// Per-grade "hidden cards": core WDG card ids NOT shown for that grade. Mirrors
+// src/data/uplData.js *_HIDDEN_CARDS / UPL_GRADES[...].hideTests. When a card id
+// is hidden, ALL its field keys (the result AND its '<id>__<var>' inputs) are
+// omitted from that grade's catalog. Grades absent here (normal/colour) hide
+// nothing (full core WDG, exactly as the original tab shows them).
+var FG_GRADE_HIDDEN_CARDS = {
+  export:      ['fg_drySieve'],
+  omri:        ['fg_ph', 'fg_wettability'],
+  adama:       ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk'],
+  lohiya:      ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk'],
+  biostadt:    ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk'],
+  sumitomo:    ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk'],
+  hemani_v:    ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk'],
+  iffco:       ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk'],
+  sanaca:      ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture'],
+  villacrop:   ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture'],
+  yellowstone: ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture']
+  // normal, colour: no hidden cards (full core WDG).
+};
+
+// Per-grade EXTRA parameter rows (beyond core WDG), as [valueKey, 'Label'].
+// valueKey = the row id the website stores in values (scraped via data-upl-id in
+// collectReportValues), so each value lands in its own column. Labels mirror the
+// 'parameter' text in uplData.js. These are the grade's authoritative params;
+// no acceptance limits or results are invented (Pass/Fail is computed by the
+// website and stored WITH the value under the same key when present).
+var FG_GRADE_EXTRA_FIELDS = {
+  export: [
+    ['upl_exp_sulphur', 'UPL Export – Active Content of Sulphur % by mass'],
+    ['upl_exp_susp',    'UPL Export – Suspension as Sulphur (%w/w)'],
+    ['upl_exp_ps_10', 'UPL Export – Particle >10µm (%)'],
+    ['upl_exp_ps_6',  'UPL Export – Particle >6µm (%)'],
+    ['upl_exp_ps_1',  'UPL Export – Particle >1µm (%)'],
+    ['upl_exp_ws_160','UPL Export – Wet Sieve 160 Micron (%)'],
+    ['upl_exp_ws_25', 'UPL Export – Wet Sieve 25 Micron (%)'],
+    ['upl_exp_df_0',  'UPL Export – Dynamic Foam 0 min (ml)'],
+    ['upl_exp_df_1',  'UPL Export – Dynamic Foam 1 min (ml)'],
+    ['upl_exp_df_2',  'UPL Export – Dynamic Foam 2 min (ml)'],
+    ['upl_exp_df_5',  'UPL Export – Dynamic Foam 5 min (ml)'],
+    ['upl_exp_wps',   'UPL Export – Wet Particle Size median (µm)'],
+    ['upl_exp_alk',   'UPL Export – Alkalinity (% w/w)'],
+    ['upl_exp_disp',  'UPL Export – Dispersibility'],
+    ['upl_exp_appearance', 'UPL Export – Appearance']
+  ],
+  omri: [
+    ['upl_omri_sulphur',   'UPL OMRI – Active Content of Sulphur % by mass'],
+    ['upl_omri_susp',      'UPL OMRI – Suspension as Sulphur (%w/w)'],
+    ['upl_omri_water_kf',  'UPL OMRI – Water by KF (%w/w)'],
+    ['upl_omri_ph',        'UPL OMRI – pH of 1.0% Aqu Sol'],
+    ['upl_omri_wettability','UPL OMRI – Wettability (sec)'],
+    ['upl_omri_ps_10',     'UPL OMRI – Particle >10µm (%)'],
+    ['upl_omri_ps_6',      'UPL OMRI – Particle >6µm (%)'],
+    ['upl_omri_ps_1',      'UPL OMRI – Particle >1µm (%)'],
+    ['upl_omri_ds_500',    'UPL OMRI – Dry Sieve 500 Micron (%)'],
+    ['upl_omri_ds_106',    'UPL OMRI – Dry Sieve 106 Micron (%)'],
+    ['upl_omri_disp_self', 'UPL OMRI – Dispersion 1% self dispersing'],
+    ['upl_omri_disp_1h',   'UPL OMRI – Stability 1 hour'],
+    ['upl_omri_disp_24h',  'UPL OMRI – Stability 24 hours'],
+    ['upl_omri_ws_160',    'UPL OMRI – Wet Sieve 160 Micron (%)'],
+    ['upl_omri_ws_25',     'UPL OMRI – Wet Sieve 25 Micron (%)'],
+    ['upl_omri_appearance','UPL OMRI – Appearance']
+  ],
+  // ADAMA family (ADAMA, Lohiya, Biostadt, Sumitomo, Hemani-V, IFFCO):
+  // Sulphur (mirrored from fg_sulphur card, shown as a table row), pH,
+  // Wettability, Appearance, Drop Test. Each grade uses its OWN row ids.
+  // NOTE: the ADAMA grade KEY is 'adama', but its parameter row ids in
+  // uplData.js (ADMA_EXTRA_PARAMS) are 'adma_*' (legacy spelling). The website
+  // stores values under those 'adma_*' ids, so the sheet columns MUST key on
+  // 'adma_*' or the values never land. Display labels use the correct "ADAMA".
+  adama: [
+    ['adma_sulphur',     'ADAMA – Active Content of Sulphur % by mass'],
+    ['adma_ph',          'ADAMA – pH'],
+    ['adma_wettability', 'ADAMA – Wettability (max)'],
+    ['adma_appearance',  'ADAMA – Appearance'],
+    ['adma_drop_test',   'ADAMA – Drop Test of bags']
+  ],
+  lohiya: [
+    ['lohiya_sulphur',     'LOHIYA – Active Content of Sulphur % By mass'],
+    ['lohiya_ph',          'LOHIYA – PH of 1.0 % Aqu Sol'],
+    ['lohiya_wettability', 'LOHIYA – Wettability (max)'],
+    ['lohiya_appearance',  'LOHIYA – Appearance'],
+    ['lohiya_drop_test',   'LOHIYA – Drop Test of bags']
+  ],
+  biostadt: [
+    ['biostadt_sulphur',     'BIOSTADT – Active Content of Sulphur % By mass'],
+    ['biostadt_ph',          'BIOSTADT – PH of 1.0 % Aqu Sol'],
+    ['biostadt_wettability', 'BIOSTADT – Wettability (max)'],
+    ['biostadt_appearance',  'BIOSTADT – Appearance'],
+    ['biostadt_drop_test',   'BIOSTADT – Drop Test of bags']
+  ],
+  sumitomo: [
+    ['sumitomo_sulphur',     'SUMITOMO – Active Content of Sulphur % By mass'],
+    ['sumitomo_ph',          'SUMITOMO – PH of 1.0 % Aqu Sol'],
+    ['sumitomo_wettability', 'SUMITOMO – Wettability (max)'],
+    ['sumitomo_appearance',  'SUMITOMO – Appearance'],
+    ['sumitomo_drop_test',   'SUMITOMO – Drop Test of bags']
+  ],
+  hemani_v: [
+    ['hemani_sulphur',     'HEMANI – Active Content of Sulphur % By mass'],
+    ['hemani_ph',          'HEMANI – PH of 1.0 % Aqu Sol'],
+    ['hemani_wettability', 'HEMANI – Wettability (max)'],
+    ['hemani_appearance',  'HEMANI – Appearance'],
+    ['hemani_drop_test',   'HEMANI – Drop Test of bags']
+  ],
+  iffco: [
+    ['iffco_sulphur',     'IFFCO – Active Content of Sulphur % By mass'],
+    ['iffco_ph',          'IFFCO – pH of 1.0 % Aqu Sol'],
+    ['iffco_wettability', 'IFFCO – Wettability (max)'],
+    ['iffco_appearance',  'IFFCO – Appearance'],
+    ['iffco_drop_test',   'IFFCO – Drop Test of bags']
+  ],
+  // Sanaca family (Sanaca Dubai, Villa Crop, Yellowstone): Appearance, Sulphur,
+  // pH, Wettability, Suspensibility, Bulk Density, Arsenic Content. Own row ids.
+  sanaca: [
+    ['sanaca_appearance',     'Sanaca Dubai – Appearance'],
+    ['sanaca_sulphur',        'Sanaca Dubai – Active content of Sulphur % by mass'],
+    ['sanaca_ph',             'Sanaca Dubai – PH of 1.0% Aqueous solution'],
+    ['sanaca_wettability',    'Sanaca Dubai – Wettability'],
+    ['sanaca_suspensibility', 'Sanaca Dubai – Suspensibility % by mass'],
+    ['sanaca_bulk_density',   'Sanaca Dubai – Bulk Density'],
+    ['sanaca_arsenic',        'Sanaca Dubai – Arsenic Content']
+  ],
+  villacrop: [
+    ['villacrop_appearance',     'Villa Crop – Appearance'],
+    ['villacrop_sulphur',        'Villa Crop – Active content of Sulphur % by mass'],
+    ['villacrop_ph',             'Villa Crop – PH of 1.0% Aqueous solution'],
+    ['villacrop_wettability',    'Villa Crop – Wettability'],
+    ['villacrop_suspensibility', 'Villa Crop – Suspensibility % by mass'],
+    ['villacrop_bulk_density',   'Villa Crop – Bulk Density'],
+    ['villacrop_arsenic',        'Villa Crop – Arsenic Content']
+  ],
+  yellowstone: [
+    ['yellowstone_appearance',     'Yellowstone – Appearance'],
+    ['yellowstone_sulphur',        'Yellowstone – Active content of Sulphur % by mass'],
+    ['yellowstone_ph',             'Yellowstone – PH of 1.0% Aqueous solution'],
+    ['yellowstone_wettability',    'Yellowstone – Wettability'],
+    ['yellowstone_suspensibility', 'Yellowstone – Suspensibility % by mass'],
+    ['yellowstone_bulk_density',   'Yellowstone – Bulk Density'],
+    ['yellowstone_arsenic',        'Yellowstone – Arsenic Content']
+  ]
+  // normal, colour: no extra rows (core WDG only, preserved exactly).
+};
+
+/**
+ * Normalize a raw grade value exactly like fgBizKey_ does (trim + lowercase;
+ * blank → 'normal'), so routing and the business key agree.
+ */
+function fgNormalizeGrade_(grade) {
+  var g = coalesce_(grade).trim().toLowerCase();
+  return g === '' ? 'normal' : g;
+}
+
+/**
+ * Resolve the destination tab for a FG record's grade.
+ *   • Script Property FG_GRADE_ROUTING='off' → always the original tab
+ *     (rollback kill-switch; no code revert needed).
+ *   • Known grade → its grade tab.
+ *   • Blank grade → 'normal' tab (blank normalizes to 'normal', matching
+ *     fgBizKey_'s own blank→normal rule, so the key and the tab agree).
+ *   • UNKNOWN grade → the original 'Finished Goods' tab (fallback), and the
+ *     unknown grade is LOGGED for investigation (never silently dropped, never
+ *     guessed from other fields).
+ * Returns the tab name string.
+ */
+function fgTabForGrade_(grade) {
+  var off = PropertiesService.getScriptProperties().getProperty('FG_GRADE_ROUTING');
+  if (off === 'off') return FG_ORIGINAL_TAB;
+
+  var g = fgNormalizeGrade_(grade);
+  if (FG_GRADE_TABS.hasOwnProperty(g)) return FG_GRADE_TABS[g];
+
+  Logger.log('[fgTabForGrade_] Unknown grade "' + coalesce_(grade)
+    + '" (normalized "' + g + '") → routing to original "' + FG_ORIGINAL_TAB
+    + '" tab for investigation.');
+  return FG_ORIGINAL_TAB;
+}
+
+/**
+ * Build the FG field catalog ([key,label] pairs) for a specific grade:
+ *   core WDG (minus the grade's hidden cards) + the grade's extra param rows.
+ * Labels come from QC_FIELDS_FG (core) and FG_GRADE_EXTRA_FIELDS (grade rows),
+ * so nothing is re-invented. A hidden CARD id removes its result key AND its
+ * '<id>__<var>' input keys.
+ *
+ * For an UNKNOWN grade (or when routing is to the original tab), returns null so
+ * callers fall back to the full global QC_FIELDS_FG (the original tab's exact
+ * catalog) — the original tab is never narrowed.
+ */
+function fgFieldsForGrade_(grade) {
+  var g = fgNormalizeGrade_(grade);
+  if (!FG_GRADE_TABS.hasOwnProperty(g)) return null;   // unknown → original catalog
+
+  var hidden = FG_GRADE_HIDDEN_CARDS[g] || [];
+  function isHidden(key) {
+    for (var i = 0; i < hidden.length; i++) {
+      var card = hidden[i];
+      if (key === card || key.indexOf(card + '__') === 0) return true;
+    }
+    return false;
+  }
+
+  // Index the global FG catalog by key so we reuse its exact labels for core WDG.
+  var byKey = {};
+  for (var f = 0; f < QC_FIELDS_FG.length; f++) byKey[QC_FIELDS_FG[f][0]] = QC_FIELDS_FG[f][1];
+
+  var out = [];
+  for (var c = 0; c < FG_CORE_WDG_KEYS.length; c++) {
+    var k = FG_CORE_WDG_KEYS[c];
+    if (isHidden(k)) continue;
+    out.push([k, byKey[k] || k]);
+  }
+  var extra = FG_GRADE_EXTRA_FIELDS[g] || [];
+  for (var e = 0; e < extra.length; e++) out.push([extra[e][0], extra[e][1]]);
+  return out;
+}
+
+
 var SYNC_STATE_SHEET = '_SyncState';
 
 // 24 chronological TIME_SLOT labels (inspection §1.2) — used to key Hourly
@@ -479,7 +756,24 @@ function initQcTabs() {
     formatQcTab_(sh);                   // widths, wrap, row heights, header styling
     Logger.log('[initQcTabs] Ensured tab + header: ' + tabName);
   }
-  Logger.log('[initQcTabs] Done. Raw Material / In-Process / Finished Goods are ready.');
+
+  // Additionally ensure every grade-specific Finished Goods tab exists with its
+  // per-grade (narrow) header. Idempotent: getOrCreateSheet_ never duplicates a
+  // tab, and ensureHeader_ only fills blank header cells, so re-running never
+  // clobbers an existing grade tab. The ORIGINAL 'Finished Goods' tab is handled
+  // by the loop above with the full global layout (unchanged).
+  for (var gk in FG_GRADE_TABS) {
+    if (!FG_GRADE_TABS.hasOwnProperty(gk)) continue;
+    var gradeTab = FG_GRADE_TABS[gk];
+    var gradeLayout = buildQcLayout_('qc_fg', gk);
+    var gsh = getOrCreateSheet_(qcSS, gradeTab);
+    ensureHeader_(gsh, gradeLayout.header);
+    formatQcTab_(gsh);
+    Logger.log('[initQcTabs] Ensured grade tab + header: ' + gradeTab + ' (grade=' + gk + ')');
+  }
+
+  Logger.log('[initQcTabs] Done. Raw Material / In-Process / Finished Goods '
+    + '(+ ' + Object.keys(FG_GRADE_TABS).length + ' grade tabs) are ready.');
 }
 
 
@@ -1240,8 +1534,18 @@ function syncPass_() {
       }
       routeAndWrite_(row, dryerSS, qcSS);
       // Note the QC tab this event wrote to (for end-of-tick formatting).
-      if (row.record_kind === 'qc_rm' || row.record_kind === 'qc_ip' || row.record_kind === 'qc_fg') {
+      if (row.record_kind === 'qc_rm' || row.record_kind === 'qc_ip') {
         touchedQcTabs[TAB.QC[row.record_kind]] = true;
+      } else if (row.record_kind === 'qc_fg') {
+        // Finished Goods routes to a GRADE-SPECIFIC tab (or the original tab for
+        // blank/unknown grades). Record the ACTUAL destination tab so it gets
+        // formatted (auto-width, centering, freeze, filter) this tick — not the
+        // generic 'Finished Goods' name, which would leave grade tabs unstyled.
+        var fgP = row.payload || {};
+        var fgGradeForFmt = (fgP.values && fgP.values.grade !== undefined)
+          ? fgP.values.grade
+          : (fgP.biz && fgP.biz.grade !== undefined ? fgP.biz.grade : '');
+        touchedQcTabs[fgTabForGrade_(fgGradeForFmt)] = true;
       }
       if (row.record_kind === 'dryer_v2' && row.payload) {
         var dt = row.payload.dryer_type;
@@ -2206,9 +2510,18 @@ var QC_BUSINESS_KEY = {
  *   idCol        : { identityKey -> 0-based column index }
  *   keyLen       : number of LEADING columns that form the business key
  */
-function buildQcLayout_(kind) {
+function buildQcLayout_(kind, grade) {
   var identity = QC_IDENTITY[kind];
-  var fields   = QC_FIELD_CATALOG[kind];
+  // Finished Goods: when a grade is supplied AND it maps to a grade-specific
+  // tab, use that grade's narrow catalog. With NO grade (or an unknown grade),
+  // fgFieldsForGrade_ returns null and we fall back to the full global
+  // QC_FIELDS_FG — so buildQcLayout_('qc_fg') with no grade is byte-for-byte the
+  // ORIGINAL Finished Goods layout, and the original tab is never narrowed.
+  var fields = QC_FIELD_CATALOG[kind];
+  if (kind === 'qc_fg' && grade !== undefined && grade !== null) {
+    var gradeFields = fgFieldsForGrade_(grade);
+    if (gradeFields) fields = gradeFields;
+  }
   var bizKeys  = QC_BUSINESS_KEY[kind];
 
   var header = [];
@@ -2283,6 +2596,7 @@ function buildQcLayout_(kind) {
 
   return {
     header: header,
+    fields: fields,            // the [key,label] catalog this layout was built from
     identityKeys: identityKeys,
     idCol: idCol,
     valueCol: valueCol,
@@ -2351,7 +2665,70 @@ var QC_RULES = {
   'upl_omri_disp_1h':   { type: 'text', accepted: 'Complies' },
   'upl_omri_disp_24h':  { type: 'text', accepted: 'Complies' },
   'upl_omri_ws_160': { type: 'min',   min: 99.98 },
-  'upl_omri_ws_25':  { type: 'min',   min: 99.50 }
+  'upl_omri_ws_25':  { type: 'min',   min: 99.50 },
+
+  // ── Grade-specific PASS/FAIL rules (mirror src/data/uplData.js verbatim) ───
+  // So every grade tab shows the SAME Pass/Fail the website computes, beside the
+  // value in the merged cell. Rows that are UNRULED on the website (e.g. the
+  // ADAMA-family 'calc' Sulphur, and every '*_bulk_density') are intentionally
+  // OMITTED here → value shown, no status (never fabricated).
+  // UPL Export/OMRI calculated Active Content + Suspension (type 'calc', ruled):
+  'upl_exp_sulphur': { type: 'min',   min: 80.0 },
+  'upl_exp_susp':    { type: 'min',   min: 80.0 },
+  'upl_exp_appearance': { type: 'text', accepted: 'Complies' },
+  'upl_omri_sulphur':   { type: 'range', min: 82, max: 82.5 },
+  'upl_omri_susp':      { type: 'min',   min: 80 },
+  'upl_omri_water_kf':  { type: 'range', min: 1.5, max: 2.3 },
+  'upl_omri_ph':        { type: 'range', min: 7.0, max: 9.0 },
+  'upl_omri_wettability': { type: 'max', max: 20 },
+  'upl_omri_appearance': { type: 'text', accepted: 'Complies' },
+  // ADAMA family (ADAMA uses legacy 'adma_*' ids): pH, Wettability, Appearance,
+  // Drop Test are ruled; the 'calc' Sulphur is UNRULED (omitted).
+  'adma_ph':             { type: 'range', min: 5.0, max: 9.0 },
+  'adma_wettability':    { type: 'max',   max: 60 },
+  'adma_appearance':     { type: 'text',  accepted: 'Complies' },
+  'adma_drop_test':      { type: 'text',  accepted: 'Found OK no leakage' },
+  'lohiya_ph':           { type: 'range', min: 5.0, max: 9.0 },
+  'lohiya_wettability':  { type: 'max',   max: 60 },
+  'lohiya_appearance':   { type: 'text',  accepted: 'Complies' },
+  'lohiya_drop_test':    { type: 'text',  accepted: 'Found OK no leakage' },
+  'biostadt_ph':         { type: 'range', min: 5.0, max: 9.0 },
+  'biostadt_wettability':{ type: 'max',   max: 60 },
+  'biostadt_appearance': { type: 'text',  accepted: 'Complies' },
+  'biostadt_drop_test':  { type: 'text',  accepted: 'Found OK no leakage' },
+  'sumitomo_ph':         { type: 'range', min: 5.0, max: 9.0 },
+  'sumitomo_wettability':{ type: 'max',   max: 60 },
+  'sumitomo_appearance': { type: 'text',  accepted: 'Complies' },
+  'sumitomo_drop_test':  { type: 'text',  accepted: 'Found OK no leakage' },
+  'hemani_ph':           { type: 'range', min: 5.0, max: 9.0 },
+  'hemani_wettability':  { type: 'max',   max: 60 },
+  'hemani_appearance':   { type: 'text',  accepted: 'Complies' },
+  'hemani_drop_test':    { type: 'text',  accepted: 'Found OK no leakage' },
+  'iffco_ph':            { type: 'range', min: 5.0, max: 9.0 },
+  'iffco_wettability':   { type: 'max',   max: 60 },
+  'iffco_appearance':    { type: 'text',  accepted: 'Complies' },
+  'iffco_drop_test':     { type: 'text',  accepted: 'Found OK no leakage' },
+  // Sanaca family (Sanaca Dubai, Villa Crop, Yellowstone): Appearance, Sulphur
+  // (ruled 78–85), pH, Wettability, Suspensibility (min 80), Arsenic ruled;
+  // Bulk Density is UNRULED (omitted → value only).
+  'sanaca_appearance':      { type: 'text',  accepted: 'Complies' },
+  'sanaca_sulphur':         { type: 'range', min: 78.0, max: 85.0 },
+  'sanaca_ph':              { type: 'range', min: 5.0, max: 9.0 },
+  'sanaca_wettability':     { type: 'max',   max: 60 },
+  'sanaca_suspensibility':  { type: 'min',   min: 80.0 },
+  'sanaca_arsenic':         { type: 'text',  accepted: 'Not Detected' },
+  'villacrop_appearance':     { type: 'text',  accepted: 'Complies' },
+  'villacrop_sulphur':        { type: 'range', min: 78.0, max: 85.0 },
+  'villacrop_ph':             { type: 'range', min: 5.0, max: 9.0 },
+  'villacrop_wettability':    { type: 'max',   max: 60 },
+  'villacrop_suspensibility': { type: 'min',   min: 80.0 },
+  'villacrop_arsenic':        { type: 'text',  accepted: 'Not Detected' },
+  'yellowstone_appearance':     { type: 'text',  accepted: 'Complies' },
+  'yellowstone_sulphur':        { type: 'range', min: 78.0, max: 85.0 },
+  'yellowstone_ph':             { type: 'range', min: 5.0, max: 9.0 },
+  'yellowstone_wettability':    { type: 'max',   max: 60 },
+  'yellowstone_suspensibility': { type: 'min',   min: 80.0 },
+  'yellowstone_arsenic':        { type: 'text',  accepted: 'Not Detected' }
 };
 
 // Mirror of the website evaluate(value, rule) → 'PASS' | 'FAIL' | null.
@@ -2583,7 +2960,18 @@ function fillIpMillCells_(existing, layout, millRows, entryTs) {
 function writeQcSnapshot_(ss, tabName, kind, row) {
   var payload = row.payload || {};
   var vals = payload.values || {};
-  var layout = buildQcLayout_(kind);
+
+  // Finished Goods: route to the grade-specific tab (or the original tab for
+  // blank/unknown grades) and build the matching per-grade layout. RM/IP keep
+  // their passed tabName + global layout unchanged.
+  var layout;
+  if (kind === 'qc_fg') {
+    var fgGrade = coalesce_(vals.grade);
+    tabName = fgTabForGrade_(fgGrade);
+    layout = buildQcLayout_(kind, fgGrade);
+  } else {
+    layout = buildQcLayout_(kind);
+  }
 
   var sh = getOrCreateSheet_(ss, tabName);
   var liveHeader = ensureHeader_(sh, layout.header);
@@ -2660,7 +3048,7 @@ function writeQcSnapshot_(ss, tabName, kind, row) {
   //     line to the same cell.
   //   • The two FG sieve keys are EXCLUDED here (owned by the sieve writer that
   //     stacks every reading+time in the cell).
-  var fields = QC_FIELD_CATALOG[kind];
+  var fields = layout.fields;   // per-grade catalog for FG; global for RM/IP
   var tsMap = (vals && vals.__ts && typeof vals.__ts === 'object') ? vals.__ts : {};
   for (var f = 0; f < fields.length; f++) {
     var fk = fields[f][0];
@@ -3015,7 +3403,12 @@ function writeFgSieveReadings_(ss, tabName, row) {
   if (!readings || Object.prototype.toString.call(readings) !== '[object Array]') readings = [];
 
   var kind = 'qc_fg';
-  var layout = buildQcLayout_(kind);
+  // Route to the grade-specific tab + grade layout (original tab for
+  // blank/unknown grades), matching the snapshot writer so both share one row.
+  tabName = fgTabForGrade_(coalesce_(biz.grade));
+  var layout = buildQcLayout_(kind, coalesce_(biz.grade));
+  // If this grade's tab does not track this sieve (e.g. Dry Sieve is hidden for
+  // the grade), there is no column → nothing to write for this grade.
   if (layout.valueCol[test] === undefined || layout.tsCol[test] === undefined) return;
 
   var sh = getOrCreateSheet_(ss, tabName);
@@ -3116,7 +3509,12 @@ function writeFgMoistureReadings_(ss, tabName, row) {
 
   var kind = 'qc_fg';
   var valueKey = FG_MOISTURE_LOG[0];   // 'fg_moisture'
-  var layout = buildQcLayout_(kind);
+  // Route to the grade-specific tab + grade layout (original tab for
+  // blank/unknown grades), matching the snapshot writer so both share one row.
+  tabName = fgTabForGrade_(coalesce_(biz.grade));
+  var layout = buildQcLayout_(kind, coalesce_(biz.grade));
+  // Grades that hide Moisture (e.g. the ADAMA/Sanaca families) have no Moisture
+  // column → nothing to write for this grade.
   if (layout.valueCol[valueKey] === undefined) return;
 
   var sh = getOrCreateSheet_(ss, tabName);
@@ -3244,6 +3642,28 @@ function formatQcTab_(sh) {
       headerRange.setHorizontalAlignment('center');
     }
     if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+
+    // 3a. Finished Goods tabs (original + grade tabs): freeze the leading batch-
+    //     identification columns and enable a header filter so a grade's records
+    //     stay readable while scrolling horizontally. Detected by the hidden
+    //     '_fg_key' column (FG only); RM/IP/Dryer tabs are unaffected. The freeze
+    //     point is the 'Dryer' identity column when present, else the last
+    //     identity column before the first field. Idempotent (no-op if already
+    //     set); wrapped in try/catch so formatting never fails a sync tick.
+    if (fgCol0 >= 0 && visibleCols >= 1) {
+      try {
+        var dryerIdx0 = headerVals.indexOf('Dryer');   // 0-based within visible area
+        var freezeCols = (dryerIdx0 >= 0 && dryerIdx0 < visibleCols)
+          ? (dryerIdx0 + 1)                            // through the Dryer column
+          : Math.min(8, visibleCols);                  // safe default: identity block
+        if (sh.getFrozenColumns() < freezeCols) sh.setFrozenColumns(freezeCols);
+      } catch (eFz) { /* non-fatal */ }
+      try {
+        if (!sh.getFilter()) {
+          sh.getRange(1, 1, lastRow, visibleCols).createFilter();
+        }
+      } catch (eFl) { /* a pre-existing filter or protected range → skip */ }
+    }
 
     // 3b. Dryer tabs only: style the bottom-form DIVIDER row and HEADER row
     //     (keyed 'FORM_DIV' / 'FORM_HDR' in the hidden key column) with the same
