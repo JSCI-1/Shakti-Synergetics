@@ -1118,11 +1118,49 @@ function DryerForm({
   }
 
 
+  // A single hourly row counts as "filled" when it has ANY operator-entered
+  // data. Mirrors the merge's rowIsEmpty notion: ignore bookkeeping keys and
+  // treat maintenance (an object) specially (filled when either option is set).
+  function hourRowFilled(r) {
+    if (!r) return false
+    const skip = new Set(['timestamp', 'saved', '__ts', '__hist', '__events', '__last_saved_at', 'maintenance', 'operator_name'])
+    const anyScalar = Object.keys(emptyRow()).some(
+      k => !skip.has(k) && (r[k] ?? '').toString().trim() !== ''
+    )
+    const m = r.maintenance || {}
+    const maintSet = !!(m.shifter_screen || m.atomizer_water)
+    return anyScalar || maintSet
+  }
+
+  // True only when ALL 24 hourly rows have data. "Save Log Sheet" is allowed
+  // ONLY then (this gate is for the Save Log Sheet button ONLY — the per-hour
+  // row Save button is unaffected and can still save a single hour anytime).
+  function allHoursFilled() {
+    const rows = Array.isArray(safeForm.rows) ? safeForm.rows : []
+    if (rows.length < TIME_SLOTS.length) return false
+    return TIME_SLOTS.every((_, i) => hourRowFilled(rows[i]))
+  }
+
+  // Count of filled hours, for the operator-facing "fill all hours" message.
+  function filledHourCount() {
+    const rows = Array.isArray(safeForm.rows) ? safeForm.rows : []
+    return TIME_SLOTS.reduce((n, _, i) => n + (hourRowFilled(rows[i]) ? 1 : 0), 0)
+  }
+
+
   async function handleSubmit(e) {
     e.preventDefault()
 
     if (!supabaseReady) {
       setError('Supabase not configured.')
+      return
+    }
+
+    // Save Log Sheet is allowed ONLY when ALL 24 hourly rows are filled. The
+    // per-hour row Save button is NOT affected by this — it can still save a
+    // single hour at any time.
+    if (!allHoursFilled()) {
+      setError(`Fill all 24 hourly rows before saving the log sheet (${filledHourCount()}/${TIME_SLOTS.length} filled).`)
       return
     }
 
@@ -2691,17 +2729,31 @@ function DryerForm({
           )}
 
 
-          <button
-            type="submit"
-            className="dr-save-btn"
-            disabled={saving}
-          >
-
-            {saving
-              ? 'Saving…'
-              : 'Save Log Sheet / लॉग शीट सहेजें'}
-
-          </button>
+          <div className="dr-save-btn-wrap">
+            <button
+              type="submit"
+              className="dr-save-btn"
+              disabled={saving || !allHoursFilled()}
+              title={allHoursFilled()
+                ? 'Save the full log sheet'
+                : `Fill all ${TIME_SLOTS.length} hourly rows first (${filledHourCount()}/${TIME_SLOTS.length} filled)`}
+            >
+              {saving
+                ? 'Saving…'
+                : 'Save Log Sheet / लॉग शीट सहेजें'}
+            </button>
+            {!allHoursFilled() && (
+              <div className="dr-save-hint">
+                <span className="dr-save-hint-en">
+                  Fill all {TIME_SLOTS.length} hourly rows to enable Save Log Sheet
+                  ({filledHourCount()}/{TIME_SLOTS.length} filled)
+                </span>
+                <span className="dr-save-hint-hi">
+                  सभी {TIME_SLOTS.length} घंटे भरें
+                </span>
+              </div>
+            )}
+          </div>
 
 
           <button

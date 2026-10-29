@@ -1057,6 +1057,35 @@
   cursor: not-allowed;
 }
 
+/* Hint shown under a disabled Save Log Sheet button until each of the 24 hourly
+   rows has at least one field filled. English on top, Hindi on the line below. */
+.dr-save-btn-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.dr-save-hint {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  text-align: center;
+  color: #9e4c22;
+}
+
+.dr-save-hint-en {
+  display: block;
+  font-size: 11px;
+}
+
+.dr-save-hint-hi {
+  display: block;
+  font-size: 10px;
+  color: #b07a52;
+  margin-top: 1px;
+  text-align: center;
+}
+
 .dr-reset-btn {
   background: transparent;
 
@@ -1071,6 +1100,8 @@
   font-size: 13px;
 
   cursor: pointer;
+
+  flex-shrink: 0;
 }
 
 .dr-reset-btn:hover {
