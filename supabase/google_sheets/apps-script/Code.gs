@@ -398,7 +398,11 @@ var FG_GRADE_TABS = {
   hemani_v:    'FG - Hemani Unit V',
   sanaca:      'FG - Sanaca Dubai',
   villacrop:   'FG - Villa Crop',
-  yellowstone: 'FG - Yellowstone',
+  yellowstone: 'FG - CropSure',
+  pratasha:    'FG - Pratasha',
+  haychem:     'FG - Haychem',
+  farmalinx:   'FG - Farmalinx',
+  mcdonald:    'FG - McDonald',
   iffco:       'FG - IFFCO'
 };
 
@@ -436,8 +440,14 @@ var FG_GRADE_HIDDEN_CARDS = {
   iffco:       ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk'],
   sanaca:      ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture'],
   villacrop:   ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture'],
-  yellowstone: ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture']
-  // normal, colour: no hidden cards (full core WDG).
+  yellowstone: ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam'],
+  pratasha:    ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam'],
+  haychem:     ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam'],
+  farmalinx:   ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam'],
+  mcdonald:    ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam'],
+  normal:      ['fg_foam'],
+  colour:      ['fg_foam']
+  // normal, colour: no other hidden cards (full core WDG).
 };
 
 // Per-grade EXTRA parameter rows (beyond core WDG), as [valueKey, 'Label'].
@@ -559,6 +569,60 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['yellowstone_suspensibility', 'Yellowstone – Suspensibility % by mass'],
     ['yellowstone_bulk_density',   'Yellowstone – Bulk Density'],
     ['yellowstone_arsenic',        'Yellowstone – Arsenic Content']
+  ],
+  pratasha: [
+    ['pratasha_appearance',     'Pratasha – Appearance'],
+    ['pratasha_sulphur',        'Pratasha – Active content of Sulphur % by mass'],
+    ['pratasha_ph',             'Pratasha – PH of 1.0% Aqueous solution'],
+    ['pratasha_wettability',    'Pratasha – Wettability'],
+    ['pratasha_suspensibility', 'Pratasha – Suspensibility % by mass'],
+    ['pratasha_bulk_density',   'Pratasha – Bulk Density'],
+    ['pratasha_arsenic',        'Pratasha – Arsenic Content']
+  ],
+  haychem: [
+    ['haychem_appearance',     'Haychem – Appearance'],
+    ['haychem_sulphur',        'Haychem – Active content of Sulphur % by mass'],
+    ['haychem_ph',             'Haychem – PH of 1.0% Aqueous solution'],
+    ['haychem_wettability',    'Haychem – Wettability'],
+    ['haychem_suspensibility', 'Haychem – Suspensibility % by mass'],
+    ['haychem_bulk_density',   'Haychem – Bulk Density'],
+    ['haychem_arsenic',        'Haychem – Arsenic Content']
+  ],
+  farmalinx: [
+    ['farmalinx_appearance',     'Farmalinx – Appearance'],
+    ['farmalinx_sulphur',        'Farmalinx – Active content of Sulphur % by mass'],
+    ['farmalinx_ph',             'Farmalinx – PH of 1.0% Aqueous solution'],
+    ['farmalinx_wettability',    'Farmalinx – Wettability'],
+    ['farmalinx_suspensibility', 'Farmalinx – Suspensibility % by mass'],
+    ['farmalinx_bulk_density',   'Farmalinx – Bulk Density'],
+    ['farmalinx_arsenic',        'Farmalinx – Arsenic Content']
+  ],
+  mcdonald: [
+    ['mcdonald_appearance',     'McDonald – Appearance'],
+    ['mcdonald_sulphur',        'McDonald – Active content of Sulphur % by mass'],
+    ['mcdonald_ph',             'McDonald – PH of 1.0% Aqueous solution'],
+    ['mcdonald_wettability',    'McDonald – Wettability'],
+    ['mcdonald_suspensibility', 'McDonald – Suspensibility % by mass'],
+    ['mcdonald_bulk_density',   'McDonald – Bulk Density'],
+    ['mcdonald_arsenic',        'McDonald – Arsenic Content']
+  ],
+  normal: [
+    ['normal_appearance',     'Normal – Appearance'],
+    ['normal_sulphur',        'Normal – Active content of Sulphur % by mass'],
+    ['normal_ph',             'Normal – PH of 1.0% Aqueous solution'],
+    ['normal_wettability',    'Normal – Wettability'],
+    ['normal_suspensibility', 'Normal – Suspensibility % by mass'],
+    ['normal_bulk_density',   'Normal – Bulk Density'],
+    ['normal_arsenic',        'Normal – Arsenic Content']
+  ],
+  colour: [
+    ['colour_appearance',     'Colour – Appearance'],
+    ['colour_sulphur',        'Colour – Active content of Sulphur % by mass'],
+    ['colour_ph',             'Colour – PH of 1.0% Aqueous solution'],
+    ['colour_wettability',    'Colour – Wettability'],
+    ['colour_suspensibility', 'Colour – Suspensibility % by mass'],
+    ['colour_bulk_density',   'Colour – Bulk Density'],
+    ['colour_arsenic',        'Colour – Arsenic Content']
   ]
   // normal, colour: no extra rows (core WDG only, preserved exactly).
 };
@@ -2728,7 +2792,43 @@ var QC_RULES = {
   'yellowstone_ph':             { type: 'range', min: 5.0, max: 9.0 },
   'yellowstone_wettability':    { type: 'max',   max: 60 },
   'yellowstone_suspensibility': { type: 'min',   min: 80.0 },
-  'yellowstone_arsenic':        { type: 'text',  accepted: 'Not Detected' }
+  'yellowstone_arsenic':        { type: 'text',  accepted: 'Not Detected' },
+  'pratasha_appearance':        { type: 'text',  accepted: 'Complies' },
+  'pratasha_sulphur':           { type: 'range', min: 78.0, max: 85.0 },
+  'pratasha_ph':                { type: 'range', min: 5.0, max: 9.0 },
+  'pratasha_wettability':       { type: 'max',   max: 60 },
+  'pratasha_suspensibility':    { type: 'min',   min: 80.0 },
+  'pratasha_arsenic':           { type: 'text',  accepted: 'Not Detected' },
+  'haychem_appearance':         { type: 'text',  accepted: 'Complies' },
+  'haychem_sulphur':            { type: 'range', min: 78.0, max: 85.0 },
+  'haychem_ph':                 { type: 'range', min: 5.0, max: 9.0 },
+  'haychem_wettability':        { type: 'max',   max: 60 },
+  'haychem_suspensibility':     { type: 'min',   min: 80.0 },
+  'haychem_arsenic':            { type: 'text',  accepted: 'Not Detected' },
+  'farmalinx_appearance':       { type: 'text',  accepted: 'Complies' },
+  'farmalinx_sulphur':          { type: 'range', min: 78.0, max: 85.0 },
+  'farmalinx_ph':               { type: 'range', min: 5.0, max: 9.0 },
+  'farmalinx_wettability':      { type: 'max',   max: 60 },
+  'farmalinx_suspensibility':   { type: 'min',   min: 80.0 },
+  'farmalinx_arsenic':          { type: 'text',  accepted: 'Not Detected' },
+  'mcdonald_appearance':        { type: 'text',  accepted: 'Complies' },
+  'mcdonald_sulphur':           { type: 'range', min: 78.0, max: 85.0 },
+  'mcdonald_ph':                { type: 'range', min: 5.0, max: 9.0 },
+  'mcdonald_wettability':       { type: 'max',   max: 60 },
+  'mcdonald_suspensibility':    { type: 'min',   min: 80.0 },
+  'mcdonald_arsenic':           { type: 'text',  accepted: 'Not Detected' },
+  'normal_appearance':          { type: 'text',  accepted: 'Complies' },
+  'normal_sulphur':             { type: 'range', min: 78.0, max: 85.0 },
+  'normal_ph':                  { type: 'range', min: 5.0, max: 9.0 },
+  'normal_wettability':         { type: 'max',   max: 60 },
+  'normal_suspensibility':      { type: 'min',   min: 80.0 },
+  'normal_arsenic':             { type: 'text',  accepted: 'Not Detected' },
+  'colour_appearance':          { type: 'text',  accepted: 'Complies' },
+  'colour_sulphur':             { type: 'range', min: 78.0, max: 85.0 },
+  'colour_ph':                  { type: 'range', min: 5.0, max: 9.0 },
+  'colour_wettability':         { type: 'max',   max: 60 },
+  'colour_suspensibility':      { type: 'min',   min: 80.0 },
+  'colour_arsenic':             { type: 'text',  accepted: 'Not Detected' }
 };
 
 // Mirror of the website evaluate(value, rule) → 'PASS' | 'FAIL' | null.

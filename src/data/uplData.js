@@ -13,69 +13,49 @@
 export const UPL_GRADES = {
 
   // ── Export Grade ──────────────────────────────────────────
-  // hideTests: WDG test IDs that the UPL table already covers (hidden from WDG cards)
+  // Parameter order matches the reference COA layout exactly.
   export: Object.assign([
-    // Active Content / Suspension — read-only 'calc' rows mirroring the live
-    // fg_sulphur / fg_susp formula-card results (cards stay visible for input).
-    { id: 'upl_exp_sulphur', group: 'Active Content', parameter: 'Active Content of Sulphur % by mass', type: 'calc', sourceResult: 'fg_sulphur', rule: { type: 'min', min: 80.0 }, specDisplay: 'Min 80.00', unit: '%' },
-    { id: 'upl_exp_susp',    group: 'Suspension',     parameter: 'Suspension as Sulphur (%w/w)',        type: 'calc', sourceResult: 'fg_susp',    rule: { type: 'min', min: 80.0 }, specDisplay: 'Min 80.00', unit: '%' },
-    // Particle Size Range
-    { id: 'upl_exp_ps_10',   group: 'Particle Size Range',                    parameter: 'Particle >10µm',         type: 'number',   rule: { type: 'max',   max: 20 },              specDisplay: '<20',           unit: '%'     },
-    { id: 'upl_exp_ps_6',    group: 'Particle Size Range',                    parameter: 'Particle >6µm',          type: 'number',   rule: { type: 'max',   max: 35 },              specDisplay: '<35',           unit: '%'     },
-    { id: 'upl_exp_ps_1',    group: 'Particle Size Range',                    parameter: 'Particle >1µm',          type: 'number',   rule: { type: 'min',   min: 75 },              specDisplay: '>75',           unit: '%'     },
-    // Wet Sieve
-    { id: 'upl_exp_ws_160',  group: 'Wet Sieve',                              parameter: '160 Micron',             type: 'number',   rule: { type: 'max',   max: 0.02 },            specDisplay: 'Max 0.02',      unit: '%'     },
-    { id: 'upl_exp_ws_25',   group: 'Wet Sieve',                              parameter: '25 Micron',              type: 'number',   rule: { type: 'max',   max: 0.20 },            specDisplay: 'Max 0.20',      unit: '%'     },
-    // Dynamic Foam
-    { id: 'upl_exp_df_0',    group: 'Dynamic Foam',                           parameter: 'At 0 min',               type: 'number',   rule: { type: 'max',   max: 300 },             specDisplay: '<300',          unit: 'ml'    },
-    { id: 'upl_exp_df_1',    group: 'Dynamic Foam',                           parameter: 'At 1 min',               type: 'number',   rule: { type: 'max',   max: 200 },             specDisplay: '<200',          unit: 'ml'    },
-    { id: 'upl_exp_df_2',    group: 'Dynamic Foam',                           parameter: 'At 2 min',               type: 'number',   rule: { type: 'max',   max: 150 },             specDisplay: '<150',          unit: 'ml'    },
-    { id: 'upl_exp_df_5',    group: 'Dynamic Foam',                           parameter: 'At 5 min',               type: 'number',   rule: { type: 'max',   max: 60 },              specDisplay: '<60',           unit: 'ml'    },
-    // Wet Particle Size
-    { id: 'upl_exp_wps',     group: 'Wet Particle Size (without ultrasound)', parameter: 'Median diameter',        type: 'number',   rule: { type: 'range', min: 2.20, max: 4.90 }, specDisplay: '2.20 – 4.90',  unit: 'µm'    },
-    // Alkalinity
-    { id: 'upl_exp_alk',     group: 'Alkalinity',                             parameter: 'Caustic equivalent',     type: 'number',   rule: { type: 'max',   max: 0.6 },             specDisplay: 'Max 0.6',       unit: '% w/w' },
-    // Dispersibility
-    { id: 'upl_exp_disp',    group: 'Dispersibility',                         parameter: '≥150 g / 150 ml',        type: 'complies', rule: { type: 'text',  accepted: 'Complies' }, specDisplay: '≥150 g/150 ml', unit: ''      },
-    // Appearance — last row before Overall Result. Complies/Does not comply dropdown + Pass/Fail status.
-    { id: 'upl_exp_appearance', group: 'Appearance',                          parameter: 'Appearance',             type: 'complies', rule: { type: 'text',  accepted: 'Complies' }, specDisplay: 'The material shall be in the form light to dark brown fine granules. It shall be free from extraneous impurities or additive', unit: '' },
-    // Wet Sieve WDG formula card kept visible for Export (Dry Sieve is not an
-    // Export parameter, so it stays hidden-by-absence). Only Wet Sieve shows.
+    { id: 'upl_exp_appearance', group: 'Appearance',             parameter: 'Appearance',                                                               type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'The material shall be in the form light to dark brown fine granules. It shall be free from extraneous impurities or additive.', unit: '' },
+    { id: 'upl_exp_sulphur',    group: 'Active Content',          parameter: 'Active Content of Sulphur % By mass',                                      type: 'calc',     sourceResult: 'fg_sulphur', rule: { type: 'min', min: 80.0 }, specDisplay: '80.00 Min.', unit: '' },
+    { id: 'upl_exp_susp',       group: 'Suspension',              parameter: 'Suspension as Sulfur (%w/w)',                                              type: 'calc',     sourceResult: 'fg_susp',    rule: { type: 'min', min: 80.0 }, specDisplay: '80.00 Min.', unit: '' },
+    { id: 'upl_exp_ws_160',     group: 'Wet Sieve',               parameter: 'Wet sieve retain through 160µm (% W/W)',                                   type: 'number',   rule: { type: 'max', max: 0.02 },             specDisplay: '0.020 Max.',  unit: '' },
+    { id: 'upl_exp_ws_25',      group: 'Wet Sieve',               parameter: 'Wet sieve retain through 25µm (% W/W)',                                    type: 'number',   rule: { type: 'max', max: 0.20 },             specDisplay: '0.20 Max.',   unit: '' },
+    { id: 'upl_exp_wps',        group: 'Wet Particle Size',       parameter: 'Wet particle size without Ultrasound median diameter (µm)',                 type: 'number',   rule: { type: 'range', min: 2.20, max: 4.90 }, specDisplay: '2.20 To 4.90', unit: '' },
+    { id: 'upl_exp_ps_10',      group: 'Particle Size Range',     parameter: 'Particles >10µm (%V/V)',                                                   type: 'number',   rule: { type: 'max', max: 20 },               specDisplay: '< 20',        unit: '' },
+    { id: 'upl_exp_ps_6',       group: 'Particle Size Range',     parameter: 'Particles >6µm (%V/V)',                                                    type: 'number',   rule: { type: 'max', max: 35 },               specDisplay: '< 35',        unit: '' },
+    { id: 'upl_exp_ps_1',       group: 'Particle Size Range',     parameter: 'Particles >1µm (%V/V)',                                                    type: 'number',   rule: { type: 'min', min: 75 },               specDisplay: '> 75',        unit: '' },
+    { id: 'upl_exp_alk',        group: 'Alkalinity',              parameter: 'Alkalinity caustic equivalent (% W/W)',                                    type: 'number',   rule: { type: 'max', max: 0.6 },              specDisplay: '0.6 Max',     unit: '' },
+    { id: 'upl_exp_df_0',       group: 'Dynamic Foam',            parameter: 'Dynamic foam at 0min (in ml)',                                             type: 'number',   rule: { type: 'max', max: 300 },              specDisplay: '<300',        unit: '' },
+    { id: 'upl_exp_df_1',       group: 'Dynamic Foam',            parameter: 'Dynamic foam at 1min (in ml)',                                             type: 'number',   rule: { type: 'max', max: 200 },              specDisplay: '<200',        unit: '' },
+    { id: 'upl_exp_df_2',       group: 'Dynamic Foam',            parameter: 'Dynamic foam at 2min (in ml)',                                             type: 'number',   rule: { type: 'max', max: 150 },              specDisplay: '<150',        unit: '' },
+    { id: 'upl_exp_df_5',       group: 'Dynamic Foam',            parameter: 'Dynamic foam at 5min (in ml)',                                             type: 'number',   rule: { type: 'max', max: 60 },               specDisplay: '<60',         unit: '' },
+    { id: 'upl_exp_disp',       group: 'Dispersibility',          parameter: 'Dispersibility',                                                           type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '>= 150 g / 150 ml', unit: '' },
+    // Moisture: FG saves the latest recorded reading as `fg_moisture` in the
+    // quality_control_records values JSON. sourceKey maps the COA row id to that key.
+    { id: 'upl_exp_moisture',   group: 'Moisture',                parameter: 'Moisture (% W/W)',                                                         type: 'number',   sourceKey: 'fg_moisture', rule: { type: 'range', min: 1.5, max: 2.2 }, specDisplay: '1.5 to 2.2', unit: '' },
   ], { hideTests: ['fg_drySieve'] }),
 
   // ── OMRI Grade ────────────────────────────────────────────
+  // Parameter order matches the reference COA layout exactly.
   omri: Object.assign([
-    // Active Content / Suspension / Water by KF.
-    //   Sulphur + Suspensibility are read-only 'calc' rows mirroring the live
-    //   fg_sulphur / fg_susp formula-card results (cards stay visible for input).
-    //   Water by KF is an operator-entered numeric observation.
-    { id: 'upl_omri_sulphur',  group: 'Active Content',   parameter: 'Active Content of Sulphur % by mass', type: 'calc',   sourceResult: 'fg_sulphur', rule: { type: 'range', min: 82, max: 82.5 }, specDisplay: '82 – 82.5', unit: '%' },
-    { id: 'upl_omri_susp',     group: 'Suspension',       parameter: 'Suspension as Sulphur (%w/w)',        type: 'calc',   sourceResult: 'fg_susp',    rule: { type: 'min',   min: 80 },           specDisplay: 'Min 80',    unit: '%' },
-    { id: 'upl_omri_water_kf', group: 'Water by KF',      parameter: 'Water by KF (%w/w)',                  type: 'number', rule: { type: 'range', min: 1.5, max: 2.3 }, specDisplay: '1.5 – 2.3', unit: '%' },
-    // pH + Wettability — chemist-entered observations with Pass/Fail. The shared
-    // fg_ph / fg_wettability cards are hidden for OMRI (see hideTests below), so
-    // their preparation-instruction fields do not show.
-    { id: 'upl_omri_ph',          group: 'pH',          parameter: 'PH of 1.0% Aqu Sol',   type: 'number', rule: { type: 'range', min: 7.0, max: 9.0 }, specDisplay: '7.0 – 9.0', unit: '' },
-    { id: 'upl_omri_wettability', group: 'Wettability', parameter: 'Wettability (in Second)', type: 'number', rule: { type: 'max', max: 20 },            specDisplay: 'Max 20',    unit: 'sec' },
-    // Particle Size Range
-    { id: 'upl_omri_ps_10',     group: 'Particle Size Range', parameter: 'Particle >10µm',       type: 'number',   rule: { type: 'max',  max: 20 },    specDisplay: '<20',                unit: '%'  },
-    { id: 'upl_omri_ps_6',      group: 'Particle Size Range', parameter: 'Particle >6µm',        type: 'number',   rule: { type: 'max',  max: 35 },    specDisplay: '<35',                unit: '%'  },
-    { id: 'upl_omri_ps_1',      group: 'Particle Size Range', parameter: 'Particle >1µm',        type: 'number',   rule: { type: 'min',  min: 75 },    specDisplay: '>75',                unit: '%'  },
-    // Dry Sieve
-    { id: 'upl_omri_ds_500',    group: 'Dry Sieve',           parameter: '500 Micron',           type: 'number',   rule: { type: 'min',  min: 99 },    specDisplay: 'Min 99',             unit: '%'  },
-    { id: 'upl_omri_ds_106',    group: 'Dry Sieve',           parameter: '106 Micron',           type: 'number',   rule: { type: 'max',  max: 11 },    specDisplay: 'Max 11',             unit: '%'  },
-    // Dispersion
-    { id: 'upl_omri_disp_self', group: 'Dispersion',          parameter: '1% self dispersing',   type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '100% self dispersing', unit: '' },
-    { id: 'upl_omri_disp_1h',   group: 'Dispersion',          parameter: 'Stability 1 hour',     type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '0.5 ml sedimentation', unit: '' },
-    { id: 'upl_omri_disp_24h',  group: 'Dispersion',          parameter: 'Stability 24 hours',   type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '1.0 ml',               unit: '' },
-    // Wet Sieve
-    { id: 'upl_omri_ws_160',    group: 'Wet Sieve',           parameter: '160 Micron',           type: 'number',   rule: { type: 'min',  min: 99.98 }, specDisplay: 'Min 99.98',          unit: '%'  },
-    { id: 'upl_omri_ws_25',     group: 'Wet Sieve',           parameter: '25 Micron',            type: 'number',   rule: { type: 'min',  min: 99.50 }, specDisplay: 'Min 99.50',          unit: '%'  },
-    // Appearance — last row before Overall Result. Complies/Does not comply dropdown + Pass/Fail status.
-    { id: 'upl_omri_appearance', group: 'Appearance',         parameter: 'Appearance',           type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'The Material shall be in form of light brown to brown colour Spray Dried granules, free from extraneous visible matter and hard lumps', unit: '' },
-    // Wet Sieve & Dry Sieve WDG formula cards are kept visible for OMRI.
-    // pH + Wettability cards are hidden (moved into the table above, which also
-    // removes their shared preparation-instruction fields for OMRI).
+    { id: 'upl_omri_appearance',  group: 'Appearance',          parameter: 'Appearance',                                                          type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'The Material shall be in form of light brown to brown colour Spray Dried granules, free from extraneous visible matter and hard lumps', unit: '' },
+    { id: 'upl_omri_sulphur',     group: 'Active Content',      parameter: 'Active Content of Sulphur % By mass',                                 type: 'calc',     sourceResult: 'fg_sulphur', rule: { type: 'range', min: 80, max: 82.5 }, specDisplay: '80 to 82.5', unit: '%' },
+    { id: 'upl_omri_susp',        group: 'Suspension',          parameter: 'Suspension as Sulfur (%w/w)',                                         type: 'calc',     sourceResult: 'fg_susp',    rule: { type: 'min', min: 80 },              specDisplay: 'Minimum 80',  unit: '%' },
+    { id: 'upl_omri_ws_160',      group: 'Wet Sieve',           parameter: 'Wet sieve (Passing through 160 microns IS test Sieve, %w/w)',         type: 'number',   rule: { type: 'min', min: 99.98 }, specDisplay: 'Min 99.98', unit: '%' },
+    { id: 'upl_omri_ws_25',       group: 'Wet Sieve',           parameter: 'Wet sieve(Passing through 25 microns IS test Sieve, %w/w)',           type: 'number',   rule: { type: 'min', min: 99.50 }, specDisplay: 'Min 99.5',  unit: '%' },
+    { id: 'upl_omri_ps_10',       group: 'Particle Size Range', parameter: 'Particles >10µm (%V/V)',                                              type: 'number',   rule: { type: 'max', max: 20 },    specDisplay: '< 20',      unit: '%' },
+    { id: 'upl_omri_ps_6',        group: 'Particle Size Range', parameter: 'Particles >6µm (%V/V)',                                               type: 'number',   rule: { type: 'max', max: 35 },    specDisplay: '< 35',      unit: '%' },
+    { id: 'upl_omri_ps_1',        group: 'Particle Size Range', parameter: 'Particles >1µm (%V/V)',                                               type: 'number',   rule: { type: 'min', min: 75 },    specDisplay: '> 75',      unit: '%' },
+    { id: 'upl_omri_foam',        group: 'Persistent Foam',     parameter: 'Persistent foam after 1min (in ml)',                                  type: 'number',   sourceKey: 'fg_foam_1min', rule: { type: 'max', max: 60 },    specDisplay: 'Max 60',    unit: 'ml' },
+    { id: 'upl_omri_ph',          group: 'pH',                  parameter: 'PH of 1.0% Aqu Sol',                                                  type: 'number',   sourceKey: 'fg_ph', rule: { type: 'range', min: 7.0, max: 9.0 }, specDisplay: '7.0 – 9.0', unit: '' },
+    { id: 'upl_omri_water_kf',    group: 'Water by KF',         parameter: 'Water by KF (%w/w)',                                                   type: 'number',   rule: { type: 'range', min: 1.5, max: 2.3 }, specDisplay: '1.5 to 2.3', unit: '%' },
+    { id: 'upl_omri_wettability', group: 'Wettability',         parameter: 'Wettability (in Second)',                                             type: 'number',   sourceKey: 'fg_wettability', rule: { type: 'max', max: 20 },    specDisplay: 'Max 20',    unit: 'sec' },
+    { id: 'upl_omri_ds_500',      group: 'Dry Sieve',           parameter: 'Dry Sieve Test, passing through 500 micron Test sieve (%w/w)',        type: 'number',   rule: { type: 'min', min: 99 },    specDisplay: 'Min 99',    unit: '%' },
+    { id: 'upl_omri_ds_106',      group: 'Dry Sieve',           parameter: 'Dry Sieve Test, passing through 106 micron Test sieve (%w/w)',        type: 'number',   rule: { type: 'max', max: 11.5 },  specDisplay: 'Max 11.5',  unit: '%' },
+    { id: 'upl_omri_disp_self',   group: 'Dispersion',          parameter: 'Dispersion (1% in 100 ml H\u2082O)',                                  type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '100% self-dispersing', unit: '' },
+    { id: 'upl_omri_disp_1h',     group: 'Dispersion',          parameter: 'Dispersion Stability 1 hours',                                        type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '0.5ml sedimentation', unit: '' },
+    { id: 'upl_omri_disp_24h',    group: 'Dispersion',          parameter: 'Dispersion Stability 24 hours',                                       type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '1.0 ml',              unit: '' },
+    // pH + Wettability cards are hidden (moved into the table above).
   ], { hideTests: ['fg_ph', 'fg_wettability'] }),
 }
 
@@ -126,28 +106,32 @@ export const ADMA_CARD_NAME_OVERRIDES = {
 
 // ADMA-only table rows, rendered via the shared UPL table component.
 // Column layout: Parameter / Specification / Observation / Result.
-// row.type:
-//   'calc'     → read-only Observation sourced from a formula card's live result
-//                (row.sourceResult names which captured result to show).
-//   'number'   → operator-entered numeric Observation.
-//   'complies' → Complies / Does not comply dropdown.
-//   'droptest' → Found OK no leakage / Fail dropdown.
+// Row order matches the reference COA image exactly.
 export const ADMA_EXTRA_PARAMS = [
+  {
+    id: 'adma_appearance',
+    group: 'Appearance',
+    parameter: 'Appearance',
+    type: 'complies',
+    rule: { type: 'text', accepted: 'Complies' },
+    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    unit: '',
+  },
   {
     id: 'adma_sulphur',
     group: 'Active Content',
-    parameter: 'Active Content of Sulphur % by mass',
+    parameter: 'Active Content of Sulphur % By mass',
     type: 'calc',
-    sourceResult: 'fg_sulphur',   // mirror the live Sulphur formula-card result
-    // No ADMA tolerance confirmed → no rule → Result shows "—" (not fabricated).
+    sourceResult: 'fg_sulphur',
     specDisplay: '80%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'adma_ph',
     group: 'pH',
-    parameter: 'pH',
+    parameter: 'PH of 1.0 % Aqu Sol',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
     specDisplay: '5.0 – 9.0',
     unit: '',
@@ -157,17 +141,47 @@ export const ADMA_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability (max)',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
-    specDisplay: '60 seconds',
+    specDisplay: '60.0 seconds',
     unit: '',
   },
   {
-    id: 'adma_appearance',
-    group: 'Appearance',
-    parameter: 'Appearance',
-    type: 'complies',
-    rule: { type: 'text', accepted: 'Complies' },
-    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    id: 'adma_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml. at Start',
+    unit: '',
+  },
+  {
+    id: 'adma_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml. after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'adma_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test (max)',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0% retention on 45 µ test sieve',
+    unit: '',
+  },
+  {
+    id: 'adma_susp',
+    group: 'Suspensibility',
+    parameter: 'Suspensibility % by mass (min)',
+    type: 'calc',
+    sourceResult: 'fg_susp',
+    specDisplay: '–',
     unit: '',
   },
   {
@@ -201,23 +215,32 @@ export const LOHIYA_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test (max) — 1.0 % retention on 45 micron test sieve',
 }
 
-// Lohiya table rows. Same shapes/types as ADMA; unique ids (lohiya_*).
+// Lohiya table rows — reordered to match reference COA, sourceKeys added.
 export const LOHIYA_EXTRA_PARAMS = [
+  {
+    id: 'lohiya_appearance',
+    group: 'Appearance',
+    parameter: 'Appearance',
+    type: 'complies',
+    rule: { type: 'text', accepted: 'Complies' },
+    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    unit: '',
+  },
   {
     id: 'lohiya_sulphur',
     group: 'Active Content',
     parameter: 'Active Content of Sulphur % By mass',
     type: 'calc',
-    sourceResult: 'fg_sulphur',   // mirror the live Sulphur formula-card result
-    // No confirmed Lohiya tolerance → no rule → Result shows "—" (not fabricated).
+    sourceResult: 'fg_sulphur',
     specDisplay: '80%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'lohiya_ph',
     group: 'pH',
     parameter: 'PH of 1.0 % Aqu Sol',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
     specDisplay: '5.0 – 9.0',
     unit: '',
@@ -227,17 +250,47 @@ export const LOHIYA_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability (max)',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds',
     unit: '',
   },
   {
-    id: 'lohiya_appearance',
-    group: 'Appearance',
-    parameter: 'Appearance',
-    type: 'complies',
-    rule: { type: 'text', accepted: 'Complies' },
-    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    id: 'lohiya_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml. at Start',
+    unit: '',
+  },
+  {
+    id: 'lohiya_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml. after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'lohiya_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test (max)',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0 % retention on 45 u test sieve',
+    unit: '',
+  },
+  {
+    id: 'lohiya_susp',
+    group: 'Suspensibility',
+    parameter: 'Suspensibility % by mass (min)',
+    type: 'calc',
+    sourceResult: 'fg_susp',
+    specDisplay: '–',
     unit: '',
   },
   {
@@ -272,23 +325,33 @@ export const BIOSTADT_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test (max) — 1.0 % retention on 45 micron test sieve',
 }
 
-// Biostadt table rows. Same shapes/types as ADMA/Lohiya; unique ids (biostadt_*).
+// Biostadt table rows — reordered to match reference COA image, sourceKeys
+// added for correct fetch, unique ids (biostadt_*).
 export const BIOSTADT_EXTRA_PARAMS = [
+  {
+    id: 'biostadt_appearance',
+    group: 'Appearance',
+    parameter: 'Appearance',
+    type: 'complies',
+    rule: { type: 'text', accepted: 'Complies' },
+    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    unit: '',
+  },
   {
     id: 'biostadt_sulphur',
     group: 'Active Content',
     parameter: 'Active Content of Sulphur % By mass',
     type: 'calc',
-    sourceResult: 'fg_sulphur',   // mirror the live Sulphur formula-card result
-    // No confirmed Biostadt tolerance → no rule → Result shows "—" (not fabricated).
+    sourceResult: 'fg_sulphur',
     specDisplay: '80%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'biostadt_ph',
     group: 'pH',
     parameter: 'PH of 1.0 % Aqu Sol',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
     specDisplay: '5.0 – 9.0',
     unit: '',
@@ -298,17 +361,47 @@ export const BIOSTADT_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability (max)',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds',
     unit: '',
   },
   {
-    id: 'biostadt_appearance',
-    group: 'Appearance',
-    parameter: 'Appearance',
-    type: 'complies',
-    rule: { type: 'text', accepted: 'Complies' },
-    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    id: 'biostadt_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml. at Start',
+    unit: '',
+  },
+  {
+    id: 'biostadt_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml. after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'biostadt_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test (max)',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0 % retention on 45 u test sieve',
+    unit: '',
+  },
+  {
+    id: 'biostadt_susp',
+    group: 'Suspensibility',
+    parameter: 'Suspensibility % by mass (min)',
+    type: 'calc',
+    sourceResult: 'fg_susp',
+    specDisplay: '–',
     unit: '',
   },
   {
@@ -343,23 +436,32 @@ export const SUMITOMO_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test (max) — 1.0 % retention on 45 micron test sieve',
 }
 
-// Sumitomo table rows. Same shapes/types as ADMA/Lohiya/Biostadt; unique ids.
+// Sumitomo table rows — reordered to match reference COA, sourceKeys added.
 export const SUMITOMO_EXTRA_PARAMS = [
+  {
+    id: 'sumitomo_appearance',
+    group: 'Appearance',
+    parameter: 'Appearance',
+    type: 'complies',
+    rule: { type: 'text', accepted: 'Complies' },
+    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    unit: '',
+  },
   {
     id: 'sumitomo_sulphur',
     group: 'Active Content',
     parameter: 'Active Content of Sulphur % By mass',
     type: 'calc',
-    sourceResult: 'fg_sulphur',   // mirror the live Sulphur formula-card result
-    // No confirmed Sumitomo tolerance → no rule → Result shows "—" (not fabricated).
+    sourceResult: 'fg_sulphur',
     specDisplay: '80%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'sumitomo_ph',
     group: 'pH',
     parameter: 'PH of 1.0 % Aqu Sol',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
     specDisplay: '5.0 – 9.0',
     unit: '',
@@ -369,17 +471,47 @@ export const SUMITOMO_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability (max)',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds',
     unit: '',
   },
   {
-    id: 'sumitomo_appearance',
-    group: 'Appearance',
-    parameter: 'Appearance',
-    type: 'complies',
-    rule: { type: 'text', accepted: 'Complies' },
-    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    id: 'sumitomo_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml. at Start',
+    unit: '',
+  },
+  {
+    id: 'sumitomo_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml. after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'sumitomo_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test (max)',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0% retention on 45 u test sieve',
+    unit: '',
+  },
+  {
+    id: 'sumitomo_susp',
+    group: 'Suspensibility',
+    parameter: 'Suspensibility % by mass (min)',
+    type: 'calc',
+    sourceResult: 'fg_susp',
+    specDisplay: '–',
     unit: '',
   },
   {
@@ -414,23 +546,32 @@ export const HEMANI_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test (max) — 1.0 % retention on 45 micron test sieve',
 }
 
-// Hemani table rows. Same shapes/types as the other table grades; unique ids.
+// Hemani table rows — reordered to match reference COA, sourceKeys added.
 export const HEMANI_EXTRA_PARAMS = [
+  {
+    id: 'hemani_appearance',
+    group: 'Appearance',
+    parameter: 'Appearance',
+    type: 'complies',
+    rule: { type: 'text', accepted: 'Complies' },
+    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    unit: '',
+  },
   {
     id: 'hemani_sulphur',
     group: 'Active Content',
     parameter: 'Active Content of Sulphur % By mass',
     type: 'calc',
-    sourceResult: 'fg_sulphur',   // mirror the live Sulphur formula-card result
-    // No confirmed Hemani tolerance → no rule → Result shows "—" (not fabricated).
+    sourceResult: 'fg_sulphur',
     specDisplay: '80%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'hemani_ph',
     group: 'pH',
     parameter: 'PH of 1.0 % Aqu Sol',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
     specDisplay: '5.0 – 9.0',
     unit: '',
@@ -440,17 +581,47 @@ export const HEMANI_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability (max)',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds',
     unit: '',
   },
   {
-    id: 'hemani_appearance',
-    group: 'Appearance',
-    parameter: 'Appearance',
-    type: 'complies',
-    rule: { type: 'text', accepted: 'Complies' },
-    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    id: 'hemani_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml. at Start',
+    unit: '',
+  },
+  {
+    id: 'hemani_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml. after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'hemani_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test (max)',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0 % retention on 45 u test sieve',
+    unit: '',
+  },
+  {
+    id: 'hemani_susp',
+    group: 'Suspensibility',
+    parameter: 'Suspensibility % by mass (min)',
+    type: 'calc',
+    sourceResult: 'fg_susp',
+    specDisplay: '–',
     unit: '',
   },
   {
@@ -486,7 +657,7 @@ export const HEMANI_EXTRA_PARAMS = [
 // formula inputs remain operational; Sulphur/Suspensibility/Bulk Density results
 // mirror into the table, Wet Sieve keeps its card + label override, Foaming
 // keeps its two independent card readings.
-export const SANACA_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture']
+export const SANACA_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam']
 
 // Wet Sieve label override (Sanaca only). Spec text only — the fg_wetSieve card
 // formula/result/validation are unchanged (calcSieve computes pass-through %,
@@ -496,7 +667,7 @@ export const SANACA_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
 }
 
-// Sanaca table rows. Unique ids (sanaca_*).
+// Sanaca table rows — reordered to match reference COA, sourceKeys added.
 export const SANACA_EXTRA_PARAMS = [
   {
     id: 'sanaca_appearance',
@@ -512,19 +683,19 @@ export const SANACA_EXTRA_PARAMS = [
     group: 'Active Content',
     parameter: 'Active content of Sulphur % by mass',
     type: 'calc',
-    sourceResult: 'fg_sulphur',   // mirror the live Sulphur formula-card result
-    // 80.0% +5% / -2% → inclusive range 78.0 – 85.0 (percentage-point tolerance).
+    sourceResult: 'fg_sulphur',
     rule: { type: 'range', min: 78.0, max: 85.0 },
     specDisplay: '80.0% + 5% & -2%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'sanaca_ph',
     group: 'pH',
     parameter: 'PH of 1.0% Aqueous solution',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
-    specDisplay: '5.0 – 9.0',
+    specDisplay: '5.0- 9.0',
     unit: '',
   },
   {
@@ -532,8 +703,38 @@ export const SANACA_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds [max.]',
+    unit: '',
+  },
+  {
+    id: 'sanaca_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml Max. at Start',
+    unit: '',
+  },
+  {
+    id: 'sanaca_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml Max. after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'sanaca_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0% retention on 45 µ test sieve [Max]',
     unit: '',
   },
   {
@@ -541,30 +742,27 @@ export const SANACA_EXTRA_PARAMS = [
     group: 'Suspensibility',
     parameter: 'Suspensibility % by mass',
     type: 'calc',
-    sourceResult: 'fg_susp',   // mirror the live Suspensibility formula result
+    sourceResult: 'fg_susp',
     rule: { type: 'min', min: 80.0 },
     specDisplay: '80.0% by mass [min]',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'sanaca_bulk_density',
     group: 'Bulk Density',
     parameter: 'Bulk Density',
     type: 'calc',
-    sourceResult: 'fg_bulk',   // mirror the live Bulk Density formula-card result
-    // Spec is a method ("Taped"), no numeric acceptance criterion → UNRULED:
-    // the computed result shows in the Observation column with NO Pass/Fail.
+    sourceResult: 'fg_bulk',
     specDisplay: 'Taped',
-    unit: 'g/cc',
+    unit: '',
   },
   {
     id: 'sanaca_arsenic',
     group: 'Arsenic Content',
-    parameter: 'Arsenic Content',
+    parameter: 'Arsenic Content.',
     type: 'arsenic',
-    // Dropdown: "Not Detected" → Pass, "Detected" → Fail. Empty → no status.
     rule: { type: 'text', accepted: 'Not Detected' },
-    specDisplay: '—',
+    specDisplay: '',
     unit: '',
   },
 ]
@@ -588,7 +786,7 @@ export const SANACA_EXTRA_PARAMS = [
 // removing their prep instruction), Dry Sieve + Moisture. The Sulphur,
 // Suspensibility, Bulk Density, Wet Sieve, and Persistent Foaming CARDS stay
 // VISIBLE so their formula inputs remain operational.
-export const VILLACROP_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture']
+export const VILLACROP_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam']
 
 export const VILLACROP_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test [Max] — 1.0% retention on 45 µ test sieve',
@@ -612,15 +810,16 @@ export const VILLACROP_EXTRA_PARAMS = [
     sourceResult: 'fg_sulphur',
     rule: { type: 'range', min: 78.0, max: 85.0 },
     specDisplay: '80.0% + 5% & -2%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'villacrop_ph',
     group: 'pH',
     parameter: 'PH of 1.0% Aqueous solution',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
-    specDisplay: '5.0 – 9.0',
+    specDisplay: '5.0- 9.0',
     unit: '',
   },
   {
@@ -628,8 +827,38 @@ export const VILLACROP_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability [max.]',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds',
+    unit: '',
+  },
+  {
+    id: 'villacrop_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml at start',
+    unit: '',
+  },
+  {
+    id: 'villacrop_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'villacrop_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test [Max]',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0% retention on 45 µ test sieve',
     unit: '',
   },
   {
@@ -640,7 +869,7 @@ export const VILLACROP_EXTRA_PARAMS = [
     sourceResult: 'fg_susp',
     rule: { type: 'min', min: 80.0 },
     specDisplay: '80.0% by mass',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'villacrop_bulk_density',
@@ -648,17 +877,16 @@ export const VILLACROP_EXTRA_PARAMS = [
     parameter: 'Bulk Density',
     type: 'calc',
     sourceResult: 'fg_bulk',
-    // Spec is a method ("Taped"), no numeric criterion → UNRULED (Observation only).
     specDisplay: 'Taped',
-    unit: 'g/cc',
+    unit: '',
   },
   {
     id: 'villacrop_arsenic',
     group: 'Arsenic Content',
-    parameter: 'Arsenic Content',
+    parameter: 'Arsenic Content.',
     type: 'arsenic',
     rule: { type: 'text', accepted: 'Not Detected' },
-    specDisplay: '—',
+    specDisplay: '',
     unit: '',
   },
 ]
@@ -677,7 +905,7 @@ export const VILLACROP_EXTRA_PARAMS = [
 // Hidden cards (Yellowstone only): pH + Wettability (moved into the table,
 // removing their prep instruction), Dry Sieve + Moisture. Sulphur/Susp/Bulk/
 // Wet Sieve/Foaming cards stay visible for their formula inputs.
-export const YELLOWSTONE_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture']
+export const YELLOWSTONE_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam']
 
 export const YELLOWSTONE_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
@@ -701,15 +929,16 @@ export const YELLOWSTONE_EXTRA_PARAMS = [
     sourceResult: 'fg_sulphur',
     rule: { type: 'range', min: 78.0, max: 85.0 },
     specDisplay: '80.0% + 5% & -2%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'yellowstone_ph',
     group: 'pH',
     parameter: 'PH of 1.0% Aqueous solution',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
-    specDisplay: '5.0 – 9.0',
+    specDisplay: '5.0- 9.0',
     unit: '',
   },
   {
@@ -717,8 +946,38 @@ export const YELLOWSTONE_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds [max.]',
+    unit: '',
+  },
+  {
+    id: 'yellowstone_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml (max) at start',
+    unit: '',
+  },
+  {
+    id: 'yellowstone_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml ( max) after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'yellowstone_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0% retention on 45 µ test sieve [Max]',
     unit: '',
   },
   {
@@ -729,7 +988,7 @@ export const YELLOWSTONE_EXTRA_PARAMS = [
     sourceResult: 'fg_susp',
     rule: { type: 'min', min: 80.0 },
     specDisplay: '80.0% by mass [min]',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'yellowstone_bulk_density',
@@ -738,19 +997,253 @@ export const YELLOWSTONE_EXTRA_PARAMS = [
     type: 'calc',
     sourceResult: 'fg_bulk',
     specDisplay: 'Taped',
-    unit: 'g/cc',
+    unit: '',
   },
   {
     id: 'yellowstone_arsenic',
     group: 'Arsenic Content',
-    parameter: 'Arsenic Content',
+    parameter: 'Arsenic Content.',
     type: 'arsenic',
     rule: { type: 'text', accepted: 'Not Detected' },
-    specDisplay: '—',
+    specDisplay: '',
     unit: '',
   },
 ]
 
+
+// ─────────────────────────────────────────────────────────────
+// PRATASHA — Finished Goods configuration
+// ─────────────────────────────────────────────────────────────
+// Grade key = 'pratasha'. Parameter set identical to Yellowstone (ten rows,
+// same tolerances), with its OWN row ids (pratasha_*).
+//   • Sulphur → 'calc' (fg_sulphur), RULE range 78.0–85.0 (80.0% +5%/-2%).
+//   • Suspensibility → 'calc' (fg_susp), RULE min 80.0.
+//   • Bulk Density → 'calc' (fg_bulk), spec "Taped", UNRULED (Observation only).
+//   • Arsenic Content → dropdown ('arsenic'): Not Detected → Pass,
+//                       Detected → Fail, empty → no status. Never prefilled.
+// Hidden cards (Pratasha only): pH + Wettability (moved into the table),
+// Dry Sieve + Moisture. Sulphur/Susp/Bulk/Wet Sieve/Foaming cards stay visible.
+export const PRATASHA_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam']
+
+export const PRATASHA_CARD_NAME_OVERRIDES = {
+  fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
+}
+
+export const PRATASHA_EXTRA_PARAMS = [
+  {
+    id: 'pratasha_appearance',
+    group: 'Appearance',
+    parameter: 'Appearance',
+    type: 'complies',
+    rule: { type: 'text', accepted: 'Complies' },
+    specDisplay: 'Yellow to Olive Brown fine free flowing micro-Granules',
+    unit: '',
+  },
+  {
+    id: 'pratasha_sulphur',
+    group: 'Active Content',
+    parameter: 'Active content of Sulphur % by mass',
+    type: 'calc',
+    sourceResult: 'fg_sulphur',
+    rule: { type: 'range', min: 78.0, max: 85.0 },
+    specDisplay: '80.0% + 5% & -2%',
+    unit: '',
+  },
+  {
+    id: 'pratasha_ph',
+    group: 'pH',
+    parameter: 'PH of 1.0% Aqueous solution',
+    type: 'number',
+    sourceKey: 'fg_ph',
+    rule: { type: 'range', min: 5.0, max: 9.0 },
+    specDisplay: '5.0- 9.0',
+    unit: '',
+  },
+  {
+    id: 'pratasha_wettability',
+    group: 'Wettability',
+    parameter: 'Wettability',
+    type: 'number',
+    sourceKey: 'fg_wettability',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60.0 seconds [max.]',
+    unit: '',
+  },
+  {
+    id: 'pratasha_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml (max) at start',
+    unit: '',
+  },
+  {
+    id: 'pratasha_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml ( max) after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'pratasha_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0% retention on 45 µ test sieve [Max]',
+    unit: '',
+  },
+  {
+    id: 'pratasha_suspensibility',
+    group: 'Suspensibility',
+    parameter: 'Suspensibility % by mass',
+    type: 'calc',
+    sourceResult: 'fg_susp',
+    rule: { type: 'min', min: 80.0 },
+    specDisplay: '80.0% by mass [min]',
+    unit: '',
+  },
+  {
+    id: 'pratasha_bulk_density',
+    group: 'Bulk Density',
+    parameter: 'Bulk Density',
+    type: 'calc',
+    sourceResult: 'fg_bulk',
+    specDisplay: 'Taped',
+    unit: '',
+  },
+  {
+    id: 'pratasha_arsenic',
+    group: 'Arsenic Content',
+    parameter: 'Arsenic Content.',
+    type: 'arsenic',
+    rule: { type: 'text', accepted: 'Not Detected' },
+    specDisplay: '',
+    unit: '',
+  },
+]
+
+// ─────────────────────────────────────────────────────────────
+// HAYCHEM — Finished Goods configuration
+// ─────────────────────────────────────────────────────────────
+// Grade key = 'haychem'. Same parameter set as CropSure/Yellowstone.
+export const HAYCHEM_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam']
+
+export const HAYCHEM_CARD_NAME_OVERRIDES = {
+  fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
+}
+
+export const HAYCHEM_EXTRA_PARAMS = [
+  { id: 'haychem_appearance',    group: 'Appearance',         parameter: 'Appearance',                              type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'Yellow to Olive Brown fine free flowing micro-Granules', unit: '' },
+  { id: 'haychem_sulphur',       group: 'Active Content',     parameter: 'Active content of Sulphur % by mass',     type: 'calc',     sourceResult: 'fg_sulphur', rule: { type: 'range', min: 78.0, max: 85.0 }, specDisplay: '80.0% + 5% & -2%', unit: '' },
+  { id: 'haychem_ph',            group: 'pH',                 parameter: 'PH of 1.0% Aqueous solution',             type: 'number',   sourceKey: 'fg_ph',         rule: { type: 'range', min: 5.0, max: 9.0 },  specDisplay: '5.0- 9.0',         unit: '' },
+  { id: 'haychem_wettability',   group: 'Wettability',        parameter: 'Wettability',                             type: 'number',   sourceKey: 'fg_wettability', rule: { type: 'max', max: 60 },              specDisplay: '60.0 seconds [max.]', unit: '' },
+  { id: 'haychem_foam_start',    group: 'Persistent Foaming', parameter: 'Persistent Foaming (at start)',           type: 'number',   sourceKey: 'fg_foam_start', rule: { type: 'max', max: 60 },              specDisplay: '60 ml (max) at start', unit: '' },
+  { id: 'haychem_foam_1min',     group: 'Persistent Foaming', parameter: 'Persistent Foaming (after 1.0 minute)',  type: 'number',   sourceKey: 'fg_foam_1min',  rule: { type: 'max', max: 25 },              specDisplay: '25 ml ( max) after 1.0 minute', unit: '' },
+  { id: 'haychem_wet_sieve',     group: 'Wet Sieve',          parameter: 'Wet Sieve Test',                         type: 'calc',     sourceResult: 'fg_wetSieve',  specDisplay: '1.0% retention on 45 µ test sieve [Max]', unit: '' },
+  { id: 'haychem_suspensibility',group: 'Suspensibility',     parameter: 'Suspensibility % by mass',               type: 'calc',     sourceResult: 'fg_susp',    rule: { type: 'min', min: 80.0 },            specDisplay: '80.0% by mass [min]', unit: '' },
+  { id: 'haychem_bulk_density',  group: 'Bulk Density',       parameter: 'Bulk Density',                           type: 'calc',     sourceResult: 'fg_bulk',    specDisplay: 'Taped',                         unit: '' },
+  { id: 'haychem_arsenic',       group: 'Arsenic Content',    parameter: 'Arsenic Content.',                       type: 'arsenic',  rule: { type: 'text', accepted: 'Not Detected' }, specDisplay: '',       unit: '' },
+]
+
+// ─────────────────────────────────────────────────────────────
+// FARMALINX — Finished Goods configuration
+// ─────────────────────────────────────────────────────────────
+// Grade key = 'farmalinx'. Same parameter set as CropSure/Yellowstone.
+export const FARMALINX_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam']
+
+export const FARMALINX_CARD_NAME_OVERRIDES = {
+  fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
+}
+
+export const FARMALINX_EXTRA_PARAMS = [
+  { id: 'farmalinx_appearance',    group: 'Appearance',         parameter: 'Appearance',                             type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'Yellow to Olive Brown fine free flowing micro-Granules', unit: '' },
+  { id: 'farmalinx_sulphur',       group: 'Active Content',     parameter: 'Active content of Sulphur % by mass',    type: 'calc',     sourceResult: 'fg_sulphur', rule: { type: 'range', min: 78.0, max: 85.0 }, specDisplay: '80.0% + 5% & -2%', unit: '' },
+  { id: 'farmalinx_ph',            group: 'pH',                 parameter: 'PH of 1.0% Aqueous solution',            type: 'number',   sourceKey: 'fg_ph',         rule: { type: 'range', min: 5.0, max: 9.0 },  specDisplay: '5.0- 9.0',         unit: '' },
+  { id: 'farmalinx_wettability',   group: 'Wettability',        parameter: 'Wettability',                            type: 'number',   sourceKey: 'fg_wettability', rule: { type: 'max', max: 60 },              specDisplay: '60.0 seconds [max.]', unit: '' },
+  { id: 'farmalinx_foam_start',    group: 'Persistent Foaming', parameter: 'Persistent Foaming (at start)',          type: 'number',   sourceKey: 'fg_foam_start', rule: { type: 'max', max: 60 },              specDisplay: '60 ml (max) at start', unit: '' },
+  { id: 'farmalinx_foam_1min',     group: 'Persistent Foaming', parameter: 'Persistent Foaming (after 1.0 minute)', type: 'number',   sourceKey: 'fg_foam_1min',  rule: { type: 'max', max: 25 },              specDisplay: '25 ml ( max) after 1.0 minute', unit: '' },
+  { id: 'farmalinx_wet_sieve',     group: 'Wet Sieve',          parameter: 'Wet Sieve Test',                         type: 'calc',     sourceResult: 'fg_wetSieve',  specDisplay: '1.0% retention on 45 µ test sieve [Max]', unit: '' },
+  { id: 'farmalinx_suspensibility',group: 'Suspensibility',     parameter: 'Suspensibility % by mass',               type: 'calc',     sourceResult: 'fg_susp',    rule: { type: 'min', min: 80.0 },            specDisplay: '80.0% by mass [min]', unit: '' },
+  { id: 'farmalinx_bulk_density',  group: 'Bulk Density',       parameter: 'Bulk Density',                           type: 'calc',     sourceResult: 'fg_bulk',    specDisplay: 'Taped',                         unit: '' },
+  { id: 'farmalinx_arsenic',       group: 'Arsenic Content',    parameter: 'Arsenic Content.',                       type: 'arsenic',  rule: { type: 'text', accepted: 'Not Detected' }, specDisplay: '',       unit: '' },
+]
+
+// ─────────────────────────────────────────────────────────────
+// McDONALD — Finished Goods configuration
+// ─────────────────────────────────────────────────────────────
+// Grade key = 'mcdonald'. Same parameter set as CropSure/Yellowstone.
+export const MCDONALD_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_foam']
+
+export const MCDONALD_CARD_NAME_OVERRIDES = {
+  fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
+}
+
+export const MCDONALD_EXTRA_PARAMS = [
+  { id: 'mcdonald_appearance',    group: 'Appearance',         parameter: 'Appearance',                             type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'Yellow to Olive Brown fine free flowing micro-Granules', unit: '' },
+  { id: 'mcdonald_sulphur',       group: 'Active Content',     parameter: 'Active content of Sulphur % by mass',    type: 'calc',     sourceResult: 'fg_sulphur', rule: { type: 'range', min: 78.0, max: 85.0 }, specDisplay: '80.0% + 5% & -2%', unit: '' },
+  { id: 'mcdonald_ph',            group: 'pH',                 parameter: 'PH of 1.0% Aqueous solution',            type: 'number',   sourceKey: 'fg_ph',         rule: { type: 'range', min: 5.0, max: 9.0 },  specDisplay: '5.0- 9.0',         unit: '' },
+  { id: 'mcdonald_wettability',   group: 'Wettability',        parameter: 'Wettability',                            type: 'number',   sourceKey: 'fg_wettability', rule: { type: 'max', max: 60 },              specDisplay: '60.0 seconds [max.]', unit: '' },
+  { id: 'mcdonald_foam_start',    group: 'Persistent Foaming', parameter: 'Persistent Foaming (at start)',          type: 'number',   sourceKey: 'fg_foam_start', rule: { type: 'max', max: 60 },              specDisplay: '60 ml (max) at start', unit: '' },
+  { id: 'mcdonald_foam_1min',     group: 'Persistent Foaming', parameter: 'Persistent Foaming (after 1.0 minute)', type: 'number',   sourceKey: 'fg_foam_1min',  rule: { type: 'max', max: 25 },              specDisplay: '25 ml ( max) after 1.0 minute', unit: '' },
+  { id: 'mcdonald_wet_sieve',     group: 'Wet Sieve',          parameter: 'Wet Sieve Test',                         type: 'calc',     sourceResult: 'fg_wetSieve',  specDisplay: '1.0% retention on 45 µ test sieve [Max]', unit: '' },
+  { id: 'mcdonald_suspensibility',group: 'Suspensibility',     parameter: 'Suspensibility % by mass',               type: 'calc',     sourceResult: 'fg_susp',    rule: { type: 'min', min: 80.0 },            specDisplay: '80.0% by mass [min]', unit: '' },
+  { id: 'mcdonald_bulk_density',  group: 'Bulk Density',       parameter: 'Bulk Density',                           type: 'calc',     sourceResult: 'fg_bulk',    specDisplay: 'Taped',                         unit: '' },
+  { id: 'mcdonald_arsenic',       group: 'Arsenic Content',    parameter: 'Arsenic Content.',                       type: 'arsenic',  rule: { type: 'text', accepted: 'Not Detected' }, specDisplay: '',       unit: '' },
+]
+
+// ─────────────────────────────────────────────────────────────
+// NORMAL — Finished Goods configuration (extra params table)
+// ─────────────────────────────────────────────────────────────
+// Grade key = 'normal'. Keeps ALL existing shared cards (no hidden cards) and
+// adds the CropSure parameter table alongside them.
+export const NORMAL_HIDDEN_CARDS = ['fg_foam']
+
+export const NORMAL_CARD_NAME_OVERRIDES = {
+  fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
+}
+
+export const NORMAL_EXTRA_PARAMS = [
+  { id: 'normal_appearance',    group: 'Appearance',         parameter: 'Appearance',                             type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'Yellow to Olive Brown fine free flowing micro-Granules', unit: '' },
+  { id: 'normal_sulphur',       group: 'Active Content',     parameter: 'Active content of Sulphur % by mass',    type: 'calc',     sourceResult: 'fg_sulphur', rule: { type: 'range', min: 78.0, max: 85.0 }, specDisplay: '80.0% + 5% & -2%', unit: '' },
+  { id: 'normal_ph',            group: 'pH',                 parameter: 'PH of 1.0% Aqueous solution',            type: 'number',   sourceKey: 'fg_ph',         rule: { type: 'range', min: 5.0, max: 9.0 },  specDisplay: '5.0- 9.0',         unit: '' },
+  { id: 'normal_wettability',   group: 'Wettability',        parameter: 'Wettability',                            type: 'number',   sourceKey: 'fg_wettability', rule: { type: 'max', max: 60 },              specDisplay: '60.0 seconds [max.]', unit: '' },
+  { id: 'normal_foam_start',    group: 'Persistent Foaming', parameter: 'Persistent Foaming (at start)',          type: 'number',   sourceKey: 'fg_foam_start', rule: { type: 'max', max: 60 },              specDisplay: '60 ml (max) at start', unit: '' },
+  { id: 'normal_foam_1min',     group: 'Persistent Foaming', parameter: 'Persistent Foaming (after 1.0 minute)', type: 'number',   sourceKey: 'fg_foam_1min',  rule: { type: 'max', max: 25 },              specDisplay: '25 ml ( max) after 1.0 minute', unit: '' },
+  { id: 'normal_wet_sieve',     group: 'Wet Sieve',          parameter: 'Wet Sieve Test',                         type: 'calc',     sourceResult: 'fg_wetSieve',  specDisplay: '1.0% retention on 45 µ test sieve [Max]', unit: '' },
+  { id: 'normal_suspensibility',group: 'Suspensibility',     parameter: 'Suspensibility % by mass',               type: 'calc',     sourceResult: 'fg_susp',    rule: { type: 'min', min: 80.0 },            specDisplay: '80.0% by mass [min]', unit: '' },
+  { id: 'normal_bulk_density',  group: 'Bulk Density',       parameter: 'Bulk Density',                           type: 'calc',     sourceResult: 'fg_bulk',    specDisplay: 'Taped',                         unit: '' },
+  { id: 'normal_arsenic',       group: 'Arsenic Content',    parameter: 'Arsenic Content.',                       type: 'arsenic',  rule: { type: 'text', accepted: 'Not Detected' }, specDisplay: '',       unit: '' },
+]
+
+// ─────────────────────────────────────────────────────────────
+// COLOUR — Finished Goods configuration (extra params table)
+// ─────────────────────────────────────────────────────────────
+// Grade key = 'colour'. Keeps ALL existing shared cards (no hidden cards) and
+// adds the CropSure parameter table alongside them.
+export const COLOUR_HIDDEN_CARDS = ['fg_foam']
+
+export const COLOUR_CARD_NAME_OVERRIDES = {
+  fg_wetSieve: 'Wet Sieve Test — 1.0% retention on 45 µ test sieve [Max]',
+}
+
+export const COLOUR_EXTRA_PARAMS = [
+  { id: 'colour_appearance',    group: 'Appearance',         parameter: 'Appearance',                             type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: 'Yellow to Olive Brown fine free flowing micro-Granules', unit: '' },
+  { id: 'colour_sulphur',       group: 'Active Content',     parameter: 'Active content of Sulphur % by mass',    type: 'calc',     sourceResult: 'fg_sulphur', rule: { type: 'range', min: 78.0, max: 85.0 }, specDisplay: '80.0% + 5% & -2%', unit: '' },
+  { id: 'colour_ph',            group: 'pH',                 parameter: 'PH of 1.0% Aqueous solution',            type: 'number',   sourceKey: 'fg_ph',         rule: { type: 'range', min: 5.0, max: 9.0 },  specDisplay: '5.0- 9.0',         unit: '' },
+  { id: 'colour_wettability',   group: 'Wettability',        parameter: 'Wettability',                            type: 'number',   sourceKey: 'fg_wettability', rule: { type: 'max', max: 60 },              specDisplay: '60.0 seconds [max.]', unit: '' },
+  { id: 'colour_foam_start',    group: 'Persistent Foaming', parameter: 'Persistent Foaming (at start)',          type: 'number',   sourceKey: 'fg_foam_start', rule: { type: 'max', max: 60 },              specDisplay: '60 ml (max) at start', unit: '' },
+  { id: 'colour_foam_1min',     group: 'Persistent Foaming', parameter: 'Persistent Foaming (after 1.0 minute)', type: 'number',   sourceKey: 'fg_foam_1min',  rule: { type: 'max', max: 25 },              specDisplay: '25 ml ( max) after 1.0 minute', unit: '' },
+  { id: 'colour_wet_sieve',     group: 'Wet Sieve',          parameter: 'Wet Sieve Test',                         type: 'calc',     sourceResult: 'fg_wetSieve',  specDisplay: '1.0% retention on 45 µ test sieve [Max]', unit: '' },
+  { id: 'colour_suspensibility',group: 'Suspensibility',     parameter: 'Suspensibility % by mass',               type: 'calc',     sourceResult: 'fg_susp',    rule: { type: 'min', min: 80.0 },            specDisplay: '80.0% by mass [min]', unit: '' },
+  { id: 'colour_bulk_density',  group: 'Bulk Density',       parameter: 'Bulk Density',                           type: 'calc',     sourceResult: 'fg_bulk',    specDisplay: 'Taped',                         unit: '' },
+  { id: 'colour_arsenic',       group: 'Arsenic Content',    parameter: 'Arsenic Content.',                       type: 'arsenic',  rule: { type: 'text', accepted: 'Not Detected' }, specDisplay: '',       unit: '' },
+]
 
 // ─────────────────────────────────────────────────────────────
 // IFFCO — Finished Goods configuration
@@ -773,20 +1266,29 @@ export const IFFCO_CARD_NAME_OVERRIDES = {
 
 export const IFFCO_EXTRA_PARAMS = [
   {
+    id: 'iffco_appearance',
+    group: 'Appearance',
+    parameter: 'Appearance',
+    type: 'complies',
+    rule: { type: 'text', accepted: 'Complies' },
+    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    unit: '',
+  },
+  {
     id: 'iffco_sulphur',
     group: 'Active Content',
     parameter: 'Active Content of Sulphur % By mass',
     type: 'calc',
     sourceResult: 'fg_sulphur',
-    // No confirmed IFFCO tolerance → no rule → Result "—" (not fabricated).
     specDisplay: '80%',
-    unit: '%',
+    unit: '',
   },
   {
     id: 'iffco_ph',
     group: 'pH',
-    parameter: 'pH of 1.0 % Aqu Sol',
+    parameter: 'PH of 1.0 % Aqu Sol',
     type: 'number',
+    sourceKey: 'fg_ph',
     rule: { type: 'range', min: 5.0, max: 9.0 },
     specDisplay: '5.0 – 9.0',
     unit: '',
@@ -796,17 +1298,47 @@ export const IFFCO_EXTRA_PARAMS = [
     group: 'Wettability',
     parameter: 'Wettability (max)',
     type: 'number',
+    sourceKey: 'fg_wettability',
     rule: { type: 'max', max: 60 },
     specDisplay: '60.0 seconds',
     unit: '',
   },
   {
-    id: 'iffco_appearance',
-    group: 'Appearance',
-    parameter: 'Appearance',
-    type: 'complies',
-    rule: { type: 'text', accepted: 'Complies' },
-    specDisplay: 'Yellow to Olive Brown fine free flowing micro Granules',
+    id: 'iffco_foam_start',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (at start)',
+    type: 'number',
+    sourceKey: 'fg_foam_start',
+    rule: { type: 'max', max: 60 },
+    specDisplay: '60 ml. at Start',
+    unit: '',
+  },
+  {
+    id: 'iffco_foam_1min',
+    group: 'Persistent Foaming',
+    parameter: 'Persistent Foaming (after 1.0 minute)',
+    type: 'number',
+    sourceKey: 'fg_foam_1min',
+    rule: { type: 'max', max: 25 },
+    specDisplay: '25 ml. after 1.0 minute',
+    unit: '',
+  },
+  {
+    id: 'iffco_wet_sieve',
+    group: 'Wet Sieve',
+    parameter: 'Wet Sieve Test (max)',
+    type: 'calc',
+    sourceResult: 'fg_wetSieve',
+    specDisplay: '1.0 % retention on 45 u test sieve',
+    unit: '',
+  },
+  {
+    id: 'iffco_susp',
+    group: 'Suspensibility',
+    parameter: 'Suspensibility % by mass (min)',
+    type: 'calc',
+    sourceResult: 'fg_susp',
+    specDisplay: '–',
     unit: '',
   },
   {
@@ -875,6 +1407,42 @@ export const TABLE_GRADES = {
     rows: YELLOWSTONE_EXTRA_PARAMS,
     hiddenCards: YELLOWSTONE_HIDDEN_CARDS,
     nameOverrides: YELLOWSTONE_CARD_NAME_OVERRIDES,
+  },
+  pratasha: {
+    title: 'Pratasha Parameters',
+    rows: PRATASHA_EXTRA_PARAMS,
+    hiddenCards: PRATASHA_HIDDEN_CARDS,
+    nameOverrides: PRATASHA_CARD_NAME_OVERRIDES,
+  },
+  haychem: {
+    title: 'Haychem Parameters',
+    rows: HAYCHEM_EXTRA_PARAMS,
+    hiddenCards: HAYCHEM_HIDDEN_CARDS,
+    nameOverrides: HAYCHEM_CARD_NAME_OVERRIDES,
+  },
+  farmalinx: {
+    title: 'Farmalinx Parameters',
+    rows: FARMALINX_EXTRA_PARAMS,
+    hiddenCards: FARMALINX_HIDDEN_CARDS,
+    nameOverrides: FARMALINX_CARD_NAME_OVERRIDES,
+  },
+  mcdonald: {
+    title: 'McDonald Parameters',
+    rows: MCDONALD_EXTRA_PARAMS,
+    hiddenCards: MCDONALD_HIDDEN_CARDS,
+    nameOverrides: MCDONALD_CARD_NAME_OVERRIDES,
+  },
+  normal: {
+    title: 'Normal Grade Parameters',
+    rows: NORMAL_EXTRA_PARAMS,
+    hiddenCards: NORMAL_HIDDEN_CARDS,
+    nameOverrides: NORMAL_CARD_NAME_OVERRIDES,
+  },
+  colour: {
+    title: 'Colour Grade Parameters',
+    rows: COLOUR_EXTRA_PARAMS,
+    hiddenCards: COLOUR_HIDDEN_CARDS,
+    nameOverrides: COLOUR_CARD_NAME_OVERRIDES,
   },
   iffco: {
     title: 'IFFCO Parameters',

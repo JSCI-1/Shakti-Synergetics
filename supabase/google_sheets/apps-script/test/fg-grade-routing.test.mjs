@@ -85,9 +85,11 @@ const EXPECT = {
   export: 'FG - UPL Export', adama: 'FG - ADAMA', lohiya: 'FG - Lohiya',
   biostadt: 'FG - Biostadt', sumitomo: 'FG - SUMITOMO', hemani_v: 'FG - Hemani Unit V',
   sanaca: 'FG - Sanaca Dubai', villacrop: 'FG - Villa Crop',
-  yellowstone: 'FG - Yellowstone', iffco: 'FG - IFFCO',
+  yellowstone: 'FG - CropSure', pratasha: 'FG - Pratasha',
+  haychem: 'FG - Haychem', farmalinx: 'FG - Farmalinx', mcdonald: 'FG - McDonald',
+  iffco: 'FG - IFFCO',
 }
-eq('exactly 13 grades configured', Object.keys(EXPECT).length, 13)
+eq('exactly 17 grades configured', Object.keys(EXPECT).length, 17)
 for (const g of Object.keys(EXPECT)) eq('route ' + g, X.fgTabForGrade_(g), EXPECT[g])
 // ADAMA specifically — correct spelling in tab, key stays 'adama'
 eq("adama → 'FG - ADAMA' (correct spelling)", X.fgTabForGrade_('adama'), 'FG - ADAMA')
@@ -115,7 +117,8 @@ scriptProps = {}   // restore ON
 // ── 4. Normal & Colour = core WDG only, NO company/UPL params ────────────────
 console.log('\n[4] Normal & Colour catalogs')
 const COMPANY_UPL_PREFIXES = ['upl_exp_', 'upl_omri_', 'adama_', 'lohiya_', 'biostadt_',
-  'sumitomo_', 'hemani_', 'sanaca_', 'villacrop_', 'yellowstone_', 'iffco_']
+  'sumitomo_', 'hemani_', 'sanaca_', 'villacrop_', 'yellowstone_', 'pratasha_',
+  'haychem_', 'farmalinx_', 'mcdonald_', 'normal_', 'colour_', 'iffco_']
 function hasAnyPrefix(keys, prefixes) {
   return keys.some(k => prefixes.some(p => k.indexOf(p) === 0))
 }

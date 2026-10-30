@@ -10,10 +10,15 @@ import { useDraft, useUserId } from '../../utils/useDraft.js'
 import { supabase, supabaseReady } from '../../supabaseClient.js'
 import './QualityCheck.css'
 
+// COA (Certificate of Analysis) sub-section — lazy so its tree only loads when
+// the operator opens the COA tab. Self-contained; does not touch FG state.
+const CoaSection = React.lazy(() => import('./Coa/CoaSection.jsx'))
+
 const TABS = [
   { key: 'rm', label: 'Raw Materials',  labelHi: 'कच्चा माल'  },
   { key: 'ip', label: 'In-Process',     labelHi: 'इन-प्रोसेस' },
   { key: 'fg', label: 'Finished Goods', labelHi: 'तैयार माल'  },
+  { key: 'coa', label: 'COA',           labelHi: 'सीओए'       },
 ]
 
 // ─────────────────────────────────────────────────────────────
@@ -357,7 +362,7 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
     brand         = fgBrand
   }
 
-  const gradeLabel        = uplGrade === 'export' ? 'UPL Export Grade' : uplGrade === 'omri' ? 'UPL OMRI Grade' : uplGrade === 'colour' ? 'Colour' : uplGrade === 'sumitomo' ? 'SUMITOMO CHEMICAL INDIA' : uplGrade === 'hemani_v' ? 'HEMANI INDUSTRIES UNIT - V' : uplGrade === 'lohiya' ? 'LOHIYA CHEMICAL LTD.' : uplGrade === 'adama' ? 'ADAMA INDIA P LTD.' : uplGrade === 'biostadt' ? 'BIOSTADT INDIA LTD.' : uplGrade === 'sanaca' ? 'Sanaca Dubai' : uplGrade === 'villacrop' ? 'Villa Crop' : uplGrade === 'yellowstone' ? 'Yellowstone' : uplGrade === 'iffco' ? 'IFFCO' : 'Normal'
+  const gradeLabel        = uplGrade === 'export' ? 'UPL Export Grade' : uplGrade === 'omri' ? 'UPL OMRI Grade' : uplGrade === 'colour' ? 'Colour' : uplGrade === 'sumitomo' ? 'SUMITOMO CHEMICAL INDIA' : uplGrade === 'hemani_v' ? 'HEMANI INDUSTRIES UNIT - V' : uplGrade === 'lohiya' ? 'LOHIYA CHEMICAL LTD.' : uplGrade === 'adama' ? 'ADAMA INDIA P LTD.' : uplGrade === 'biostadt' ? 'BIOSTADT INDIA LTD.' : uplGrade === 'sanaca' ? 'Sanaca Dubai' : uplGrade === 'villacrop' ? 'Villa Crop' : uplGrade === 'yellowstone' ? 'CropSure' : uplGrade === 'pratasha' ? 'Pratasha' : uplGrade === 'haychem' ? 'Haychem' : uplGrade === 'farmalinx' ? 'Farmalinx' : uplGrade === 'mcdonald' ? 'McDonald' : uplGrade === 'iffco' ? 'IFFCO' : 'Normal'
   const uplSuffix         = (activeTab === 'fg' && uplGrade) ? ` (${gradeLabel})` : ''
   const materialWithBrand = brand ? `${materialLabel} – ${brand}${uplSuffix}` : `${materialLabel}${uplSuffix}`
 
@@ -428,11 +433,11 @@ function printReport({ activeTab, rmSelected, ipSelected, fgSelected, date, test
   // UPL grades (export/omri) use UPL_GRADES; parameter-table grades (ADMA,
   // Lohiya, …) use their own extra-param rows. Other grades (normal/colour)
   // have no extra table → rows stays undefined.
-  const printTableGrade = TABLE_GRADES[uplGrade] || null
+  const printTableGrade = TABLE_GRADES[uplGrade || 'normal'] || null
   const fgExtraRows = printTableGrade
     ? printTableGrade.rows
     : UPL_GRADES[uplGrade]
-  if (activeTab === 'fg' && uplGrade && uplValues && fgExtraRows) {
+  if (activeTab === 'fg' && uplValues && fgExtraRows) {
     const rows = fgExtraRows
     const tableTitle = printTableGrade ? printTableGrade.title : 'UPL Parameters'
     const groups = []
@@ -2043,7 +2048,7 @@ export default function QualityCheck({ user }) {
         // printout shows the computed Observation. Rows come from the company
         // parameter-table grades (ADMA, Lohiya, …) OR from the UPL Export/OMRI
         // grade tables, both of which may now carry 'calc' rows.
-        const rows = (TABLE_GRADES[uplGrade] && TABLE_GRADES[uplGrade].rows)
+        const rows = (TABLE_GRADES[uplGrade || 'normal'] && TABLE_GRADES[uplGrade || 'normal'].rows)
           || UPL_GRADES[uplGrade]
           || null
         if (!rows) return uplValues
@@ -2052,8 +2057,14 @@ export default function QualityCheck({ user }) {
           const v = r.sourceResult === 'fg_sulphur' ? fgSulphurResult
             : r.sourceResult === 'fg_susp' ? suspResult
             : r.sourceResult === 'fg_bulk' ? fgBulkResult
+            : r.sourceResult === 'fg_wetSieve' ? (sieveResult['fg_wetSieve'] ?? null)
             : null
           injected[r.id] = (v !== null && v !== undefined && v !== '') ? String(v) : ''
+        })
+        // sourceKey rows (e.g. foam, pH, wettability) mirror shared FG values.
+        rows.filter(r => r.sourceKey && r.type !== 'calc').forEach(r => {
+          const v = values[r.sourceKey] ?? ''
+          injected[r.id] = String(v)
         })
         return injected
       })(),
@@ -2332,7 +2343,7 @@ export default function QualityCheck({ user }) {
       if (!date) missing.push('Manufactured Date')
       if (!fgBatchNo) missing.push('Batch No.')
       if (!fgTime) missing.push('Batch Start Time')
-      if (!uplGrade) missing.push('Grade')
+      // Grade is always set — dropdown defaults to Normal (uplGrade null = normal).
       if (!fgDryer) missing.push('Dryer')
       if (!fgSelected) missing.push('Product')
       if (missing.length > 0) {
@@ -2754,7 +2765,11 @@ export default function QualityCheck({ user }) {
       uplGrade === 'biostadt' ? 'BIOSTADT INDIA LTD.' :
       uplGrade === 'sanaca'   ? 'Sanaca Dubai' :
       uplGrade === 'villacrop'? 'Villa Crop' :
-      uplGrade === 'yellowstone' ? 'Yellowstone' :
+      uplGrade === 'yellowstone' ? 'CropSure' :
+      uplGrade === 'pratasha'    ? 'Pratasha' :
+      uplGrade === 'haychem'     ? 'Haychem' :
+      uplGrade === 'farmalinx'   ? 'Farmalinx' :
+      uplGrade === 'mcdonald'    ? 'McDonald' :
       uplGrade === 'iffco'    ? 'IFFCO' : 'Normal'
 
     const displayLabel = fgBrand
@@ -2773,7 +2788,7 @@ export default function QualityCheck({ user }) {
     })() : []
 
     // Parameter-table grade config (ADMA, Lohiya, …). null for every other grade.
-    const tableGrade = TABLE_GRADES[uplGrade] || null
+    const tableGrade = TABLE_GRADES[uplGrade || 'normal'] || null
 
     // Resolve a 'calc' table row's read-only Observation from the matching live
     // formula-card result. Supports the Sulphur and Suspensibility cards.
@@ -2781,6 +2796,7 @@ export default function QualityCheck({ user }) {
       const v = sourceResult === 'fg_sulphur' ? fgSulphurResult
         : sourceResult === 'fg_susp' ? suspResult
         : sourceResult === 'fg_bulk' ? fgBulkResult
+        : sourceResult === 'fg_wetSieve' ? (sieveResult['fg_wetSieve'] ?? '')
         : null
       return (v !== null && v !== undefined && v !== '') ? String(v) : ''
     }
@@ -2874,7 +2890,11 @@ export default function QualityCheck({ user }) {
                 <option value="biostadt">BIOSTADT INDIA LTD.</option>
                 <option value="sanaca">Sanaca Dubai</option>
                 <option value="villacrop">Villa Crop</option>
-                <option value="yellowstone">Yellowstone</option>
+                <option value="yellowstone">CropSure</option>
+                <option value="pratasha">Pratasha</option>
+                <option value="haychem">Haychem</option>
+                <option value="farmalinx">Farmalinx</option>
+                <option value="mcdonald">McDonald</option>
                 <option value="iffco">IFFCO</option>
               </select>
             </div>
@@ -3054,9 +3074,12 @@ export default function QualityCheck({ user }) {
                   // company parameter-table grades AND UPL Export/OMRI.
                   : (test.id === 'fg_sulphur' && (tableGrade || uplGrade === 'export' || uplGrade === 'omri'))
                   ? setFgSulphurResult
-                  // Sanaca mirrors the Bulk Density result into its table.
+                  // Sanaca / tableGrade grades mirror the Bulk Density result.
                   : (test.id === 'fg_bulk' && tableGrade)
                   ? setFgBulkResult
+                  // tableGrade grades mirror the Wet Sieve result live.
+                  : (test.id === 'fg_wetSieve' && tableGrade)
+                  ? (val => setSieveResult(p => ({ ...p, fg_wetSieve: val })))
                   : undefined
               }
               // CONTROLLED: persist this card's inputs in the FG draft (per
@@ -3310,10 +3333,12 @@ export default function QualityCheck({ user }) {
                       </tr>
                       {g.rows.map(row => {
                         // 'calc' rows mirror a formula-card result (read-only);
+                        // 'number' rows with sourceKey mirror the shared FG value
+                        // (read-only — the card was the entry point, now hidden);
                         // all others take the stored observation value.
                         const observed = row.type === 'calc'
                           ? calcRowObserved(row.sourceResult)
-                          : (uplValues[row.id] ?? '')
+                          : (row.sourceKey ? (values[row.sourceKey] ?? '') : (uplValues[row.id] ?? ''))
                         const status = evaluate(observed, row.rule)
                         return (
                           <tr key={row.id}>
@@ -3385,7 +3410,9 @@ export default function QualityCheck({ user }) {
                                   placeholder="—"
                                   value={observed}
                                   data-upl-id={row.id}
-                                  onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
+                                  onChange={row.sourceKey
+                                    ? e => setVal(row.sourceKey, e.target.value)
+                                    : e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
                                 />
                               )}
                             </td>
@@ -3425,7 +3452,7 @@ export default function QualityCheck({ user }) {
                 tableGrade.rows.filter(row => row.rule)
                   .map(row => [
                     row.id,
-                    evaluate(row.type === 'calc' ? calcRowObserved(row.sourceResult) : (uplValues[row.id] ?? ''), row.rule),
+                    evaluate(row.type === 'calc' ? calcRowObserved(row.sourceResult) : (row.sourceKey ? (values[row.sourceKey] ?? '') : (uplValues[row.id] ?? '')), row.rule),
                   ])
               )
             : {}),
@@ -3453,6 +3480,7 @@ export default function QualityCheck({ user }) {
         ))}
       </div>
 
+      {activeTab !== 'coa' && (
       <BatchHeader
         date={date} setDate={setDate}
         dateLabel={
@@ -3479,11 +3507,17 @@ export default function QualityCheck({ user }) {
           ]
         }
       />
+      )}
 
       <div className="qc-content" id="qc-content">
         {activeTab === 'rm' && renderRM()}
         {activeTab === 'ip' && renderIP()}
         {activeTab === 'fg' && renderFG()}
+        {activeTab === 'coa' && (
+          <React.Suspense fallback={<div className="qc-picker-msg">Loading COA…</div>}>
+            <CoaSection user={user} />
+          </React.Suspense>
+        )}
       </div>
 
       {/* F-2: this batch was already submitted by another chemist. Editing and
@@ -3547,6 +3581,7 @@ export default function QualityCheck({ user }) {
         </div>
       )}
 
+      {activeTab !== 'coa' && (
       <div className="qc-actions">
         {qcError && (
           <div className="qc-error">Error: {qcError}</div>
@@ -3570,6 +3605,7 @@ export default function QualityCheck({ user }) {
           Reset All / सभी रीसेट करें
         </button>
       </div>
+      )}
 
       {qcSaved && (
         <div className="qc-saved-toast" role="status" aria-live="polite">
