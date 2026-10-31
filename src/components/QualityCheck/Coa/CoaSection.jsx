@@ -156,12 +156,21 @@ export default function CoaSection({ user }) {
   const handlePrint = useCallback(async () => {
     // Flush the latest edit so the PDF uses the newest saved revision.
     await flush()
-    const w = window.open('', '_blank')
-    if (!w) { setNotice('Allow pop-ups to print/download the PDF.'); return }
-    w.document.open(); w.document.write(html); w.document.close()
-    w.focus()
-    // Let layout settle, then open the print (Save-as-PDF) dialog.
-    setTimeout(() => { try { w.print() } catch { /* user cancelled */ } }, 300)
+
+    // Use a hidden iframe so no new tab ever opens.
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;width:0;height:0;border:0;visibility:hidden;'
+    document.body.appendChild(iframe)
+
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document
+    iframeDoc.open(); iframeDoc.write(html); iframeDoc.close()
+    iframeDoc.title = ''
+
+    // Let layout settle, then trigger the print dialog, then remove the iframe.
+    setTimeout(() => {
+      try { iframe.contentWindow.focus(); iframe.contentWindow.print() } catch { /* user cancelled */ }
+      setTimeout(() => { document.body.removeChild(iframe) }, 1000)
+    }, 300)
   }, [flush, html])
 
   const handleFinalize = useCallback(async () => {
@@ -397,12 +406,7 @@ export default function CoaSection({ user }) {
             </div>
           </div>
 
-          {Object.keys(conflicts).length > 0 && (
-            <div className="coa-warn" role="alert">
-              Another operator edited this certificate. Latest server values were merged;
-              review the highlighted fields before finalizing.
-            </div>
-          )}
+
 
           {/* Actions */}
           <div className="coa-actions">
