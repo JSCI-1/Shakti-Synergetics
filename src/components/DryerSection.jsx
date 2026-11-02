@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
 import {
@@ -362,6 +362,66 @@ function DryerForm({
   // Reset when edit mode is entered/left so a later session starts clean.
   const rowTouchedRef = useRef({})
 
+  // ── Rolling-average range validation ─────────────────────────────────────
+  // Fields subject to ± 5 range check (matches the 11 columns the user named).
+  const RANGE_FIELDS = new Set([
+    'temp_inlet', 'temp_outlet', 'temp_actual',
+    'temp_fbd1', 'temp_fbd2', 'temp_chamber',
+    'atomizer_freq', 'feed_fc', 'c_pressure', 'pt_temp', 'id_frequency',
+  ])
+
+  // Yesterday's 24 rows, keyed by hour string (e.g. '08:00'). Loaded once when
+  // the date or dryerType changes. Stored in a ref — no re-render needed.
+  const yesterdayRowsRef = useRef({})   // { '08:00': { temp_inlet: '180', ... }, … }
+
+  // Per-cell warning state: rowWarnings[rowIndex][fieldKey] = 'high'|'low'|null
+  const [rowWarnings, setRowWarnings] = useState({})
+
+  // Rows where the operator clicked "Proceed Anyway" — out-of-range values
+  // acknowledged, all other cells unblocked for that row.
+  const [rowProceeded, setRowProceeded] = useState({})
+
+  // Tracks which proceeded cell's tooltip is showing on mobile: { 'ri_field': true }
+  const [proceededTooltip, setProceededTooltip] = useState({})
+
+  // Mobile: clicking anywhere outside closes any open proceeded tooltip
+  useEffect(() => {
+    if (Object.keys(proceededTooltip).length === 0) return
+    const dismiss = () => setProceededTooltip({})
+    document.addEventListener('click', dismiss)
+    return () => document.removeEventListener('click', dismiss)
+  }, [proceededTooltip])
+
+  // Compute the rolling average for `field` at row `rowIndex`.
+  // Combines yesterdayRowsRef (all 24 slots) + today's form rows already filled,
+  // finds the 4 rows immediately before the current one in the combined timeline,
+  // and returns { avg, min, max } or null when < 4 filled values exist.
+  const getRollingRange = useCallback((rowIndex, field, todayRows) => {
+    // Build combined timeline: [yesterday slot 0..23, today slot 0..23]
+    // TIME_SLOTS order: 08,09,…,23,00,01,…,07  (index 0 = 08:00)
+    const combined = TIME_SLOTS.map(h => {
+      const v = yesterdayRowsRef.current[h]
+      return v ? (v[field] ?? '') : ''
+    }).concat(
+      todayRows.map(r => r ? (r[field] ?? '') : '')
+    )
+
+    // Position of the current row in the combined array = 24 + rowIndex
+    const pos = 24 + rowIndex
+
+    // Collect up to 4 numeric values from the 4 positions immediately before pos
+    const vals = []
+    for (let p = pos - 1; p >= 0 && vals.length < 4; p--) {
+      const raw = combined[p]
+      const n = parseFloat(raw)
+      if (!isNaN(n)) vals.push(n)
+    }
+    if (vals.length < 4) return null   // not enough history → no check
+
+    const avg = vals.reduce((s, v) => s + v, 0) / vals.length
+    return { avg, min: avg - 5, max: avg + 5 }
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // Transient success toast ("… saved successfully"). Positioned bottom-center
   // on mobile and bottom-right on larger screens (see .dr-toast in the CSS),
   // and auto-dismisses 3s after it is shown.
@@ -426,9 +486,8 @@ function DryerForm({
     }
     // Reflect this hour's shift in the read-only Shift box.
     setLastActiveHour(TIME_SLOTS[i])
-    setForm(p => ({
-      ...p,
-      rows: p.rows.map((r, idx) => {
+    setForm(p => {
+      const nextRows = p.rows.map((r, idx) => {
         if (idx !== i) return r
         const prevTs = r.__ts || {}
         const iso = stampTs(r[field], val, prevTs[field])
@@ -442,8 +501,47 @@ function DryerForm({
           // and the hour can be re-saved (last-write-wins).
           saved: false,
         }
-      }),
-    }))
+      })
+
+      // Update range warning for this cell if it's a tracked field
+      if (RANGE_FIELDS.has(field)) {
+        const num = parseFloat(val)
+        const isNum = !isNaN(num) && val.toString().trim() !== ''
+        const range = isNum ? getRollingRange(i, field, nextRows) : null
+        let warn = null
+        if (range && isNum) {
+          if (num > range.max) warn = 'high'
+          else if (num < range.min) warn = 'low'
+        }
+        setRowWarnings(prev => ({
+          ...prev,
+          [i]: { ...(prev[i] || {}), [field]: warn },
+        }))
+        // If the corrected value is now in range, check if ALL warnings for
+        // this row are cleared — if so, remove the proceeded flag so the row
+        // resets cleanly for future out-of-range entries.
+        if (!warn) {
+          setRowWarnings(prev => {
+            const rowW = { ...(prev[i] || {}), [field]: null }
+            const anyWarn = Object.values(rowW).some(w => w)
+            if (!anyWarn) {
+              setRowProceeded(pp => {
+                if (!pp[i]) return pp
+                const next = { ...pp }; delete next[i]; return next
+              })
+            }
+            return { ...prev, [i]: rowW }
+          })
+        } else {
+          setRowWarnings(prev => ({
+            ...prev,
+            [i]: { ...(prev[i] || {}), [field]: warn },
+          }))
+        }
+      }
+
+      return { ...p, rows: nextRows }
+    })
   }
 
 
@@ -640,6 +738,9 @@ function DryerForm({
       setRowEditing({})
       rowSnapshotRef.current = {}
       rowTouchedRef.current = {}
+      setRowWarnings({})
+      setRowProceeded({})
+      setProceededTooltip({})
     }
     rowsDateRef.current = form.date
 
@@ -672,8 +773,58 @@ function DryerForm({
     }
   }, [dryerType, form.date])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Fetch yesterday's rows for rolling-average range check ───────────────
+  useEffect(() => {
+    yesterdayRowsRef.current = {}
+    setRowWarnings({})
+    setRowProceeded({})
+    setProceededTooltip({})
+    if (!supabaseReady || !supabase || !form.date) return
 
-  // ── Per-hour Save → upsert this hour to the shared draft ────
+    // Compute yesterday's date string (form.date is 'YYYY-MM-DD')
+    const d = new Date(form.date)
+    d.setDate(d.getDate() - 1)
+    const yyyy = d.getFullYear()
+    const mm   = String(d.getMonth() + 1).padStart(2, '0')
+    const dd   = String(d.getDate()).padStart(2, '0')
+    const prevDate = `${yyyy}-${mm}-${dd}`
+
+    // Fetch from dryer_logs first (finalized), then dryer_hourly_draft (live)
+    // so we always use the best available previous-day data.
+    ;(async () => {
+      // Try finalized log first
+      try {
+        const { data } = await supabase
+          .from('dryer_logs')
+          .select('log_rows')
+          .eq('dryer_type', dryerType)
+          .eq('date', prevDate)
+          .maybeSingle()
+        if (data && Array.isArray(data.log_rows) && data.log_rows.length > 0) {
+          const byHour = {}
+          data.log_rows.forEach((r, idx) => {
+            if (r) byHour[TIME_SLOTS[idx]] = r
+          })
+          yesterdayRowsRef.current = byHour
+          return
+        }
+      } catch { /* fall through to draft */ }
+
+      // Fall back to hourly drafts
+      try {
+        const { data } = await supabase
+          .from('dryer_hourly_draft')
+          .select('hour, values')
+          .eq('dryer_type', dryerType)
+          .eq('log_date', prevDate)
+        if (data && data.length > 0) {
+          const byHour = {}
+          data.forEach(r => { if (r && r.hour) byHour[r.hour] = r.values || {} })
+          yesterdayRowsRef.current = byHour
+        }
+      } catch { /* no yesterday data — range check simply won't fire */ }
+    })()
+  }, [dryerType, form.date])  // eslint-disable-line react-hooks/exhaustive-deps
   // ADDITIVE: Save Log Sheet (handleSubmit → dryer_logs) is unchanged.
   async function saveRow(i) {
     const hour = TIME_SLOTS[i]
@@ -1401,35 +1552,119 @@ function DryerForm({
     const locked = isCellLocked(ri)
     const hasHist = cellHasHistory(field, ri)
 
+    // A different RANGE_FIELDS cell in this row has an unacknowledged warning
+    // → this cell is range-blocked (read-only) until operator acts.
+    const thisWarn   = rowWarnings[ri]?.[field]
+    const anyWarnRow = Object.entries(rowWarnings[ri] || {}).some(([f, w]) => w && f !== field)
+    const rangeBlocked = !rowProceeded[ri] && !thisWarn && anyWarnRow
+
     return (
       <td
         key={`${field}-${ri}`}
+        style={{ position: 'relative' }}
         className={
-          (isTemperature ? 'dr-temp-cell' : '') + (hasHist ? ' dr-cell-has-hist' : '')
+          (isTemperature ? 'dr-temp-cell' : '') +
+          (hasHist ? ' dr-cell-has-hist' : '') +
+          (rangeBlocked ? ' dr-cell-range-blocked' : '') +
+          (rowProceeded[ri] && thisWarn ? ' dr-cell-proceeded' : '')
         }
       >
 
-        <input
-          type="text"
-          inputMode="text"
-          pattern="-?[0-9]*\.?[0-9]*"
-          className={
-            (isTemperature
-              ? 'dr-cell-input dr-temp-input'
-              : 'dr-cell-input') + (locked ? ' dr-cell-locked' : '')
-          }
-          placeholder="—"
-          readOnly={locked}
-          value={safeForm.rows[ri][field]}
-          onChange={e => {
-            if (locked) return
-            setRow(
-              ri,
-              field,
-              e.target.value
-            )
-          }}
-        />
+        {/* When proceeded + warning AND not in edit mode: show underlined span.
+            In edit mode always show the normal editable input. */}
+        {rowProceeded[ri] && thisWarn && !rowEditing[ri] ? (
+          <>
+            <input
+              type="text"
+              inputMode="text"
+              pattern="-?[0-9]*\.?[0-9]*"
+              className={
+                (isTemperature ? 'dr-cell-input dr-temp-input' : 'dr-cell-input') +
+                ' dr-cell-proceeded-hidden'
+              }
+              readOnly
+              value={safeForm.rows[ri][field]}
+              onChange={() => {}}
+              tabIndex={-1}
+            />
+            <span
+              className="dr-cell-proceeded-label"
+              onClick={e => {
+                e.stopPropagation()
+                if (!locked) {
+                  // Not saved — revert straight to editable input
+                  setRowProceeded(prev => {
+                    const next = { ...prev }; delete next[ri]; return next
+                  })
+                } else {
+                  // Saved/locked — toggle reason tooltip
+                  const key = `${ri}_${field}`
+                  setProceededTooltip(prev =>
+                    prev[key] ? {} : { [key]: true }
+                  )
+                }
+              }}
+            >
+              {safeForm.rows[ri][field] || '—'}
+              {/* Reason — inside label for CSS hover; positioned strictly above */}
+              <span
+                className={
+                  'dr-proceeded-reason' +
+                  (proceededTooltip[`${ri}_${field}`] ? ' dr-proceeded-reason-visible' : '')
+                }
+              >
+                {thisWarn === 'high'
+                  ? '⚠ Value is greater than the limit'
+                  : '⚠ Value is smaller than the limit'}
+              </span>
+            </span>
+          </>
+        ) : (
+          <input
+            type="text"
+            inputMode="text"
+            pattern="-?[0-9]*\.?[0-9]*"
+            className={
+              (isTemperature
+                ? 'dr-cell-input dr-temp-input'
+                : 'dr-cell-input') +
+              (locked || rangeBlocked ? ' dr-cell-locked' : '')
+            }
+            placeholder="—"
+            readOnly={locked || rangeBlocked}
+            value={safeForm.rows[ri][field]}
+            onChange={e => {
+              if (locked || rangeBlocked) return
+              setRow(ri, field, e.target.value)
+            }}
+          />
+        )}
+
+        {/* Range caution — only for the 11 tracked fields, hidden once proceeded */}
+        {RANGE_FIELDS.has(field) && (() => {
+          const warn = rowWarnings[ri]?.[field]
+          if (!warn || rowProceeded[ri]) return null
+          return (
+            <div className="dr-range-warn">
+              <span className="dr-range-warn-msg">
+                {warn === 'high'
+                  ? '⚠ Value is greater than the limit'
+                  : '⚠ Value is smaller than the limit'}
+              </span>
+              <div className="dr-range-warn-btns">
+                <button
+                  type="button"
+                  className="dr-range-btn dr-range-btn-proceed"
+                  onClick={() => {
+                    setRowProceeded(prev => ({ ...prev, [ri]: true }))
+                  }}
+                >
+                  Proceed Anyway
+                </button>
+              </div>
+            </div>
+          )
+        })()}
 
         {renderFieldHistory(field, ri)}
 
@@ -1441,24 +1676,105 @@ function DryerForm({
   const renderTC = (field, ri) => {
     const locked = isCellLocked(ri)
     const hasHist = cellHasHistory(field, ri)
-    return (
-    <td key={`${field}-${ri}`} className={hasHist ? 'dr-cell-has-hist' : undefined}>
 
-      <input
-        type="text"
-        className={'dr-cell-input' + (locked ? ' dr-cell-locked' : '')}
-        placeholder="—"
-        readOnly={locked}
-        value={safeForm.rows[ri][field]}
-        onChange={e => {
-          if (locked) return
-          setRow(
-            ri,
-            field,
-            e.target.value
-          )
-        }}
-      />
+    const thisWarn   = rowWarnings[ri]?.[field]
+    const anyWarnRow = Object.entries(rowWarnings[ri] || {}).some(([f, w]) => w && f !== field)
+    const rangeBlocked = !rowProceeded[ri] && !thisWarn && anyWarnRow
+
+    return (
+    <td key={`${field}-${ri}`}
+        style={{ position: 'relative' }}
+        className={
+          (hasHist ? 'dr-cell-has-hist' : '') +
+          (rangeBlocked ? ' dr-cell-range-blocked' : '') +
+          (rowProceeded[ri] && thisWarn ? ' dr-cell-proceeded' : '')
+        }
+    >
+
+      {/* When proceeded + warning AND not in edit mode: show underlined span.
+          In edit mode always show the normal editable input. */}
+      {rowProceeded[ri] && thisWarn && !rowEditing[ri] ? (
+        <>
+          <input
+            type="text"
+            className={'dr-cell-input dr-cell-proceeded-hidden'}
+            readOnly
+            value={safeForm.rows[ri][field]}
+            onChange={() => {}}
+            tabIndex={-1}
+          />
+          <span
+            className="dr-cell-proceeded-label"
+            onClick={e => {
+              e.stopPropagation()
+              if (!locked) {
+                // Not saved — revert straight to editable input
+                setRowProceeded(prev => {
+                  const next = { ...prev }; delete next[ri]; return next
+                })
+              } else {
+                // Saved/locked — toggle reason tooltip
+                const key = `${ri}_${field}`
+                setProceededTooltip(prev =>
+                  prev[key] ? {} : { [key]: true }
+                )
+              }
+            }}
+          >
+            {safeForm.rows[ri][field] || '—'}
+            {/* Reason — inside label for CSS hover; positioned strictly above */}
+            <span
+              className={
+                'dr-proceeded-reason' +
+                (proceededTooltip[`${ri}_${field}`] ? ' dr-proceeded-reason-visible' : '')
+              }
+            >
+              {thisWarn === 'high'
+                ? '⚠ Value is greater than the limit'
+                : '⚠ Value is smaller than the limit'}
+            </span>
+          </span>
+        </>
+      ) : (
+        <input
+          type="text"
+          className={
+            'dr-cell-input' +
+            (locked || rangeBlocked ? ' dr-cell-locked' : '')
+          }
+          placeholder="—"
+          readOnly={locked || rangeBlocked}
+          value={safeForm.rows[ri][field]}
+          onChange={e => {
+            if (locked || rangeBlocked) return
+            setRow(ri, field, e.target.value)
+          }}
+        />
+      )}
+
+      {/* Range caution for id_frequency — hidden once proceeded */}
+      {RANGE_FIELDS.has(field) && (() => {
+        const warn = rowWarnings[ri]?.[field]
+        if (!warn || rowProceeded[ri]) return null
+        return (
+          <div className="dr-range-warn">
+            <span className="dr-range-warn-msg">
+              {warn === 'high'
+                ? '⚠ Value is greater than the limit'
+                : '⚠ Value is smaller than the limit'}
+            </span>
+            <div className="dr-range-warn-btns">
+              <button
+                type="button"
+                className="dr-range-btn dr-range-btn-proceed"
+                onClick={() => setRowProceeded(prev => ({ ...prev, [ri]: true }))}
+              >
+                Proceed Anyway
+              </button>
+            </div>
+          </div>
+        )
+      })()}
 
       {renderFieldHistory(field, ri)}
 
@@ -2756,20 +3072,7 @@ function DryerForm({
           </div>
 
 
-          <button
-            type="button"
-            className="dr-reset-btn"
-            onClick={() => {
-              onClearDraft()
-              setSaved(false)
-              setError('')
 
-            }}
-          >
-
-            Reset / रीसेट
-
-          </button>
 
         </div>
 
