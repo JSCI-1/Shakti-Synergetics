@@ -357,3 +357,13 @@
 .pa-qc-sieve .qc-upl-fail { color: #c62828; font-weight: 700; }
 .pa-group-qc .qc-upl-na,
 .pa-qc-sieve .qc-upl-na { color: #999; }
+
+/* Proceeded value — underlined in Production Activity to match the dryer log */
+.pa-cell-caution {
+  text-decoration: underline;
+  text-decoration-color: #000;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+  font-weight: 700;
+  cursor: help;
+}

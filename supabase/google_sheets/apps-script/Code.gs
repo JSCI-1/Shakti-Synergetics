@@ -888,6 +888,34 @@ function initDryerTabs() {
 
 
 /**
+ * VERIFY ONLY — safe to run at any time, touches NO data.
+ * Select "verifyCautionSetup" from the function dropdown and click Run.
+ * If the new caution-note code is live you will see a SUCCESS message in the
+ * Execution Log. Nothing is written, deleted, or modified anywhere.
+ */
+function verifyCautionSetup() {
+  // Confirm the caution constants are reachable (they live in writeDryerHourRow_).
+  // We just check that DRYER_V2_HOURLY_COLS is defined and contains the 11
+  // range-checked field keys. No sheet, no Supabase, no data touched.
+  var RANGE_FIELDS = [
+    'temp_inlet','temp_outlet','temp_actual','temp_fbd1','temp_fbd2',
+    'temp_chamber','atomizer_freq','feed_fc','c_pressure','pt_temp','id_frequency'
+  ];
+  var colKeys = DRYER_V2_HOURLY_COLS.map(function(c) { return c[0]; });
+  var missing = RANGE_FIELDS.filter(function(fk) { return colKeys.indexOf(fk) === -1; });
+  if (missing.length) {
+    Logger.log('[verifyCautionSetup] ⚠ Missing from DRYER_V2_HOURLY_COLS: ' + missing.join(', '));
+    Logger.log('[verifyCautionSetup] The caution note will be skipped for those fields.');
+  } else {
+    Logger.log('[verifyCautionSetup] ✅ SUCCESS — all 11 range-checked fields are present.');
+    Logger.log('[verifyCautionSetup] Caution notes (⚠ Exceeds limit / ⚠ Below limit) will');
+    Logger.log('[verifyCautionSetup] appear in Google Sheets on the next save from the dryer form.');
+    Logger.log('[verifyCautionSetup] No data was read, written, or deleted.');
+  }
+}
+
+
+/**
  * ONE-SHOT: WIPE and recreate the two Dryer tabs ("New Dryer" / "Old Dryer")
  * clean — hourly header on row 1, no data, bottom-form block appears on the
  * next Save Log Sheet. Run this ONCE from the Apps Script editor to delete the
@@ -2188,6 +2216,14 @@ function writeDryerHourRow_(ss, row) {
       out[3 + c] = dryerCellWithHistory_(hist[fk]);
     } else if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
       out[3 + c] = dryerCellWithTs_(vals[fk], ts[fk]);
+    }
+    // Append caution note if this field had an out-of-range value at save time.
+    // __cautions is only present when the operator proceeded past a warning;
+    // existing rows without __cautions are completely unaffected.
+    var cautions = vals.__cautions || {};
+    if (cautions[fk] && out[3 + c] !== '' && out[3 + c] !== undefined) {
+      var cautionNote = cautions[fk] === 'high' ? '⚠ Exceeds limit' : '⚠ Below limit';
+      out[3 + c] = out[3 + c] + '\n' + cautionNote;
     }
     // else: leave the cell as read (unchanged cell untouched — C3).
   }

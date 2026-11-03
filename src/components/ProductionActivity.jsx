@@ -220,16 +220,32 @@ function ActivityTable({ group }) {
             return (
               <tr key={h}>
                 <td className="pa-td-time">{h}</td>
-                {TEMP_COLUMNS.map(c => <td key={c.key}>{cellVal(v[c.key])}</td>)}
-                {OTHER_COLUMNS.map(c => (
-                  <td key={c.key}>
-                    {c.key === 'maintenance'
-                      ? renderMaintenanceCell(v[c.key])
-                      : c.key === 'timestamp'
-                        ? (rowTs || '—')
-                        : cellVal(v[c.key])}
-                  </td>
-                ))}
+                {TEMP_COLUMNS.map(c => {
+                  const caution = v.__cautions?.[c.key]
+                  const val = cellVal(v[c.key])
+                  return (
+                    <td key={c.key}>
+                      {caution
+                        ? <span className="pa-cell-caution" title={caution === 'high' ? '⚠ Value is greater than the limit' : '⚠ Value is smaller than the limit'}>{val}</span>
+                        : val}
+                    </td>
+                  )
+                })}
+                {OTHER_COLUMNS.map(c => {
+                  const caution = v.__cautions?.[c.key]
+                  const raw = c.key === 'maintenance'
+                    ? renderMaintenanceCell(v[c.key])
+                    : c.key === 'timestamp'
+                      ? (rowTs || '—')
+                      : cellVal(v[c.key])
+                  return (
+                    <td key={c.key}>
+                      {caution
+                        ? <span className="pa-cell-caution" title={caution === 'high' ? '⚠ Value is greater than the limit' : '⚠ Value is smaller than the limit'}>{raw}</span>
+                        : raw}
+                    </td>
+                  )
+                })}
               </tr>
             )
           })}

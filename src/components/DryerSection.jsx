@@ -869,11 +869,23 @@ function DryerForm({
     //     in-memory row cannot overwrite newer history (D6/AT7). The flat value
     //     still follows last-write-wins (unchanged operator-facing behavior).
     const existingEvents = Array.isArray(fields.__events) ? fields.__events : []
+
+    // Capture any range warnings active at save time for the 11 tracked fields.
+    // Stored as __cautions: { fieldKey: 'high'|'low' } inside the values object
+    // so the Google Sheets sync can append a note next to the cell value.
+    // Only written when warnings exist; omitted entirely when the row is clean.
+    const cautionsAtSave = {}
+    const rowW = rowWarnings[i] || {}
+    Object.keys(rowW).forEach(function(fk) {
+      if (rowW[fk]) cautionsAtSave[fk] = rowW[fk]
+    })
+
     const localValues = {
       ...fields,
       __events: existingEvents.length ? existingEvents : [{ type: 'save', ts: nowIso }],
       operator_name: savedBy,
       timestamp: ts,
+      ...(Object.keys(cautionsAtSave).length ? { __cautions: cautionsAtSave } : {}),
     }
 
     // Wrap the whole network call in try/catch. supabase-js RESOLVES with
@@ -1175,6 +1187,18 @@ function DryerForm({
 
         // (3d) Union-merge history against the fresh persisted history.
         local = mergeHistoryByTs(persisted, local)
+
+        // Inject range cautions at save time — mirrors saveRow logic.
+        const changesRowW = rowWarnings[i] || {}
+        const changesCautions = {}
+        Object.keys(changesRowW).forEach(function(fk) {
+          if (changesRowW[fk]) changesCautions[fk] = changesRowW[fk]
+        })
+        if (Object.keys(changesCautions).length) {
+          local.__cautions = changesCautions
+        } else {
+          delete local.__cautions
+        }
 
         // (4) Guarded upsert on last_saved_at (optimistic version token).
         const newToken = new Date().toISOString()
