@@ -387,17 +387,17 @@
   bottom: 24px;
   right: 24px;
   z-index: 9999;
-  padding: 10px 18px;
+  padding: 12px 20px;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
   box-shadow: 0 4px 16px rgba(0,0,0,0.18);
   pointer-events: none;
-  animation: so-toast-in 0.2s ease, so-toast-out 0.4s ease 1.6s forwards;
+  animation: so-toast-in 0.2s ease, so-toast-out 0.4s ease 2.6s forwards;
 }
 .so-toast-success { background: #2e7d32; color: #fff; }
 .so-toast-error   { background: #c62828; color: #fff; }
-@keyframes so-toast-in  { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes so-toast-in  { from { opacity: 0; } to { opacity: 1; } }
 @keyframes so-toast-out { from { opacity: 1; } to { opacity: 0; } }
 
 /* ── Error popup ── */
@@ -463,9 +463,51 @@
   .so-approval-field:last-child,
   .so-motor-meta-field:last-child { border-bottom: none; }
   .so-toast {
-    left: 16px;
-    right: 16px;
+    left: 50%;
+    right: auto;
     bottom: 80px;
+    transform: translateX(-50%);
+    white-space: nowrap;
     text-align: center;
   }
+}
+
+/* ── Custom DateInput: text input showing dd/mm/yyyy with calendar trigger ── */
+.so-date-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.so-date-wrap .so-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Completely hide the native date picker — only its popup is used */
+.so-date-hidden {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+  padding: 0;
+  border: 0;
+}
+
+.so-date-icon-btn {
+  background: none;
+  border: 1px solid #c8b89a;
+  border-radius: 4px;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: #6b5a42;
+  flex-shrink: 0;
+}
+
+.so-date-icon-btn:hover {
+  background: #f0e8dc;
 }

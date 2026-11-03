@@ -1,5 +1,6 @@
 /**
- * Thermopack Sheets Sync — DEDICATED Apps Script worker (Option C).
+ * Thermopack Sheets Sync and Slurry 
+  — DEDICATED Apps Script worker (Option C).
  *
  * COMPLETELY SEPARATE from the Dryer/QC worker
  * (supabase/google_sheets/apps-script/Code.gs). It has its own Apps Script
@@ -277,7 +278,7 @@ function syncTick() {
   if (!lock.tryLock(5000)) { return; }
   try {
     for (var p = 0; p < SYNC_PASSES; p++) {
-      syncPass_();                              // always run; never break early
+      syncPass_();                              // handles both Thermopack AND Slurry Operator
       if (p < SYNC_PASSES - 1) Utilities.sleep(SYNC_PASS_INTERVAL_MS);
     }
   } finally {
@@ -297,10 +298,24 @@ function syncPass_() {
   var done = [];
   var failed = [];
 
+  // Open the Slurry Operator spreadsheet lazily (only if a slurry row arrives).
+  var slurrySS = null;
+  function getSlurrySS_() {
+    if (slurrySS) return slurrySS;
+    var soId = PropertiesService.getScriptProperties()
+      .getProperty('SPREADSHEET_ID_SLURRY_OP');
+    if (!soId || String(soId).trim() === '') {
+      throw new Error('[syncPass] SPREADSHEET_ID_SLURRY_OP not set — '
+        + 'cannot route slurry_op_* record. Set the Script Property first.');
+    }
+    slurrySS = SpreadsheetApp.openById(String(soId).trim());
+    return slurrySS;
+  }
+
   for (var i = 0; i < pulled.rows.length; i++) {
     var row = pulled.rows[i];
     try {
-      routeRow_(ss, row);
+      routeRow_(ss, row, getSlurrySS_);
       done.push(row.event_id);
     } catch (e) {
       failed.push({ event_id: row.event_id, error: String(e && e.message ? e.message : e) });
@@ -311,7 +326,7 @@ function syncPass_() {
   return pulled.rows.length;
 }
 
-function routeRow_(ss, row) {
+function routeRow_(ss, row, getSlurrySS_) {
   var kind = row.record_kind;
   var payload = row.payload || {};
   if (kind === 'thermo_jobcard') {
@@ -320,6 +335,10 @@ function routeRow_(ss, row) {
     writeHourly_(ss, row, payload);
   } else if (kind === 'thermo_motor') {
     writeMotor_(ss, row, payload);
+  } else if (kind === 'slurry_op_jobcard') {
+    writeSlurryOpJobCard_(getSlurrySS_(), row, payload);
+  } else if (kind === 'slurry_op_motor') {
+    writeSlurryOpMotor_(getSlurrySS_(), row, payload);
   } else {
     throw new Error('Unknown record_kind: ' + kind);
   }
@@ -611,3 +630,341 @@ function ack_(cfg, done, failed) {
     Logger.log('[ack] HTTP ' + code + ': ' + res.getContentText());
   }
 }
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * SLURRY OPERATOR — Sheets Sync (combined into this Thermopack worker)
+ * ───────────────────────────────────────────────────────────────────────────
+ * Writes to a SEPARATE spreadsheet: "Slurry Operator"
+ * (Script Property: SPREADSHEET_ID_SLURRY_OP)
+ *
+ * Two tabs:
+ *   SO_TAB.JOBCARD → "Job Card"
+ *   SO_TAB.MOTOR   → "Running Motor Amp Status"
+ *
+ * Routing (record_kind):
+ *   slurry_op_jobcard → "Job Card"
+ *   slurry_op_motor   → "Running Motor Amp Status"
+ *
+ * TIMESTAMPS: every timestamp shown in the sheet is captured at the
+ * website/backend SAVE moment, rendered in Asia/Kolkata as hh:mm:ss AM/PM
+ * (same TZ and TS_FORMAT constants as Thermopack). The script NEVER uses
+ * its own upload time as a record timestamp.
+ *
+ * Additional Script Property required:
+ *   SPREADSHEET_ID_SLURRY_OP   — the dedicated "Slurry Operator" spreadsheet id
+ *                                 (the ONLY new Script Property needed)
+ *
+ * NO new Edge Functions, no new secrets, no new triggers in Apps Script.
+ * Slurry rows arrive via the SAME thermopack-sheets-sync-pull endpoint because
+ * migration 050 enqueues them into thermopack_sheets_sync_outbox.
+ *
+ * DEDUP / UPSERT: both tabs use the same upsertByKey_ helper from the
+ * Thermopack section (keyed by the hidden trailing _source_pk column), so
+ * replays never produce duplicate rows.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Slurry Operator — Tab names ──────────────────────────────────────────── */
+var SO_TAB = {
+  JOBCARD: 'Job Card',
+  MOTOR:   'Running Motor Amp Status'
+};
+
+/* ── Slurry Operator — Job Card header ───────────────────────────────────────
+ * VERTICAL layout: one row per mill per job card submission.
+ * Identity columns (Date, Shift, Operator Name, Supervisor, Manager) repeat on
+ * every mill row. "Mill No." identifies which mill the row belongs to.
+ *
+ * Columns:
+ *   Date | Shift | Operator Name | Mill No. |
+ *   Flow Rates (L/Sec) | Current Amp | Zirconia/Zircosil Beads (kg) | Remarks |
+ *   Supervisor | Manager
+ *
+ * Dedup key: source_pk + '|' + mill_name  → one row per mill per submission.
+ * A re-sync of the same submission UPSERTs the same rows (idempotent).
+ * ──────────────────────────────────────────────────────────────────────────── */
+var SO_MILL_NAMES = ['V1','V2','V3','V4','V5','V6','V7','V8','V9','V10'];
+
+var SO_JOBCARD_HEADER = [
+  'Date', 'Shift', 'Operator Name',
+  'Mill No.',
+  'Flow Rates (L/Sec)',
+  'Current Amp',
+  'Zirconia/Zircosil Beads (kg)',
+  'Remarks',
+  'Supervisor', 'Manager'
+];
+
+/* ── Slurry Operator — Running Motor Amp Status header ───────────────────────
+ * One row per motor per submission (same pattern as Thermopack motor tab).
+ * Columns: Running Date | Sr. No. | Motor Name | HP | Amp Reading | Status | Timestamp | Checked By | Remark
+ * ──────────────────────────────────────────────────────────────────────────── */
+var SO_MOTOR_HEADER = [
+  'Running Date',
+  'Sr. No.', 'Motor Name', 'HP',
+  'Amp Reading',
+  'Status',
+  'Timestamp',
+  'Checked By', 'Remark'
+];
+
+// Slurry motors — mirrors SLURRY_MOTORS in SlurryOperator.jsx
+var SO_MOTORS = [
+  { id: 1,  name: 'Vertical Mill 01',  hp: 50 },
+  { id: 2,  name: 'Vertical Mill 02',  hp: 50 },
+  { id: 3,  name: 'Vertical Mill 03',  hp: 50 },
+  { id: 4,  name: 'Vertical Mill 04',  hp: 50 },
+  { id: 5,  name: 'Vertical Mill 05',  hp: 50 },
+  { id: 6,  name: 'Vertical Mill 06',  hp: 50 },
+  { id: 7,  name: 'Vertical Mill 07',  hp: 50 },
+  { id: 8,  name: 'Vertical Mill 08',  hp: 50 },
+  { id: 9,  name: 'Vertical Mill 09',  hp: 50 },
+  { id: 10, name: 'Vertical Mill 10',  hp: 50 },
+  { id: 11, name: 'Attrition Mill 01', hp: 75 },
+  { id: 12, name: 'Attrition Mill 02', hp: 60 }
+];
+
+
+/* ── Slurry Operator — Config ─────────────────────────────────────────────── */
+/*
+ * Slurry Operator uses the SAME thermopack_sheets_sync_outbox, the SAME
+ * Edge Function endpoints, and the SAME shared secret as Thermopack.
+ * No extra Script Properties are needed — getConfig_() (Thermopack) supplies
+ * everything. The pull endpoint already returns slurry_op_* record_kinds
+ * because they are enqueued into the same outbox by migration 050 triggers.
+ *
+ * SPREADSHEET_ID_SLURRY_OP is the ONLY extra Script Property required:
+ *   the dedicated "Slurry Operator" Google Spreadsheet id.
+ */
+
+function getSlurryOpConfig_() {
+  var props = PropertiesService.getScriptProperties();
+  var required = [
+    'THERMOPACK_SHEETS_SYNC_SECRET',
+    'THERMOPACK_PULL_URL',
+    'THERMOPACK_ACK_URL',
+    'SPREADSHEET_ID_SLURRY_OP'
+  ];
+  var cfg = {};
+  var missing = [];
+  for (var i = 0; i < required.length; i++) {
+    var v = props.getProperty(required[i]);
+    if (!v || String(v).trim() === '') {
+      missing.push(required[i]);
+    } else {
+      cfg[required[i]] = String(v).trim();
+    }
+  }
+  if (missing.length > 0) {
+    throw new Error('[SlurryOp] Missing Script Properties: ' + missing.join(', '));
+  }
+  // Expose under the names the Slurry helpers expect
+  cfg.SLURRY_OP_SECRET   = cfg.THERMOPACK_SHEETS_SYNC_SECRET;
+  cfg.SLURRY_OP_PULL_URL = cfg.THERMOPACK_PULL_URL;
+  cfg.SLURRY_OP_ACK_URL  = cfg.THERMOPACK_ACK_URL;
+  return cfg;
+}
+
+
+/* ── Slurry Operator — One-time setup ────────────────────────────────────── */
+
+/**
+ * Create the two Slurry Operator tabs with headers up front. Run ONCE manually.
+ * Idempotent: creates a tab only if missing, writes header only if row 1 empty.
+ */
+function initSlurryOpTabs() {
+  var cfg;
+  try { cfg = getSlurryOpConfig_(); }
+  catch (e) { Logger.log('[initSlurryOpTabs] Fail-closed: ' + e.message); return; }
+
+  var ss = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_SLURRY_OP);
+  Logger.log('[initSlurryOpTabs] Spreadsheet: "' + ss.getName()
+    + '"  id=' + cfg.SPREADSHEET_ID_SLURRY_OP + '  url=' + ss.getUrl());
+
+  ensureTab_(ss, SO_TAB.JOBCARD, SO_JOBCARD_HEADER);
+  ensureTab_(ss, SO_TAB.MOTOR,   SO_MOTOR_HEADER);
+  Logger.log('[initSlurryOpTabs] Done. "Job Card" and "Running Motor Amp Status" tabs are ready.');
+}
+
+/**
+ * ONE-SHOT: WIPE and recreate both Slurry Operator tabs with the CURRENT
+ * headers. Use when the layout changed. SAFE: touches ONLY the Slurry Operator
+ * spreadsheet. To also delete source data so it cannot re-sync, run in Supabase:
+ *   delete from slurry_operator_job_cards;
+ *   delete from slurry_operator_motor_amp;
+ *   delete from slurry_op_sheets_sync_outbox;  -- (when that table exists)
+ */
+function resetSlurryOpTabsClean() {
+  var cfg;
+  try { cfg = getSlurryOpConfig_(); }
+  catch (e) { Logger.log('[resetSlurryOpTabsClean] Fail-closed: ' + e.message); return; }
+
+  var ss = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_SLURRY_OP);
+  var specs = [
+    { name: SO_TAB.JOBCARD, header: SO_JOBCARD_HEADER },
+    { name: SO_TAB.MOTOR,   header: SO_MOTOR_HEADER   }
+  ];
+  for (var i = 0; i < specs.length; i++) {
+    var old = ss.getSheetByName(specs[i].name);
+    if (old) ss.deleteSheet(old);
+    ss.insertSheet(specs[i].name);
+    ensureTab_(ss, specs[i].name, specs[i].header);
+    Logger.log('[resetSlurryOpTabsClean] Wiped + recreated: ' + specs[i].name);
+  }
+  Logger.log('[resetSlurryOpTabsClean] Done. Both Slurry Operator tabs are empty.');
+}
+
+
+/* ── Slurry Operator — Sync loop ─────────────────────────────────────────── */
+/*
+ * Slurry Operator rows are routed INSIDE syncPass_() — no separate pass or
+ * pull/ack loop is needed. pullSlurryOp_() / ackSlurryOp_() / syncPassSlurryOp_()
+ * are intentionally absent: the shared pull endpoint already returns
+ * slurry_op_* rows (same outbox), and routeRow_() dispatches them to
+ * writeSlurryOpJobCard_() / writeSlurryOpMotor_() with a lazily-opened
+ * Slurry spreadsheet. Everything is handled in one atomic pull-route-ack pass.
+ */
+
+
+/* ── Slurry Operator — Writers ───────────────────────────────────────────── */
+
+/**
+ * Write Slurry Operator job card — VERTICAL layout, one row per mill.
+ *
+ * Each mill in the payload produces one sheet row:
+ *   Date | Shift | Operator Name | Mill No. |
+ *   Flow Rates | Current Amp | Zirconia Beads | Remarks |
+ *   Supervisor | Manager
+ *
+ * Flow rates are stacked in a single cell: "value\ntimestamp" per reading,
+ * separated by a blank line between readings.
+ * Dedup key: source_pk + '|' + mill_name → idempotent upsert per mill row.
+ * Mills with no data at all are still written (blank data columns) so every
+ * submission always produces exactly 10 rows in the sheet.
+ */
+function writeSlurryOpJobCard_(ss, row, p) {
+  var sh = ensureTab_(ss, SO_TAB.JOBCARD, SO_JOBCARD_HEADER);
+
+  var millsArr = Array.isArray(p.mills) ? p.mills : [];
+
+  // Index mills by name for lookup
+  var millsByName = {};
+  for (var mi = 0; mi < millsArr.length; mi++) {
+    var ml = millsArr[mi];
+    if (ml && ml.mill) millsByName[ml.mill] = ml;
+  }
+
+  // Shared identity / footer values
+  var date         = fmtDate_(p.date);
+  var shift        = valOrBlank_(p.shift);
+  var operatorName = valOrBlank_(p.operator_name);
+  var supervisor   = valOrBlank_(p.supervisor);
+  var manager      = valOrBlank_(p.manager);
+
+  for (var si = 0; si < SO_MILL_NAMES.length; si++) {
+    var millName = SO_MILL_NAMES[si];
+    var mill = millsByName[millName] || {};
+
+    // Flow Rates: stack each reading as "value\ntimestamp"
+    var flowRates = Array.isArray(mill.flow_rates) ? mill.flow_rates : [];
+    var flowLines = [];
+    for (var fi = 0; fi < flowRates.length; fi++) {
+      var fr  = flowRates[fi];
+      var fv  = valOrBlank_(fr ? fr.value : '');
+      var fts = (fr && fr.timestamp && String(fr.timestamp).trim() !== '')
+        ? String(fr.timestamp).trim() : '';
+      if (fv === '' && fts === '') continue;   // skip truly empty readings
+      flowLines.push(fts ? (String(fv) + LINE_SEP + fts) : String(fv));
+    }
+    var flowCell = flowLines.join(LINE_SEP + LINE_SEP);  // blank line between readings
+
+    var rowVals = [
+      date, shift, operatorName,
+      millName,
+      flowCell,
+      // Current Amp: value on line 1, entry timestamp on line 2 (same cell)
+      soStackWithTs_(mill.current_amp,    mill.current_amp_ts),
+      // Zirconia Beads: value on line 1, entry timestamp on line 2 (same cell)
+      soStackWithTs_(mill.zirconia_beads, mill.zirconia_beads_ts),
+      valOrBlank_(mill.remarks),
+      supervisor, manager
+    ];
+
+    // One dedup key per mill row — upserts in place on replay
+    var dedupKey = row.source_pk + '|' + millName;
+    upsertByKey_(sh, SO_JOBCARD_HEADER, rowVals, dedupKey);
+  }
+
+  formatTab_(sh, SO_JOBCARD_HEADER.length);
+}
+
+/**
+ * Write one Slurry Operator Running Motor Amp Status submission.
+ *
+ * payload shape (matches slurry_operator_motor_amp insert):
+ *   {
+ *     running_date: 'yyyy-mm-dd',
+ *     checked_by:   string,
+ *     remark:       string,
+ *     motor_data: [
+ *       { amp: number, stop: 'OK'|'STOP'|'', timestamp: 'hh:mm:ss AM/PM' },
+ *       ... (one entry per SLURRY_MOTORS index, 12 entries total)
+ *     ]
+ *   }
+ *
+ * One row per motor (only motors with a non-empty Amp or Status are written).
+ * Amp Reading and Status each show value on line 1 + the website timestamp on
+ * line 2 (same stacked-cell style as Thermopack). Timestamp column repeats the
+ * per-motor captured time as plain text for easy reading.
+ */
+function writeSlurryOpMotor_(ss, row, p) {
+  var sh = ensureTab_(ss, SO_TAB.MOTOR, SO_MOTOR_HEADER);
+
+  var motorData = Array.isArray(p.motor_data) ? p.motor_data : [];
+  var submissionId = p.submission_id || row.source_pk;
+
+  for (var mi = 0; mi < SO_MOTORS.length; mi++) {
+    var motor   = SO_MOTORS[mi];
+    var reading = motorData[mi] || {};
+
+    var amp    = reading.amp;
+    var status = reading.stop;
+    var hasData =
+      (amp    !== undefined && amp    !== null && String(amp).trim()    !== '') ||
+      (status !== undefined && status !== null && String(status).trim() !== '');
+    if (!hasData) continue;   // skip rows the operator left blank
+
+    var rowVals = [
+      fmtDate_(p.running_date),
+      motor.id, motor.name, motor.hp,
+      // Amp Reading: value on line 1, entry timestamp on line 2 (same cell)
+      soStackWithTs_(amp,    reading.amp_ts),
+      // Status: value on line 1, entry timestamp on line 2 (same cell)
+      soStackWithTs_(status, reading.stop_ts),
+      // Timestamp: auto-stamped when both amp+stop filled (visible on website)
+      reading.timestamp || '',
+      valOrBlank_(p.checked_by),
+      valOrBlank_(p.remark)
+    ];
+
+    // Dedup key: one row per (submission, motor) — replay is idempotent.
+    var dedupKey = submissionId + '|' + motor.id;
+    upsertByKey_(sh, SO_MOTOR_HEADER, rowVals, dedupKey);
+  }
+
+  formatTab_(sh, SO_MOTOR_HEADER.length);
+}
+
+/**
+ * Stack a value + a pre-formatted display timestamp (already hh:mm:ss AM/PM)
+ * into a single cell. Unlike Thermopack's stackCell_() which converts ISO → IST,
+ * here the timestamp is ALREADY a display string from the website (stamp12hr).
+ */
+function soStackWithTs_(value, tsDisplay) {
+  var v = valOrBlank_(value);
+  if (v === '' || v === null || v === undefined) return '';
+  return tsDisplay ? (String(v) + LINE_SEP + tsDisplay) : String(v);
+}
+
+
+/* ── END SLURRY OPERATOR SECTION ─────────────────────────────────────────── */

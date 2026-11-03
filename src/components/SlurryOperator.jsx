@@ -2,7 +2,7 @@
 // Saves to: slurry_operator_job_cards
 // Motor Amp Status saves to: slurry_operator_motor_amp
 
-import React, { useState, useRef, useCallback } from 'react'
+import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
 import './SlurryOperator.css'
@@ -33,10 +33,103 @@ function todayISO() {
 }
 
 function stamp12hr() {
-  return new Date().toLocaleTimeString('en-IN', {
-    hour: '2-digit', minute: '2-digit', hour12: true,
-    timeZone: 'Asia/Kolkata',
-  })
+  const now = new Date()
+  const opts = {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: true, timeZone: 'Asia/Kolkata',
+  }
+  return now.toLocaleTimeString('en-US', opts).replace(/\s?(am|pm)/i, m => ' ' + m.trim().toUpperCase())
+}
+
+// Convert ISO date string (yyyy-mm-dd) → display string (dd/mm/yyyy)
+function isoToDMY(iso) {
+  if (!iso) return ''
+  const [y, m, d] = iso.split('-')
+  if (!y || !m || !d) return iso
+  return `${d}/${m}/${y}`
+}
+
+// Convert dd/mm/yyyy typed string → ISO yyyy-mm-dd (returns '' if incomplete)
+function dmyToISO(dmy) {
+  const parts = dmy.replace(/[^\d/]/g, '').split('/')
+  if (parts.length !== 3) return ''
+  const [d, m, y] = parts
+  if (d.length !== 2 || m.length !== 2 || y.length !== 4) return ''
+  const iso = `${y}-${m}-${d}`
+  return isNaN(Date.parse(iso)) ? '' : iso
+}
+
+/**
+ * DateInput — shows dd/mm/yyyy text, opens native date picker on click/icon.
+ * `value` must be yyyy-mm-dd ISO string; `onChange` receives yyyy-mm-dd.
+ */
+function DateInput({ value, onChange, className }) {
+  const hiddenRef = useRef(null)
+  const [text, setText] = useState(isoToDMY(value))
+
+  useEffect(() => {
+    setText(isoToDMY(value))
+  }, [value])
+
+  function handleTextChange(e) {
+    const raw = e.target.value
+    setText(raw)
+    const iso = dmyToISO(raw)
+    if (iso) onChange(iso)
+  }
+
+  function handleTextBlur(e) {
+    const iso = dmyToISO(e.target.value)
+    if (iso) {
+      setText(isoToDMY(iso))
+      onChange(iso)
+    } else if (e.target.value === '') {
+      setText('')
+      onChange('')
+    } else {
+      setText(isoToDMY(value))
+    }
+  }
+
+  function handleNativePick(e) {
+    const iso = e.target.value
+    if (iso) {
+      setText(isoToDMY(iso))
+      onChange(iso)
+    }
+  }
+
+  return (
+    <div className="so-date-wrap">
+      <input
+        type="text"
+        className={className}
+        placeholder="dd/mm/yyyy"
+        value={text}
+        maxLength={10}
+        onChange={handleTextChange}
+        onBlur={handleTextBlur}
+      />
+      <input
+        ref={hiddenRef}
+        type="date"
+        className="so-date-hidden"
+        value={value || ''}
+        onChange={handleNativePick}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+      <button
+        type="button"
+        className="so-date-icon-btn"
+        onClick={() => hiddenRef.current?.showPicker?.()}
+        tabIndex={-1}
+        aria-label="Pick date"
+      >
+        📅
+      </button>
+    </div>
+  )
 }
 
 function emptyMillRow(mill) {
@@ -49,7 +142,7 @@ function emptyMotorEntry() {
 
 function emptyForm() {
   return {
-    date: '', shift1_operator: '', shift2_operator: '',
+    date: '', shift: '', operator_name: '',
     mills: MILLS.map(m => emptyMillRow(m)),
     operator: '', supervisor: '', manager: '',
   }
@@ -71,30 +164,47 @@ export default function SlurryOperator() {
   const uid = useUserId()
 
   // ── State ──
-  const [form,   setForm,   clearFormDraft]   = useDraft(`draft:${uid}:slurryop:form`,   emptyForm())
+  const [form,   setForm,   clearFormDraft] = useDraft(`draft:${uid}:slurryop:form`,  emptyForm())
   const [saving, setSaving] = useState(false)
-  const [saved,  setSaved]  = useState(false)
   const [error,  setError]  = useState('')
 
   const [motorOpen,   setMotorOpen]   = useState(false)
-  const [motorForm,   setMotorForm,   clearMotorDraft]   = useDraft(`draft:${uid}:slurryop:motor`,   emptyMotorForm())
+  const [motorForm,   setMotorForm,   clearMotorDraft] = useDraft(`draft:${uid}:slurryop:motor`, emptyMotorForm())
   const [motorSaving, setMotorSaving] = useState(false)
-  const [motorSaved,  setMotorSaved]  = useState(false)
   const [motorError,  setMotorError]  = useState('')
 
-  // Timestamp stores — separate from input values so saves never re-render inputs
-  const [millTimestamps,  setMillTimestamps,  clearMillTs]  = useDraft(`draft:${uid}:slurryop:millts`,  {})
-  const [motorTimestamps, setMotorTimestamps, clearMotorTs] = useDraft(`draft:${uid}:slurryop:motorts`, {})
+  // ── Timestamp stores (invisible — captured silently, sent to sheet) ──
+  const [millFlowTs,  setMillFlowTs,  clearMillFlowTs]  = useDraft(`draft:${uid}:slurryop:millts`,    {})
+  const [millAmpTs,   setMillAmpTs,   clearMillAmpTs]   = useDraft(`draft:${uid}:slurryop:millamps`,  {})
+  const [millBeadsTs, setMillBeadsTs, clearMillBeadsTs] = useDraft(`draft:${uid}:slurryop:millbeads`, {})
+  const [motorAmpTs,  setMotorAmpTs,  clearMotorAmpTs]  = useDraft(`draft:${uid}:slurryop:motoramps`, {})
+  const [motorStopTs, setMotorStopTs, clearMotorStopTs] = useDraft(`draft:${uid}:slurryop:motorstops`,{})
+  const [motorRowTs,  setMotorRowTs,  clearMotorRowTs]  = useDraft(`draft:${uid}:slurryop:motorts`,   {})
 
   // Toast / error popup
-  const [toast,    setToast]    = useState(null)   // { msg, type }
-  const [errPopup, setErrPopup] = useState(null)   // { msg }
+  const [toast,    setToast]    = useState(null)
+  const [errPopup, setErrPopup] = useState(null)
 
-  // Debounce timers & stale-save guards
-  const millTimers = useRef({})
-  const millSeq    = useRef({})
-  const motorTimers = useRef({})
-  const motorSeq    = useRef({})
+  // Debounce timers
+  const millFlowTimers  = useRef({})
+  const millFlowSeq     = useRef({})
+  const millAmpTimers   = useRef({})
+  const millBeadsTimers = useRef({})
+  const motorAmpTimers  = useRef({})
+  const motorStopTimers = useRef({})
+  const motorRowTimers  = useRef({})
+  const motorRowSeq     = useRef({})
+
+  // ── Auto-fill operator name from logged-in user ──
+  useEffect(() => {
+    try {
+      const profile = JSON.parse(localStorage.getItem('jsci_user') || '{}')
+      if (profile?.name) {
+        setForm(p => p.operator_name ? p : { ...p, operator_name: profile.name })
+        setMotorForm(p => p.checked_by ? p : { ...p, checked_by: profile.name })
+      }
+    } catch { /* silent */ }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Generic setters ──
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
@@ -112,7 +222,6 @@ export default function SlurryOperator() {
     }))
   }
 
-  // Only update the value — timestamp lives in millTimestamps
   function setFlowRate(mi, fi, val) {
     setForm(p => ({
       ...p,
@@ -133,65 +242,98 @@ export default function SlurryOperator() {
           : m
       ),
     }))
-    setMillTimestamps(p => { const n = { ...p }; delete n[`${mi}_${fi}`]; return n })
+    setMillFlowTs(p => { const n = { ...p }; delete n[`${mi}_${fi}`]; return n })
   }
 
-  // ── Auto-stamp: mill flow rate ──
-  // Called 1 s after user stops typing (if value is non-empty).
-  // Stamps only the first time; later edits keep the original timestamp.
+  // ── Auto-stamp: flow rate — stamps once on first entry ──
   const stampMillFlow = useCallback((mi, fi) => {
     const seqKey = `${mi}_${fi}`
-    millSeq.current[seqKey] = (millSeq.current[seqKey] || 0) + 1
-    const mySeq = millSeq.current[seqKey]
-
-    setMillTimestamps(prev => {
-      if (millSeq.current[seqKey] !== mySeq) return prev  // stale
-      if (prev[seqKey]) return prev                        // already stamped
-      showToast('success')
+    millFlowSeq.current[seqKey] = (millFlowSeq.current[seqKey] || 0) + 1
+    const mySeq = millFlowSeq.current[seqKey]
+    setMillFlowTs(prev => {
+      if (millFlowSeq.current[seqKey] !== mySeq) return prev
+      if (prev[seqKey]) return prev
       return { ...prev, [seqKey]: stamp12hr() }
     })
-  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const scheduleMillStamp = useCallback((mi, fi, val) => {
+  const scheduleMillFlowStamp = useCallback((mi, fi, val) => {
     const key = `${mi}_${fi}`
-    clearTimeout(millTimers.current[key])
+    clearTimeout(millFlowTimers.current[key])
     if (val === '' || val === null) return
-    millTimers.current[key] = setTimeout(() => stampMillFlow(mi, fi), 1000)
+    millFlowTimers.current[key] = setTimeout(() => stampMillFlow(mi, fi), 1000)
   }, [stampMillFlow])
 
-  // ── Auto-stamp: motor row ──
-  // Stamps when BOTH amp and stop are filled; only once per row.
-  const stampMotorRow = useCallback((mi, entry) => {
-    if (!entry.amp || !entry.stop) return
-    motorSeq.current[mi] = (motorSeq.current[mi] || 0) + 1
-    const mySeq = motorSeq.current[mi]
+  // ── Auto-stamp: current amp — re-stamps on every change ──
+  const scheduleMillAmpStamp = useCallback((mi, val) => {
+    clearTimeout(millAmpTimers.current[mi])
+    if (val === '' || val === null) return
+    millAmpTimers.current[mi] = setTimeout(() => {
+      const ts = stamp12hr()
+      setMillAmpTs(prev => ({ ...prev, [mi]: ts }))
+    }, 1000)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-    setMotorTimestamps(prev => {
-      if (motorSeq.current[mi] !== mySeq) return prev  // stale
-      if (prev[mi]) return prev                         // already stamped
-      showToast('success')
-      return { ...prev, [mi]: stamp12hr() }
-    })
-  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  // ── Auto-stamp: zirconia beads — re-stamps on every change ──
+  const scheduleMillBeadsStamp = useCallback((mi, val) => {
+    clearTimeout(millBeadsTimers.current[mi])
+    if (val === '' || val === null) return
+    millBeadsTimers.current[mi] = setTimeout(() => {
+      const ts = stamp12hr()
+      setMillBeadsTs(prev => ({ ...prev, [mi]: ts }))
+    }, 1000)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Motor cell handler — stamps amp and stop independently,
+  //    and auto-stamps the row timestamp when BOTH are filled ──
   function handleMotorCell(mi, field, val) {
     const nextMotors = motorForm.motors.map((m, i) =>
       i === mi ? { ...m, [field]: val } : m
     )
-    const next = { ...motorForm, motors: nextMotors }
-    setMotorForm(next)
-    clearTimeout(motorTimers.current[mi])
-    motorTimers.current[mi] = setTimeout(() => stampMotorRow(mi, nextMotors[mi]), 1000)
+    setMotorForm({ ...motorForm, motors: nextMotors })
+
+    // Per-field silent timestamps (for sheet)
+    if (field === 'amp') {
+      clearTimeout(motorAmpTimers.current[mi])
+      if (val !== '' && val !== null) {
+        motorAmpTimers.current[mi] = setTimeout(() => {
+          const ts = stamp12hr()
+          setMotorAmpTs(prev => ({ ...prev, [mi]: ts }))
+        }, 1000)
+      }
+    } else if (field === 'stop') {
+      clearTimeout(motorStopTimers.current[mi])
+      if (val !== '' && val !== null) {
+        motorStopTimers.current[mi] = setTimeout(() => {
+          const ts = stamp12hr()
+          setMotorStopTs(prev => ({ ...prev, [mi]: ts }))
+        }, 1000)
+      }
+    }
+
+    // Row timestamp — stamps once when BOTH amp and stop are filled
+    const updated = nextMotors[mi]
+    const ampVal  = field === 'amp'  ? val : updated.amp
+    const stopVal = field === 'stop' ? val : updated.stop
+    if (ampVal && stopVal) {
+      clearTimeout(motorRowTimers.current[mi])
+      motorRowTimers.current[mi] = setTimeout(() => {
+        motorRowSeq.current[mi] = (motorRowSeq.current[mi] || 0) + 1
+        const mySeq = motorRowSeq.current[mi]
+        setMotorRowTs(prev => {
+          if (motorRowSeq.current[mi] !== mySeq) return prev
+          if (prev[mi]) return prev   // keep original entry time
+          return { ...prev, [mi]: stamp12hr() }
+        })
+      }, 1000)
+    }
   }
 
   // ── Toast / error popup ──
   function showToast(type) {
-    const msg = type === 'success'
-      ? '✓ Data saved successfully / डेटा सफलतापूर्वक सहेजा गया'
-      : null
-    if (msg) {
-      setToast({ msg, type: 'success' })
-      setTimeout(() => setToast(null), 2000)
+    if (type === 'success') {
+      setToast({ msg: '✓ Data saved successfully / डेटा सफलतापूर्वक सहेजा गया', type: 'success' })
+      setTimeout(() => setToast(null), 3000)
     }
   }
 
@@ -204,27 +346,29 @@ export default function SlurryOperator() {
   async function handleSubmit(e) {
     e.preventDefault()
     if (!supabaseReady) { setError('Supabase not configured.'); return }
-    setSaving(true); setError(''); setSaved(false)
+    setSaving(true); setError('')
 
-    // Merge millTimestamps into mills before saving
+    // Merge timestamps into mills before saving
     const millsWithTs = form.mills.map((m, mi) => ({
       ...m,
       flow_rates: m.flow_rates.map((f, fi) => ({
         ...f,
-        timestamp: millTimestamps[`${mi}_${fi}`] || f.timestamp,
+        timestamp: millFlowTs[`${mi}_${fi}`] || f.timestamp,
       })),
+      current_amp_ts:    millAmpTs[mi]   || '',
+      zirconia_beads_ts: millBeadsTs[mi] || '',
     }))
 
     const { error: err } = await supabase
       .from('slurry_operator_job_cards')
       .insert([{
-        date:            form.date || null,
-        shift1_operator: form.shift1_operator,
-        shift2_operator: form.shift2_operator,
-        mills:           millsWithTs,
-        operator:        form.operator,
-        supervisor:      form.supervisor,
-        manager:         form.manager,
+        date:          form.date || null,
+        shift:         form.shift,
+        operator_name: form.operator_name,
+        mills:         millsWithTs,
+        operator:      form.operator,
+        supervisor:    form.supervisor,
+        manager:       form.manager,
       }])
 
     setSaving(false)
@@ -232,9 +376,11 @@ export default function SlurryOperator() {
       setError(err.message)
       showErrorPopup(err.message)
     } else {
-      setSaved(true)
+      showToast('success')
       clearFormDraft()
-      clearMillTs()
+      clearMillFlowTs()
+      clearMillAmpTs()
+      clearMillBeadsTs()
     }
   }
 
@@ -242,11 +388,13 @@ export default function SlurryOperator() {
   async function handleMotorSubmit(e) {
     e.preventDefault()
     if (!supabaseReady) { setMotorError('Supabase not configured.'); return }
-    setMotorSaving(true); setMotorError(''); setMotorSaved(false)
+    setMotorSaving(true); setMotorError('')
 
     const motorsWithTs = motorForm.motors.map((m, mi) => ({
       ...m,
-      timestamp: motorTimestamps[mi] || m.timestamp,
+      timestamp: motorRowTs[mi]  || m.timestamp || '',
+      amp_ts:    motorAmpTs[mi]  || '',
+      stop_ts:   motorStopTs[mi] || '',
     }))
 
     const { error: err } = await supabase
@@ -263,9 +411,11 @@ export default function SlurryOperator() {
       setMotorError(err.message)
       showErrorPopup(err.message)
     } else {
-      setMotorSaved(true)
+      showToast('success')
       clearMotorDraft()
-      clearMotorTs()
+      clearMotorAmpTs()
+      clearMotorStopTs()
+      clearMotorRowTs()
     }
   }
 
@@ -307,15 +457,25 @@ export default function SlurryOperator() {
         <div className="so-meta-bar">
           <div className="so-meta-field">
             <label className="so-label">Date / <span className="so-label-hi">तारीख</span></label>
-            <input type="date" className="so-input" value={form.date} onChange={e => set('date', e.target.value)} />
+            <DateInput className="so-input" value={form.date} onChange={v => set('date', v)} />
           </div>
           <div className="so-meta-field">
-            <label className="so-label">Shift 1 Operator / <span className="so-label-hi">पहली पाली ऑपरेटर</span></label>
-            <input className="so-input" placeholder="Operator name" value={form.shift1_operator} onChange={e => set('shift1_operator', e.target.value)} />
+            <label className="so-label">Shift / <span className="so-label-hi">पाली</span></label>
+            <select className="so-input" value={form.shift} onChange={e => set('shift', e.target.value)}>
+              <option value="">— Select Shift —</option>
+              <option value="Day">Day / दिन</option>
+              <option value="Night">Night / रात</option>
+            </select>
           </div>
           <div className="so-meta-field">
-            <label className="so-label">Shift 2 Operator / <span className="so-label-hi">दूसरी पाली ऑपरेटर</span></label>
-            <input className="so-input" placeholder="Operator name" value={form.shift2_operator} onChange={e => set('shift2_operator', e.target.value)} />
+            <label className="so-label">Operator Name / <span className="so-label-hi">ऑपरेटर नाम</span></label>
+            <input
+              className="so-input"
+              placeholder="Operator name"
+              value={form.operator_name}
+              onChange={e => set('operator_name', e.target.value)}
+              style={{ background: '#f5f0ea' }}
+            />
           </div>
         </div>
 
@@ -345,8 +505,7 @@ export default function SlurryOperator() {
 
                   <td className="so-mill-flow-cell">
                     {mill.flow_rates.map((flow, fi) => {
-                      const tsKey = `${mi}_${fi}`
-                      const ts    = millTimestamps[tsKey] || flow.timestamp
+                      const ts = millFlowTs[`${mi}_${fi}`] || flow.timestamp
                       return (
                         <div key={fi} className="so-flow-entry">
                           <div className="so-flow-input-wrap">
@@ -358,7 +517,7 @@ export default function SlurryOperator() {
                               onChange={e => {
                                 const val = e.target.value
                                 setFlowRate(mi, fi, val)
-                                scheduleMillStamp(mi, fi, val)
+                                scheduleMillFlowStamp(mi, fi, val)
                               }}
                               onKeyDown={e => {
                                 if (e.key === 'Enter') {
@@ -385,11 +544,19 @@ export default function SlurryOperator() {
 
                   <td>
                     <input type="number" className="so-input-num-wide" placeholder="—"
-                      value={mill.current_amp} onChange={e => setMill(mi, 'current_amp', e.target.value)} />
+                      value={mill.current_amp}
+                      onChange={e => {
+                        setMill(mi, 'current_amp', e.target.value)
+                        scheduleMillAmpStamp(mi, e.target.value)
+                      }} />
                   </td>
                   <td>
                     <input type="number" className="so-input-num-wide" placeholder="—"
-                      value={mill.zirconia_beads} onChange={e => setMill(mi, 'zirconia_beads', e.target.value)} />
+                      value={mill.zirconia_beads}
+                      onChange={e => {
+                        setMill(mi, 'zirconia_beads', e.target.value)
+                        scheduleMillBeadsStamp(mi, e.target.value)
+                      }} />
                   </td>
                   <td>
                     <input className="so-input-wide-text" placeholder="—"
@@ -416,12 +583,11 @@ export default function SlurryOperator() {
         {/* Actions */}
         <div className="so-actions">
           {error && <div className="so-error">Error: {error}</div>}
-          {saved  && <div className="so-success">✓ Saved successfully / सफलतापूर्वक सहेजा गया</div>}
           <button type="submit" className="so-save-btn" disabled={saving}>
             {saving ? 'Saving…' : 'Save Job Card / जॉब कार्ड सहेजें'}
           </button>
           <button type="button" className="so-reset-btn"
-            onClick={() => { clearFormDraft(); clearMillTs(); setSaved(false); setError('') }}>
+            onClick={() => { clearFormDraft(); clearMillFlowTs(); clearMillAmpTs(); clearMillBeadsTs(); setError('') }}>
             Reset / रीसेट
           </button>
         </div>
@@ -443,13 +609,14 @@ export default function SlurryOperator() {
             <div className="so-motor-meta">
               <div className="so-motor-meta-field">
                 <label className="so-label">Running Date / <span className="so-label-hi">चलने की तारीख</span></label>
-                <input type="date" className="so-input" value={motorForm.running_date} readOnly
-                  style={{ background: '#f5f0ea', cursor: 'not-allowed' }} />
+                <DateInput className="so-input" value={motorForm.running_date}
+                  onChange={v => setMotorForm(p => ({ ...p, running_date: v }))} />
               </div>
               <div className="so-motor-meta-field">
                 <label className="so-label">Checked By / <span className="so-label-hi">जाँच की गई</span></label>
                 <input className="so-input" placeholder="Name" value={motorForm.checked_by}
-                  onChange={e => setMotorForm(p => ({ ...p, checked_by: e.target.value }))} />
+                  onChange={e => setMotorForm(p => ({ ...p, checked_by: e.target.value }))}
+                  style={{ background: '#f5f0ea' }} />
               </div>
             </div>
 
@@ -468,7 +635,7 @@ export default function SlurryOperator() {
                 <tbody>
                   {SLURRY_MOTORS.map((motor, mi) => {
                     const entry = motorForm.motors[mi]
-                    const ts    = motorTimestamps[mi] || entry.timestamp
+                    const ts    = motorRowTs[mi] || entry.timestamp
                     return (
                       <tr key={motor.id} className={mi % 2 === 0 ? '' : 'so-motor-alt'}>
                         <td className="so-motor-sr">{motor.id}</td>
@@ -519,12 +686,11 @@ export default function SlurryOperator() {
 
             <div className="so-actions">
               {motorError && <div className="so-error">Error: {motorError}</div>}
-              {motorSaved  && <div className="so-success">✓ Saved successfully</div>}
               <button type="submit" className="so-save-btn" disabled={motorSaving}>
                 {motorSaving ? 'Saving…' : 'Save Motor Status / मोटर स्थिति सहेजें'}
               </button>
               <button type="button" className="so-reset-btn"
-                onClick={() => { clearMotorDraft(); clearMotorTs(); setMotorSaved(false); setMotorError('') }}>
+                onClick={() => { clearMotorDraft(); clearMotorAmpTs(); clearMotorStopTs(); clearMotorRowTs(); setMotorError('') }}>
                 Reset / रीसेट
               </button>
             </div>
@@ -536,5 +702,3 @@ export default function SlurryOperator() {
     </div>
   )
 }
-
-          
