@@ -1033,6 +1033,7 @@ export default function QualityCheck({ user }) {
       grade,
       product,
       batch_no: batchKey,
+      batch_start_time: d.time || null,   // FG Batch Start Time
       // Prefer the LATEST recorded moisture reading; fall back to the legacy
       // single value for older drafts.
       moisture_pct: toNum(
