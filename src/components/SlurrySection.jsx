@@ -5,7 +5,7 @@ import './SlurrySection.css'
 
 const DEFAULT_INPUT_OPTIONS = [
   'WATER', 'Crude Sulphur', 'Sulphur powder',
-  'Papdi', 'Fine powder', 'Gujmol DN Liquid', 'Gujmol DN Powder',
+  'Fine powder', 'Gujmol DN Liquid', 'Gujmol DN Powder',
   'Tamol DN Powder', 'FBPP', 'FZ1', 'Defoamer', 'China Clay',
   'Domsjo DS-10', 'Domsjo DA-30', 'Borresperse-NA', 'Borresperse-Ca',
   'Greensperse-Ca',
@@ -42,13 +42,14 @@ function stamp12hr() {
   return new Date().toLocaleTimeString('en-IN', {
     hour: '2-digit',
     minute: '2-digit',
+    second: '2-digit',
     hour12: true,
     timeZone: 'Asia/Kolkata',
   })
 }
 
 function emptyBatchRow(name = '') {
-  return { id: uid(), inputName: name, origin: '', qty: '', timestamp: '' }
+  return { id: uid(), inputName: name, origin: '', batchNo: '', qty: '', timestamp: '' }
 }
 
 function emptyBatchCard(prefillNames = []) {
@@ -82,15 +83,31 @@ function emptyForm() {
 // ─────────────────────────────────────────────────────────────
 // InputDropdown — searchable native select with add-new
 // ─────────────────────────────────────────────────────────────
-function InputDropdown({ value, onChange, allOptions, recentlyUsed, usedInForm, onAddNew }) {
+function InputDropdown({ value, onChange, allOptions, defaultOptions, recentlyUsed, usedInForm, onAddNew, onDelete }) {
   const [addingNew, setAddingNew] = useState(false)
-  const [newName, setNewName] = useState('')
+  const [managing, setManaging]   = useState(false)
+  const [newName, setNewName]     = useState('')
   const inputRef = useRef(null)
+  const wrapRef  = useRef(null)
+
+  // Close popup when clicking outside
+  useEffect(() => {
+    function handleOutside(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setAddingNew(false)
+        setManaging(false)
+        setNewName('')
+      }
+    }
+    document.addEventListener('mousedown', handleOutside)
+    return () => document.removeEventListener('mousedown', handleOutside)
+  }, [])
 
   function handleSelect(e) {
     const v = e.target.value
     if (v === '__add_new__') {
       setAddingNew(true)
+      setManaging(false)
       setNewName('')
       setTimeout(() => inputRef.current?.focus(), 50)
     } else {
@@ -109,11 +126,13 @@ function InputDropdown({ value, onChange, allOptions, recentlyUsed, usedInForm, 
     setNewName('')
   }
 
-  const recentSet = new Set(recentlyUsed)
+  const recentSet    = new Set(recentlyUsed)
   const otherOptions = allOptions.filter(o => !recentSet.has(o))
+  const showPopup    = addingNew || managing
 
   return (
-    <div className="sl-input-dropdown-wrap">
+    <div className="sl-input-dropdown-wrap" ref={wrapRef}>
+      {/* Native select */}
       <select
         className="sl-input-dropdown"
         value={value || ''}
@@ -123,37 +142,61 @@ function InputDropdown({ value, onChange, allOptions, recentlyUsed, usedInForm, 
         {recentlyUsed.length > 0 && (
           <optgroup label="Recently used / हाल ही में उपयोग">
             {recentlyUsed.map(o => (
-              <option key={o} value={o} disabled={usedInForm.includes(o) && o !== value}>
-                {o}
-              </option>
+              <option key={o} value={o} disabled={usedInForm.includes(o) && o !== value}>{o}</option>
             ))}
           </optgroup>
         )}
         <optgroup label="All inputs / सभी इनपुट">
           {otherOptions.map(o => (
-            <option key={o} value={o} disabled={usedInForm.includes(o) && o !== value}>
-              {o}
-            </option>
+            <option key={o} value={o} disabled={usedInForm.includes(o) && o !== value}>{o}</option>
           ))}
         </optgroup>
         <option value="__add_new__">＋ Add new / नया जोड़ें</option>
       </select>
 
-      {addingNew && (
-        <div className="sl-add-new-inline">
-          <input
-            ref={inputRef}
-            className="sl-add-new-input"
-            placeholder="New input name…"
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => {
-              if (e.key === 'Enter') confirmNew()
-              if (e.key === 'Escape') setAddingNew(false)
-            }}
-          />
-          <button type="button" className="sl-add-new-btn" onClick={confirmNew}>OK</button>
-          <button type="button" className="sl-add-new-cancel" onClick={() => setAddingNew(false)}>✕</button>
+      {/* Remove toggle link */}
+      <button
+        type="button"
+        className="sl-manage-toggle"
+        onClick={() => { setManaging(m => !m); setAddingNew(false) }}
+      >
+        {managing ? '▲ Close' : '🗑 Remove…'}
+      </button>
+
+      {/* Popup — floats over adjacent cells, doesn't push layout */}
+      {showPopup && (
+        <div className="sl-input-dropdown-popup">
+          {addingNew && (
+            <div className="sl-add-new-inline">
+              <input
+                ref={inputRef}
+                className="sl-add-new-input"
+                placeholder="New input name…"
+                value={newName}
+                onChange={e => setNewName(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter')  confirmNew()
+                  if (e.key === 'Escape') { setAddingNew(false); setNewName('') }
+                }}
+              />
+              <button type="button" className="sl-add-new-btn" onClick={confirmNew}>OK</button>
+              <button type="button" className="sl-add-new-cancel" onClick={() => { setAddingNew(false); setNewName('') }}>✕</button>
+            </div>
+          )}
+          {managing && (
+            <div className="sl-manage-list">
+              {allOptions.map(o => (
+                <div key={o} className="sl-manage-item">
+                  <span className="sl-manage-item-name">{o}</span>
+                  <button
+                    type="button"
+                    className="sl-manage-item-del"
+                    onClick={() => { onDelete(o); if (value === o) onChange('') }}
+                  >✕</button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -191,10 +234,11 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
   const batches = isValidDraft ? batchesDraft : [emptyBatchCard()]
 
-  const [batchErrors, setBatchErrors] = useState({})
+  // Always-current ref so autoSaveBatchRow never reads stale batches from its closure
+  const batchesRef = useRef(batches)
+  useEffect(() => { batchesRef.current = batches }, [batches])
 
-  // Stable session key
-  const sessionId = useRef(`slurry-${new Date().toISOString().slice(0, 10)}`)
+  const [batchErrors, setBatchErrors] = useState({})
 
   // Debounce timers for auto-save: keyed by "batchId_rowId"
   const saveTimers = useRef({})
@@ -209,12 +253,21 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
   // Row timestamps stored separately so saving never re-renders the input cells
   const [rowTimestamps, setRowTimestamps, clearTimestampsDraft] = useDraft(`draft:${uid}:batch:timestamps`, {})
 
+  // Always-current ref so autoSaveBatchRow never reads stale rowTimestamps from its closure
+  const rowTimestampsRef = useRef(rowTimestamps)
+  useEffect(() => { rowTimestampsRef.current = rowTimestamps }, [rowTimestamps])
+
   // Toast notification: { msg, type: 'success'|'error' } | null
   const [toast, setToast] = useState(null)
 
   // Custom inputs (persist across reloads)
   const [customInputs, setCustomInputs, clearCustomInputsDraft] = useDraft(`draft:${uid}:batch:customInputs`, [])
-  const allInputOptions = [...DEFAULT_INPUT_OPTIONS, ...customInputs]
+  // Defaults removed by the user (persist across reloads)
+  const [removedDefaults, setRemovedDefaults] = useDraft(`draft:${uid}:batch:removedDefaults`, [])
+  const allInputOptions = [
+    ...DEFAULT_INPUT_OPTIONS.filter(o => !removedDefaults.includes(o)),
+    ...customInputs,
+  ]
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -266,12 +319,20 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
   // AUTO-SAVE BATCH ROW
   // =========================================================
 
-  const autoSaveBatchRow = useCallback(async (batchId, rowId) => {
-    const batchIdx = batches.findIndex(b => b.id === batchId)
+  const autoSaveBatchRow = useCallback(async (batchId, rowId, overrideQty, overrideOrigin) => {
+    // Always read from the ref so we get the latest state, not the stale closure
+    const latestBatches = batchesRef.current
+    const batchIdx = latestBatches.findIndex(b => b.id === batchId)
     if (batchIdx === -1) return
-    const batch = batches[batchIdx]
+    const batch = latestBatches[batchIdx]
     const row   = batch.rows.find(r => r.id === rowId)
-    if (!row || row.qty === '' || row.qty === null) return
+    if (!row) return
+
+    // Use override values when provided (e.g. called from onChange before re-render)
+    const qty    = overrideQty    !== undefined ? overrideQty    : row.qty
+    const origin = overrideOrigin !== undefined ? overrideOrigin : row.origin
+
+    if (qty === '' || qty === null) return
 
     // Stale-save guard: stamp this save with a sequence number
     saveSeq.current[rowId] = (saveSeq.current[rowId] || 0) + 1
@@ -279,73 +340,27 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
     const key    = `${rowId}_${batchIdx}`
     setRSS(key, 'saving')
-    const now12  = stamp12hr()
-    // Use the separate rowTimestamps store; fall back to row.timestamp for pre-loaded data
-    let firstStamp = rowTimestamps[rowId] || row.timestamp || ''
+    const stampToRecord = stamp12hr()
 
-    let saveOk = true
-    if (supabaseReady) {
-      const { data: existing } = await supabase
-        .from('process_input_saves')
-        .select('first_stamp')
-        .eq('session_id', sessionId.current)
-        .eq('row_id', rowId)
-        .eq('batch_index', batchIdx)
-        .maybeSingle()
-
-      firstStamp = existing?.first_stamp || firstStamp || now12
-
-      const { error: upsertErr } = await supabase
-        .from('process_input_saves')
-        .upsert(
-          {
-            session_id:  sessionId.current,
-            row_id:      rowId,
-            batch_index: batchIdx,
-            input_name:  row.inputName,
-            origin:      row.origin,
-            qty_kg:      parseFloat(row.qty) || 0,
-            first_stamp: firstStamp,
-            updated_at:  new Date().toISOString(),
-          },
-          { onConflict: 'session_id,row_id,batch_index' }
-        )
-
-      if (upsertErr) {
-        console.warn('slurry_input_saves upsert failed:', upsertErr.message)
-        saveOk = false
-      }
-    } else {
-      firstStamp = firstStamp || now12
-    }
-
-    // Discard stale response — a newer save was triggered after this one started
+    // Record timestamp locally — the full data is saved when "Save Job Card" is clicked.
+    // We skip the per-row Supabase write here to avoid duplicate-key races when the user
+    // edits a value multiple times quickly.
     if (saveSeq.current[rowId] !== mySeq) return
 
-    if (saveOk) {
-      // Update ONLY the timestamp cell — never touch batches state here
-      setRowTimestamps(p => ({ ...p, [rowId]: firstStamp }))
-      setRSS(key, 'saved')
-      setToast({ msg: '✓ Data saved successfully / डेटा सफलतापूर्वक सहेजा गया', type: 'success' })
-      setTimeout(() => setRSS(key, null), 2000)
-      setTimeout(() => setToast(null), 2000)
-    } else {
-      setRSS(key, 'error')
-      setToast({ msg: 'Save failed, please try again / सहेजना विफल, कृपया पुनः प्रयास करें', type: 'error' })
-      setTimeout(() => setRSS(key, null), 3000)
-      setTimeout(() => setToast(null), 3000)
-    }
-  }, [batches, sessionId, rowTimestamps])   // eslint-disable-line react-hooks/exhaustive-deps
+    setRowTimestamps(p => ({ ...p, [rowId]: stampToRecord }))
+    setRSS(key, 'saved')
+    setTimeout(() => setRSS(key, null), 2000)
+  }, [])   // eslint-disable-line react-hooks/exhaustive-deps
 
   // Schedule a debounced auto-save 1 s after the user stops typing,
-  // but only when both origin and qty are filled.
+  // but only when qty is filled (origin is optional for the timestamp).
   const scheduleAutoSave = useCallback((batchId, rowId, origin, qty) => {
     const timerKey = `${batchId}_${rowId}`
     clearTimeout(saveTimers.current[timerKey])
-    if (!origin.trim() || !qty.toString().trim()) return   // need both fields
+    if (!qty.toString().trim()) return   // qty is the only required field
     saveTimers.current[timerKey] = setTimeout(() => {
-      autoSaveBatchRow(batchId, rowId)
-    }, 1000)
+      autoSaveBatchRow(batchId, rowId, qty, origin)
+    }, 3000)
   }, [autoSaveBatchRow])
 
   // =========================================================
@@ -628,6 +643,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                           <tr>
                             <th>Input / इनपुट</th>
                             <th>Origin/RM / उद्गम</th>
+                            <th>Batch No. / बैच नं.</th>
                             <th>Qty (kg) / मात्रा</th>
                             <th>Timestamp / समय</th>
                           </tr>
@@ -637,6 +653,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                             <tr key={row.id}>
                               <td>{row.inputName || '—'}</td>
                               <td>{row.origin    || '—'}</td>
+                              <td>{row.batchNo   || '—'}</td>
                               <td>{row.qty       || '—'}</td>
                               <td>
                                 {(rowTimestamps[row.id] || row.timestamp)
@@ -689,6 +706,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                       <tr>
                         <th>Input / इनपुट</th>
                         <th>Origin/RM / उद्गम</th>
+                        <th>Batch No. / बैच नं.</th>
                         <th>Qty (kg) / मात्रा</th>
                         <th>Timestamp / समय</th>
                         <th></th>
@@ -705,6 +723,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                 value={row.inputName}
                                 onChange={name => setBatchRowField(batch.id, row.id, 'inputName', name)}
                                 allOptions={allInputOptions}
+                                defaultOptions={DEFAULT_INPUT_OPTIONS}
                                 recentlyUsed={recentInputNames}
                                 usedInForm={usedInBatch.filter(n => n !== row.inputName)}
                                 onAddNew={name => {
@@ -713,6 +732,13 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                     setCustomInputs(prev => [...prev, name])
                                   }
                                   setBatchRowField(batch.id, row.id, 'inputName', name)
+                                }}
+                                onDelete={name => {
+                                  if (DEFAULT_INPUT_OPTIONS.includes(name)) {
+                                    setRemovedDefaults(prev => [...prev, name])
+                                  } else {
+                                    setCustomInputs(prev => prev.filter(o => o !== name))
+                                  }
                                 }}
                               />
                             </td>
@@ -730,6 +756,14 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                             </td>
                             <td>
                               <input
+                                className="sl-input-cell"
+                                placeholder="Batch No."
+                                value={row.batchNo || ''}
+                                onChange={e => setBatchRowField(batch.id, row.id, 'batchNo', e.target.value)}
+                              />
+                            </td>
+                            <td>
+                              <input
                                 type="number"
                                 className="sl-input-num"
                                 placeholder="—"
@@ -741,12 +775,12 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                   setBatchRowField(batch.id, row.id, 'qty', val)
                                   scheduleAutoSave(batch.id, row.id, row.origin, val)
                                 }}
-                                onBlur={() => autoSaveBatchRow(batch.id, row.id)}
+                                onBlur={e => autoSaveBatchRow(batch.id, row.id, e.target.value, row.origin)}
                                 onKeyDown={e => {
                                   if (e.key === 'Enter') {
                                     e.preventDefault()
                                     // Save immediately, then move focus to next row's Qty
-                                    autoSaveBatchRow(batch.id, row.id)
+                                    autoSaveBatchRow(batch.id, row.id, e.target.value, row.origin)
                                     const allQtyInputs = Array.from(
                                       document.querySelectorAll(`[data-batchid="${batch.id}"] input[data-rowid], input[data-batchid="${batch.id}"]`)
                                     )

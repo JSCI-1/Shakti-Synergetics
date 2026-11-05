@@ -46,8 +46,9 @@ export const UPL_GRADES = {
     { id: 'upl_omri_ps_10',       group: 'Particle Size Range', parameter: 'Particles >10µm (%V/V)',                                              type: 'number',   rule: { type: 'max', max: 20 },    specDisplay: '< 20',      unit: '%' },
     { id: 'upl_omri_ps_6',        group: 'Particle Size Range', parameter: 'Particles >6µm (%V/V)',                                               type: 'number',   rule: { type: 'max', max: 35 },    specDisplay: '< 35',      unit: '%' },
     { id: 'upl_omri_ps_1',        group: 'Particle Size Range', parameter: 'Particles >1µm (%V/V)',                                               type: 'number',   rule: { type: 'min', min: 75 },    specDisplay: '> 75',      unit: '%' },
-    { id: 'upl_omri_foam',        group: 'Persistent Foam',     parameter: 'Persistent foam after 1min (in ml)',                                  type: 'number',   sourceKey: 'fg_foam_1min', rule: { type: 'max', max: 60 },    specDisplay: 'Max 60',    unit: 'ml' },
     { id: 'upl_omri_ph',          group: 'pH',                  parameter: 'PH of 1.0% Aqu Sol',                                                  type: 'number',   sourceKey: 'fg_ph', rule: { type: 'range', min: 7.0, max: 9.0 }, specDisplay: '7.0 – 9.0', unit: '' },
+    { id: 'upl_omri_foam',        group: 'Persistent Foam',     parameter: 'Persistent foam after 1min (in ml)',                                  type: 'number',   sourceKey: 'fg_foam_1min', rule: { type: 'max', max: 60 },    specDisplay: 'Max 60',    unit: 'ml' },
+    { id: 'upl_omri_foam_25',     group: 'Persistent Foam',     parameter: 'After 1.0 min',                                                       type: 'number',   sourceKey: 'fg_foam_1min', rule: { type: 'max', max: 25 },    specDisplay: 'Max 25 ml', unit: 'ml' },
     { id: 'upl_omri_water_kf',    group: 'Water by KF',         parameter: 'Water by KF (%w/w)',                                                   type: 'number',   rule: { type: 'range', min: 1.5, max: 2.3 }, specDisplay: '1.5 to 2.3', unit: '%' },
     { id: 'upl_omri_wettability', group: 'Wettability',         parameter: 'Wettability (in Second)',                                             type: 'number',   sourceKey: 'fg_wettability', rule: { type: 'max', max: 20 },    specDisplay: 'Max 20',    unit: 'sec' },
     { id: 'upl_omri_ds_500',      group: 'Dry Sieve',           parameter: 'Dry Sieve Test, passing through 500 micron Test sieve (%w/w)',        type: 'number',   rule: { type: 'min', min: 99 },    specDisplay: 'Min 99',    unit: '%' },
@@ -55,8 +56,8 @@ export const UPL_GRADES = {
     { id: 'upl_omri_disp_self',   group: 'Dispersion',          parameter: 'Dispersion (1% in 100 ml H\u2082O)',                                  type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '100% self-dispersing', unit: '' },
     { id: 'upl_omri_disp_1h',     group: 'Dispersion',          parameter: 'Dispersion Stability 1 hours',                                        type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '0.5ml sedimentation', unit: '' },
     { id: 'upl_omri_disp_24h',    group: 'Dispersion',          parameter: 'Dispersion Stability 24 hours',                                       type: 'complies', rule: { type: 'text', accepted: 'Complies' }, specDisplay: '1.0 ml',              unit: '' },
-    // pH + Wettability cards are hidden (moved into the table above).
-  ], { hideTests: ['fg_ph', 'fg_wettability'] }),
+    // pH + Wettability + Foam cards are hidden (moved into the table above).
+  ], { hideTests: ['fg_ph', 'fg_wettability', 'fg_foam'] }),
 }
 
 
@@ -96,7 +97,7 @@ export const UPL_GRADES = {
 //   fg_bulk               → Bulk Density is not an ADMA parameter → removed.
 // The Sulphur card (fg_sulphur) stays VISIBLE so its formula inputs remain
 // operational; its calculated result is mirrored into the ADMA table.
-export const ADMA_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk']
+export const ADMA_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk', 'fg_foam']
 
 // Per-grade display-name override for shared cards, ADMA only. Does not change
 // the underlying test definition (other grades keep the original name).
@@ -208,7 +209,7 @@ export const ADMA_EXTRA_PARAMS = [
 // Hidden cards (Lohiya only): pH + Wettability (moved into the table, which also
 // removes their shared preparation instruction for Lohiya), Dry Sieve, Moisture
 // Content, and Bulk Density (not Lohiya parameters).
-export const LOHIYA_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk']
+export const LOHIYA_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk', 'fg_foam']
 
 // Wet Sieve label override (Lohiya only).
 export const LOHIYA_CARD_NAME_OVERRIDES = {
@@ -318,7 +319,7 @@ export const LOHIYA_EXTRA_PARAMS = [
 // Hidden cards (Biostadt only): pH + Wettability (moved into the table, which
 // also removes their shared preparation instruction for Biostadt), Dry Sieve,
 // Moisture Content, and Bulk Density (not Biostadt parameters).
-export const BIOSTADT_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk']
+export const BIOSTADT_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk', 'fg_foam']
 
 // Wet Sieve label override (Biostadt only).
 export const BIOSTADT_CARD_NAME_OVERRIDES = {
@@ -429,7 +430,7 @@ export const BIOSTADT_EXTRA_PARAMS = [
 // Hidden cards (Sumitomo only): pH + Wettability (moved into the table, which
 // also removes their shared preparation instruction for Sumitomo), Dry Sieve,
 // Moisture Content, and Bulk Density (not Sumitomo parameters).
-export const SUMITOMO_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk']
+export const SUMITOMO_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk', 'fg_foam']
 
 // Wet Sieve label override (Sumitomo only).
 export const SUMITOMO_CARD_NAME_OVERRIDES = {
@@ -539,7 +540,7 @@ export const SUMITOMO_EXTRA_PARAMS = [
 // Hidden cards (Hemani only): pH + Wettability (moved into the table, which also
 // removes their shared preparation instruction for Hemani), Dry Sieve, Moisture
 // Content, and Bulk Density (not Hemani parameters).
-export const HEMANI_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk']
+export const HEMANI_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk', 'fg_foam']
 
 // Wet Sieve label override (Hemani only).
 export const HEMANI_CARD_NAME_OVERRIDES = {
@@ -1258,7 +1259,7 @@ export const COLOUR_EXTRA_PARAMS = [
 //               minimum in the reference → no Pass/Fail).
 // Hidden cards (IFFCO only): pH + Wettability (moved into the table, removing
 // their prep instruction), Dry Sieve + Moisture + Bulk Density.
-export const IFFCO_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk']
+export const IFFCO_HIDDEN_CARDS = ['fg_ph', 'fg_wettability', 'fg_drySieve', 'fg_moisture', 'fg_bulk', 'fg_foam']
 
 export const IFFCO_CARD_NAME_OVERRIDES = {
   fg_wetSieve: 'Wet Sieve Test (max) — 1.0 % retention on 45 µ test sieve',

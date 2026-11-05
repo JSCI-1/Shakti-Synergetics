@@ -212,6 +212,8 @@
   width: 130px;
   max-width: 130px;
   padding: 0;
+  position: relative;
+  overflow: visible;
 }
 
 
@@ -1365,7 +1367,9 @@
 }
 
 /* ── InputDropdown ── */
+/* ── InputDropdown ── */
 .sl-input-dropdown-wrap {
+  position: relative;
   width: 100%;
 }
 .sl-input-dropdown {
@@ -1383,25 +1387,34 @@
   outline: 1px solid #b85c2c;
   background: #fffdf9;
 }
+
+/* Add new + manage list — float below the select, don't affect table layout */
+.sl-input-dropdown-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 300;
+  width: 220px;
+  background: #fff;
+  border: 1px solid #d4cec7;
+  border-radius: 5px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  padding: 6px;
+}
+
 .sl-add-new-inline {
   display: flex;
   gap: 4px;
-  padding: 4px 6px;
-  background: #fffdf9;
-  border-top: 1px solid #e0dbd4;
 }
 .sl-add-new-input {
   flex: 1;
+  min-width: 0;
   border: 1px solid #ccc;
   border-radius: 3px;
-  padding: 3px 6px;
-  font-size: 11px;
-  min-width: 0;
+  padding: 4px 8px;
+  font-size: 12px;
 }
-.sl-add-new-input:focus {
-  outline: none;
-  border-color: #b85c2c;
-}
+.sl-add-new-input:focus { outline: none; border-color: #b85c2c; }
 .sl-add-new-btn {
   background: #b85c2c;
   color: #fff;
@@ -1425,6 +1438,56 @@
 }
 .sl-add-new-cancel:hover { border-color: #b85c2c; color: #b85c2c; }
 
+/* Manage / delete options toggle */
+.sl-manage-toggle {
+  display: block;
+  background: none;
+  border: none;
+  color: #b85c2c;
+  font-size: 10px;
+  cursor: pointer;
+  padding: 2px 0 0;
+  text-align: left;
+}
+.sl-manage-toggle:hover { text-decoration: underline; }
+.sl-manage-list {
+  margin-top: 4px;
+  border-top: 1px solid #e8e2dc;
+  padding-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 160px;
+  overflow-y: auto;
+}
+.sl-manage-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.sl-manage-item-name {
+  flex: 1;
+  font-size: 11px;
+  color: #444;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sl-manage-item-del {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #e0d0c8;
+  border-radius: 3px;
+  color: #c0392b;
+  font-size: 9px;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.sl-manage-item-del:hover { background: #fdecea; border-color: #c0392b; }
+
 
 /* ════════════════════════════════════
    BATCH CARDS
@@ -1442,7 +1505,7 @@
 .sl-batch-card {
   border: 1px solid #d8d0c8;
   border-radius: 8px;
-  overflow: hidden;
+  overflow: visible;
   background: #fff;
   box-shadow: 0 1px 4px rgba(0,0,0,0.05);
 }
@@ -1552,6 +1615,15 @@
   border-collapse: collapse;
   font-size: 12px;
 }
+
+/* Let the Input dropdown popup escape the table */
+.sl-batch-card-table,
+.sl-batch-card-table tbody,
+.sl-batch-card-table tr {
+  overflow: visible;
+}
+
+
 
 .sl-batch-card-table th,
 .sl-batch-card-table td {

@@ -14,11 +14,15 @@ import './QualityCheck.css'
 // the operator opens the COA tab. Self-contained; does not touch FG state.
 const CoaSection = React.lazy(() => import('./Coa/CoaSection.jsx'))
 
+// My Records sub-section — lazy loaded; shows history of all saved QC records.
+const MyRecords = React.lazy(() => import('./MyRecords.jsx'))
+
 const TABS = [
-  { key: 'rm', label: 'Raw Materials',  labelHi: 'कच्चा माल'  },
-  { key: 'ip', label: 'In-Process',     labelHi: 'इन-प्रोसेस' },
-  { key: 'fg', label: 'Finished Goods', labelHi: 'तैयार माल'  },
-  { key: 'coa', label: 'COA',           labelHi: 'सीओए'       },
+  { key: 'rm',      label: 'Raw Materials',  labelHi: 'कच्चा माल'     },
+  { key: 'ip',      label: 'In-Process',     labelHi: 'इन-प्रोसेस'    },
+  { key: 'fg',      label: 'Finished Goods', labelHi: 'तैयार माल'     },
+  { key: 'records', label: 'My Records',     labelHi: 'मेरे रिकॉर्ड' },
+  { key: 'coa',     label: 'COA',            labelHi: 'सीओए'          },
 ]
 
 // ─────────────────────────────────────────────────────────────
@@ -3480,7 +3484,7 @@ export default function QualityCheck({ user }) {
         ))}
       </div>
 
-      {activeTab !== 'coa' && (
+      {activeTab !== 'coa' && activeTab !== 'records' && (
       <BatchHeader
         date={date} setDate={setDate}
         dateLabel={
@@ -3513,6 +3517,11 @@ export default function QualityCheck({ user }) {
         {activeTab === 'rm' && renderRM()}
         {activeTab === 'ip' && renderIP()}
         {activeTab === 'fg' && renderFG()}
+        {activeTab === 'records' && (
+          <React.Suspense fallback={<div className="qc-picker-msg">Loading records…</div>}>
+            <MyRecords user={user} />
+          </React.Suspense>
+        )}
         {activeTab === 'coa' && (
           <React.Suspense fallback={<div className="qc-picker-msg">Loading COA…</div>}>
             <CoaSection user={user} />
@@ -3581,7 +3590,7 @@ export default function QualityCheck({ user }) {
         </div>
       )}
 
-      {activeTab !== 'coa' && (
+      {activeTab !== 'coa' && activeTab !== 'records' && (
       <div className="qc-actions">
         {qcError && (
           <div className="qc-error">Error: {qcError}</div>
