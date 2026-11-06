@@ -113,6 +113,73 @@ export async function deleteBatchEntry(entryId) {
   return !error
 }
 
+// ── COA HISTORY ──────────────────────────────────────────────────────────────
+// List already-issued (finalized) COAs for the history browser. All filters are
+// optional and combined with AND:
+//   party    — party_key to narrow to one party (''/undefined = all parties)
+//   fromDate — inclusive lower bound on issued_at (YYYY-MM-DD, local day start)
+//   toDate   — inclusive upper bound on issued_at (YYYY-MM-DD, local day END)
+// Returns newest-first rows WITHOUT the (potentially large) snapshot payload, so
+// the list loads fast; the full snapshot is fetched on demand via getIssuedCoa.
+// Each row: { id, certificateNo, partyKey, templateVersion, issuedBy, issuedAt,
+//             supersedes }.
+export async function listIssuedCoas({ party, fromDate, toDate } = {}) {
+  if (!supabaseReady || !supabase) return []
+  let q = supabase
+    .from('coa_issued')
+    .select('id, certificate_no, party_key, template_version, issued_by, issued_at, supersedes')
+    .order('issued_at', { ascending: false })
+    .limit(500)
+  if (party) q = q.eq('party_key', party)
+  // issued_at is a timestamptz; filter on the day boundaries. fromDate is the
+  // start of that day; toDate is the END of that day (so the whole day is
+  // included). Dates are interpreted in the browser's local zone, which matches
+  // how the date picker presents them.
+  if (fromDate) {
+    const start = new Date(`${fromDate}T00:00:00`)
+    if (!isNaN(start.getTime())) q = q.gte('issued_at', start.toISOString())
+  }
+  if (toDate) {
+    const end = new Date(`${toDate}T23:59:59.999`)
+    if (!isNaN(end.getTime())) q = q.lte('issued_at', end.toISOString())
+  }
+  const { data, error } = await q
+  if (error || !data) return []
+  return data.map(r => ({
+    id: r.id,
+    certificateNo: r.certificate_no,
+    partyKey: r.party_key,
+    templateVersion: r.template_version,
+    issuedBy: r.issued_by || '',
+    issuedAt: r.issued_at,
+    supersedes: r.supersedes || null,
+  }))
+}
+
+// Fetch ONE issued COA in full, including its immutable snapshot (which carries
+// the rendered `html` captured at finalize time → reprint == original PDF).
+// Returns { id, certificateNo, partyKey, templateVersion, issuedBy, issuedAt,
+//           supersedes, snapshot } or null.
+export async function getIssuedCoa(id) {
+  if (!supabaseReady || !supabase || !id) return null
+  const { data, error } = await supabase
+    .from('coa_issued')
+    .select('id, certificate_no, party_key, template_version, issued_by, issued_at, supersedes, snapshot')
+    .eq('id', id)
+    .maybeSingle()
+  if (error || !data) return null
+  return {
+    id: data.id,
+    certificateNo: data.certificate_no,
+    partyKey: data.party_key,
+    templateVersion: data.template_version,
+    issuedBy: data.issued_by || '',
+    issuedAt: data.issued_at,
+    supersedes: data.supersedes || null,
+    snapshot: data.snapshot || {},
+  }
+}
+
 // Finalize: write an IMMUTABLE issued snapshot. IDEMPOTENT via the unique
 // certificate_no — a repeated finalize/print with the same certificate number
 // returns the existing row instead of creating a duplicate (23505 handled).

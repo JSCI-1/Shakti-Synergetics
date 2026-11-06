@@ -23,11 +23,14 @@ import {
   createCoaDraft, insertBatchEntry, deleteBatchEntry, finalizeCoa,
 } from './coaService.js'
 import CoaBatchPicker from './CoaBatchPicker.jsx'
+import CoaHistory from './CoaHistory.jsx'
 import './CoaSection.css'
 
 export default function CoaSection({ user }) {
   const userName = user?.name || ''
   const isAdmin = user?.role === 'admin'
+  // 'create' = the editable workspace; 'history' = browse already-issued COAs.
+  const [view, setView] = useState('create')
   const [partyKey, setPartyKey] = useState('')
   const [draftId, setDraftId] = useState('')
   const [busy, setBusy] = useState(false)
@@ -204,6 +207,24 @@ export default function CoaSection({ user }) {
 
   return (
     <div className="coa-wrap">
+      {/* Create / History view switch */}
+      <div className="coa-view-tabs">
+        <button type="button"
+          className={`coa-view-tab${view === 'create' ? ' coa-view-tab-active' : ''}`}
+          onClick={() => setView('create')}>
+          Create COA
+        </button>
+        <button type="button"
+          className={`coa-view-tab${view === 'history' ? ' coa-view-tab-active' : ''}`}
+          onClick={() => setView('history')}>
+          History
+        </button>
+      </div>
+
+      {view === 'history' ? (
+        <CoaHistory />
+      ) : (
+      <>
       {/* Party selector + start */}
       <div className="coa-party-bar">
         <label className="coa-label">Party / पक्ष</label>
@@ -430,6 +451,8 @@ export default function CoaSection({ user }) {
             </div>
           )}
         </>
+      )}
+      </>
       )}
     </div>
   )

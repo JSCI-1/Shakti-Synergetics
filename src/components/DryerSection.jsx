@@ -13,6 +13,8 @@ import {
 } from './dryerHistory.js'
 import './DryerSection.css'
 
+const DryerRecords = React.lazy(() => import('./DryerRecords.jsx'))
+
 
 const TIME_SLOTS = [
   '08:00', '09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00',
@@ -310,6 +312,10 @@ function DryerForm({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState('')
 
+  // null = not checked yet, false = no log exists, object = already saved
+  // { operator, created_at }. Checked every time form.date changes.
+  const [logAlreadySaved, setLogAlreadySaved] = useState(null)
+
   // Repair a stale/partial restored draft ONCE on mount so the section can
   // never crash on a malformed shape (missing rows, missing nested fields).
   // normalizeForm is idempotent, so if the draft is already valid this writes
@@ -325,6 +331,33 @@ function DryerForm({
   // commits, reads below go through this guaranteed-complete 24-row shape, so
   // the very first render of a malformed draft cannot throw either.
   const safeForm = normalizeForm(form, dryerType)
+
+  // ── Check whether this (dryer_type, date) already has a saved log sheet ──
+  // Runs every time the date changes. When a record already exists we store its
+  // operator + saved_at so the UI can show a locked banner and disable the
+  // Save Log Sheet button — preventing a second operator from overwriting it.
+  useEffect(() => {
+    setLogAlreadySaved(null)   // reset to "checking" while date changes
+    if (!supabaseReady || !supabase || !form.date) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('dryer_logs')
+          .select('id, operator, created_at')
+          .eq('dryer_type', dryerType)
+          .eq('date', form.date)
+          .order('created_at', { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        if (cancelled) return
+        setLogAlreadySaved(data ? { operator: data.operator, created_at: data.created_at } : false)
+      } catch {
+        if (!cancelled) setLogAlreadySaved(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [dryerType, form.date])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keep the Operator field = the logged-in person's name when a Dryer Operator
   // is signed in. The footer shows this read-only, and we also force
@@ -1339,6 +1372,42 @@ function DryerForm({
       return
     }
 
+    // ── Server-side duplicate guard ──────────────────────────────────────────
+    // Re-check even if the UI banner already shows it — two operators could
+    // both reach this point before either save completes.
+    if (form.date) {
+      setSaving(true)
+      try {
+        const { data: existing } = await supabase
+          .from('dryer_logs')
+          .select('id, operator, created_at')
+          .eq('dryer_type', form.dryer_type)
+          .eq('date', form.date)
+          .limit(1)
+          .maybeSingle()
+        if (existing) {
+          const when = existing.created_at
+            ? new Date(existing.created_at).toLocaleString('en-IN', {
+                day: '2-digit', month: 'short', year: 'numeric',
+                hour: '2-digit', minute: '2-digit', hour12: true,
+                timeZone: 'Asia/Kolkata',
+              })
+            : ''
+          setLogAlreadySaved({ operator: existing.operator, created_at: existing.created_at })
+          setError(
+            `Log sheet for this date was already saved${existing.operator ? ` by ${existing.operator}` : ''}${when ? ` at ${when}` : ''}. Only one log sheet is allowed per dryer per day.`
+          )
+          setSaving(false)
+          return
+        }
+      } catch (checkErr) {
+        // If the check itself fails, still allow the save attempt — the DB
+        // unique constraint (if present) is the final safety net.
+        console.warn('Duplicate check failed:', checkErr)
+      }
+      setSaving(false)
+    }
+
     setSaving(true)
     setError('')
     setSaved(false)
@@ -1422,10 +1491,60 @@ function DryerForm({
     setSaving(false)
 
     if (err) {
-      setError(err.message)
+      // Postgres unique-constraint violation code is 23505.
+      // Give a friendly message instead of the raw DB error.
+      if (err.code === '23505' || (err.message && err.message.includes('unique'))) {
+        setError('Log sheet for this date was already saved by another operator. Only one log sheet is allowed per dryer per day.')
+        // Re-fetch to show the banner with the actual saved record's details.
+        if (supabaseReady && supabase && form.date) {
+          supabase
+            .from('dryer_logs')
+            .select('id, operator, created_at')
+            .eq('dryer_type', form.dryer_type)
+            .eq('date', form.date)
+            .limit(1)
+            .maybeSingle()
+            .then(({ data }) => {
+              if (data) setLogAlreadySaved({ operator: data.operator, created_at: data.created_at })
+            })
+        }
+      } else {
+        setError(err.message)
+      }
     } else {
       setSaved(true)
       showToast('Log sheet saved successfully')
+      // Mark this date as saved so the button locks immediately for
+      // this operator and any other who reloads the same form.
+      setLogAlreadySaved({ operator: form.operator, created_at: new Date().toISOString() })
+
+      // Fire-and-forget email notification — does not block the save flow.
+      if (supabaseReady && supabase) {
+        supabase.functions.invoke('send-dryer-email', {
+          body: {
+            date:              form.date,
+            dryer_type:        form.dryer_type,
+            operator:          form.operator,
+            incharge:          form.incharge,
+            rows:              form.rows,
+            // Blower readings
+            id_blower_dp:      form.id_blower_dp,
+            id_blower_mr:      form.id_blower_mr,
+            fd_blower_dp:      form.fd_blower_dp,
+            fd_blower_mr:      form.fd_blower_mr,
+            ifbd_dp:           form.ifbd_dp,
+            ifbd_mr:           form.ifbd_mr,
+            fbd_pct_dp:        form.fbd_pct_dp,
+            fbd_pct_mr:        form.fbd_pct_mr,
+            // Production summary
+            fine_powder:       form.fine_powder,
+            crust_papadi:      form.crust_papadi,
+            startup:           form.startup,
+            packed_production: form.packed_production,
+            total_production:  computeTotalProduction(form),
+          },
+        }).catch(() => { /* non-fatal — email failure never blocks the save */ })
+      }
 
       // Stop live-sharing the just-submitted hours to the OPERATOR forms,
       // WITHOUT removing them from Production → Activity (which must keep
@@ -3054,12 +3173,32 @@ function DryerForm({
 
         <div className="dr-actions">
 
+          {/* ── Already-saved banner — blocks re-submission ── */}
+          {logAlreadySaved && (
+            <div className="dr-log-saved-banner">
+              <span className="dr-log-saved-icon">🔒</span>
+              <div className="dr-log-saved-text">
+                <strong>Log sheet already saved for this date.</strong>
+                {logAlreadySaved.operator && (
+                  <span> Saved by <strong>{logAlreadySaved.operator}</strong></span>
+                )}
+                {logAlreadySaved.created_at && (
+                  <span> at {new Date(logAlreadySaved.created_at).toLocaleString('en-IN', {
+                    day: '2-digit', month: 'short', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit', hour12: true,
+                    timeZone: 'Asia/Kolkata',
+                  })}</span>
+                )}
+                {'. '}Only one log sheet is allowed per dryer per day.
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="dr-error">
               Error: {error}
             </div>
           )}
-
 
           {saved && (
             <div className="dr-success">
@@ -3068,21 +3207,26 @@ function DryerForm({
             </div>
           )}
 
-
           <div className="dr-save-btn-wrap">
             <button
               type="submit"
               className="dr-save-btn"
-              disabled={saving || !allHoursFilled()}
-              title={allHoursFilled()
-                ? 'Save the full log sheet'
-                : `Fill all ${TIME_SLOTS.length} hourly rows first (${filledHourCount()}/${TIME_SLOTS.length} filled)`}
+              disabled={saving || !allHoursFilled() || !!logAlreadySaved}
+              title={
+                logAlreadySaved
+                  ? 'Log sheet already saved for this date'
+                  : allHoursFilled()
+                    ? 'Save the full log sheet'
+                    : `Fill all ${TIME_SLOTS.length} hourly rows first (${filledHourCount()}/${TIME_SLOTS.length} filled)`
+              }
             >
               {saving
                 ? 'Saving…'
-                : 'Save Log Sheet / लॉग शीट सहेजें'}
+                : logAlreadySaved
+                  ? '🔒 Already Saved'
+                  : 'Save Log Sheet / लॉग शीट सहेजें'}
             </button>
-            {!allHoursFilled() && (
+            {!logAlreadySaved && !allHoursFilled() && (
               <div className="dr-save-hint">
                 <span className="dr-save-hint-en">
                   Fill all {TIME_SLOTS.length} hourly rows to enable Save Log Sheet
@@ -3094,9 +3238,6 @@ function DryerForm({
               </div>
             )}
           </div>
-
-
-
 
         </div>
 
@@ -3136,7 +3277,7 @@ export default function DryerSection({ user }) {
 
     <div className="dr-wrapper">
 
-      {/* ── Selection screen — two large rounded blocks ── */}
+      {/* ── Selection screen — dryer blocks + records button ── */}
       {activeTab === null && (
         <div className="dr-select-screen">
           <div className="dr-select-heading">
@@ -3164,6 +3305,33 @@ export default function DryerSection({ user }) {
               <span className="dr-select-block-hi">पुराना ड्रायर</span>
             </span>
           </button>
+
+          {/* Records button — same width as dryer blocks but styled differently */}
+          <button
+            type="button"
+            className="dr-select-block dr-select-block-records"
+            onClick={() => setActiveTab('records')}
+          >
+            <span className="dr-select-block-text">
+              <span className="dr-select-block-en">📋 Records</span>
+              <span className="dr-select-block-hi">रिकॉर्ड देखें</span>
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* ── Records view ── */}
+      {activeTab === 'records' && (
+        <div className="dr-records-view">
+          <div className="dr-records-topbar">
+            <button type="button" className="dr-records-back-btn" onClick={goBack}>
+              ← Back / वापस
+            </button>
+            <span className="dr-records-title">Dryer Records / ड्रायर रिकॉर्ड</span>
+          </div>
+          <React.Suspense fallback={<div className="dr-records-loading">Loading records…</div>}>
+            <DryerRecords />
+          </React.Suspense>
         </div>
       )}
 

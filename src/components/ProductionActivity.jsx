@@ -269,7 +269,7 @@ function SieveLogTable({ title, log }) {
       <div className="pa-table-scroll">
         <table className="pa-qc-sieve-table">
           <thead>
-            <tr><th>#</th><th>Micron</th><th>Result</th><th>Status</th><th>Time</th></tr>
+            <tr><th>#</th><th>Micron</th><th>Result</th><th>Status</th><th>Sample Time</th><th>Bag No.</th><th>Time</th></tr>
           </thead>
           <tbody>
             {log.map((e, i) => (
@@ -278,6 +278,8 @@ function SieveLogTable({ title, log }) {
                 <td>{e.targetLabel || '—'}</td>
                 <td>{e.result ?? '—'}</td>
                 <td><StatusTag status={e.status} /></td>
+                <td>{e.sampleTime || '—'}</td>
+                <td>{e.bagNo || '—'}</td>
                 <td>{e.time || '—'}</td>
               </tr>
             ))}
@@ -298,13 +300,15 @@ function MoistureLogTable({ title, log }) {
       <div className="pa-table-scroll">
         <table className="pa-qc-sieve-table">
           <thead>
-            <tr><th>#</th><th>Result</th><th>Time</th></tr>
+            <tr><th>#</th><th>Result</th><th>Sample Time</th><th>Bag No.</th><th>Time</th></tr>
           </thead>
           <tbody>
             {log.map((e, i) => (
               <tr key={i}>
                 <td>{i + 1}</td>
                 <td>{e.result ?? '—'}</td>
+                <td>{e.sampleTime || '—'}</td>
+                <td>{e.bagNo || '—'}</td>
                 <td>{e.time || '—'}</td>
               </tr>
             ))}
@@ -368,6 +372,8 @@ function QcCard({ row }) {
           <div className="pa-qc-field"><span className="pa-qc-field-k">Product</span><span className="pa-qc-field-v">{cellVal(row.product)}</span></div>
           <div className="pa-qc-field"><span className="pa-qc-field-k">Moisture (%)</span><span className="pa-qc-field-v">{cellVal(row.moisture_pct)}</span></div>
           <div className="pa-qc-field"><span className="pa-qc-field-k">Suspensibility (%)</span><span className="pa-qc-field-v">{cellVal(row.suspensibility_pct)}</span></div>
+          <div className="pa-qc-field"><span className="pa-qc-field-k">Susp. Sample Time</span><span className="pa-qc-field-v">{cellVal(row.susp_sample_time)}</span></div>
+          <div className="pa-qc-field"><span className="pa-qc-field-k">Susp. Bag No.</span><span className="pa-qc-field-v">{cellVal(row.susp_bag_no)}</span></div>
         </div>
 
         {(wet.length > 0 || dry.length > 0 || moist.length > 0) && (
@@ -409,7 +415,7 @@ export default function ProductionActivity() {
         .order('log_date', { ascending: false }),
       supabase
         .from('qc_activity_draft')
-        .select('dryer, log_date, grade, product, batch_no, batch_start_time, moisture_pct, moisture_log, suspensibility_pct, wet_sieve_log, dry_sieve_log, tested_by, went_live_at, last_saved_at')
+        .select('dryer, log_date, grade, product, batch_no, batch_start_time, moisture_pct, moisture_log, suspensibility_pct, susp_sample_time, susp_bag_no, wet_sieve_log, dry_sieve_log, tested_by, went_live_at, last_saved_at')
         .gt('last_saved_at', cutoff)
         .order('log_date', { ascending: false }),
     ])

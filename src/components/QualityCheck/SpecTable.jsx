@@ -30,10 +30,9 @@ export default function SpecTable({ params, values, onChange }) {
                 <td className="qc-obs">
                   {param.inputType === 'dropdown' ? (
                     <select
-                      className="qc-select"
+                      className={`qc-select${result === 'PASS' ? ' qc-input-pass' : result === 'FAIL' ? ' qc-input-fail' : ''}`}
                       value={val}
                       onChange={e => onChange(param.id, e.target.value)}
-                      // data attrs for DOM reading
                       data-param-id={param.id}
                       data-param-name={param.name}
                       data-param-unit={param.unit || ''}
@@ -50,11 +49,10 @@ export default function SpecTable({ params, values, onChange }) {
                         type="text"
                         inputMode="text"
                         pattern="-?[0-9]*\.?[0-9]*"
-                        className="qc-input"
+                        className={`qc-input${result === 'PASS' ? ' qc-input-pass' : result === 'FAIL' ? ' qc-input-fail' : ''}`}
                         placeholder="—"
                         value={val}
                         onChange={e => onChange(param.id, e.target.value)}
-                        // data attrs for DOM reading
                         data-param-id={param.id}
                         data-param-name={param.name}
                         data-param-unit={param.unit || ''}

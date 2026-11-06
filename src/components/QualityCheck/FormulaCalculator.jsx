@@ -22,6 +22,10 @@ export default function FormulaCalculator({
   // (local state) for every existing caller.
   storedInputs,
   onInputsChange,
+  // Optional React node rendered inside the card, directly under the last
+  // formula variable row. Used for extra per-card fields (e.g. Suspensibility
+  // Sample Time + Bag No. under the BR reading).
+  extraFields,
 }) {
   const controlled = typeof onInputsChange === 'function'
   const [localInputs, setLocalInputs] = useState({})
@@ -114,6 +118,10 @@ export default function FormulaCalculator({
             </div>
           </div>
         ))}
+        {/* Optional extra rows rendered INSIDE the variables block, directly
+            under the last formula variable (e.g. BR). Used by Suspensibility to
+            place Sample Time + Bag No. right under the Burette reading row. */}
+        {extraFields}
       </div>
 
       {intermediates && formula.intermediates && (

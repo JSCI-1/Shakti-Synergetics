@@ -236,6 +236,9 @@ var QC_FIELDS_FG = [
   ['fg_susp__N',       'Suspensibility – N (normality)'],
   ['fg_susp__BR',      'Suspensibility – BR (burette reading) (ml)'],
   ['fg_susp',          'Suspensibility (%)'],
+  // Suspensibility sample identity (entered under the BR row on the website).
+  ['fg_susp_sample_time', 'Suspensibility – Sample Time'],
+  ['fg_susp_bag_no',      'Suspensibility – Bag No.'],
   // Moisture Content — single % value (no formula).
   ['fg_moisture',      'Moisture Content (%)'],
   // Bulk Density — inputs mass, volume, then the calculated result.
@@ -246,10 +249,18 @@ var QC_FIELDS_FG = [
   ['fg_wetSieve__M',   'Wet Sieve – M (material taken) (g)'],
   ['fg_wetSieve__m',   'Wet Sieve – m (granules retained) (g)'],
   ['fg_wetSieve',      'Wet Sieve (%)'],
+  // Wet Sieve sample identity (plain-card grades: entered under the m row).
+  // Export/OMRI record per-reading sample time/bag no. inside the stacked
+  // sieve cell instead; these two columns stay blank for those grades.
+  ['fg_wetSieve_sample_time', 'Wet Sieve – Sample Time'],
+  ['fg_wetSieve_bag_no',      'Wet Sieve – Bag No.'],
   // Dry Sieve — inputs M, m, then the calculated result.
   ['fg_drySieve__M',   'Dry Sieve – M (material taken) (g)'],
   ['fg_drySieve__m',   'Dry Sieve – m (granules retained) (g)'],
   ['fg_drySieve',      'Dry Sieve (%)'],
+  // Dry Sieve sample identity (plain-card grades).
+  ['fg_drySieve_sample_time', 'Dry Sieve – Sample Time'],
+  ['fg_drySieve_bag_no',      'Dry Sieve – Bag No.'],
   // Single-value spec tests
   ['fg_ph',            'pH'],
   ['fg_wettability',   'Wettability (sec)'],
@@ -417,10 +428,13 @@ var FG_ORIGINAL_TAB = 'Finished Goods';
 var FG_CORE_WDG_KEYS = [
   'fg_sulphur__N', 'fg_sulphur__BR', 'fg_sulphur__W', 'fg_sulphur',
   'fg_susp__sulphurContent', 'fg_susp__sampleWeight', 'fg_susp__N', 'fg_susp__BR', 'fg_susp',
+  'fg_susp_sample_time', 'fg_susp_bag_no',
   'fg_moisture',
   'fg_bulk__mass', 'fg_bulk__volume', 'fg_bulk',
   'fg_wetSieve__M', 'fg_wetSieve__m', 'fg_wetSieve',
+  'fg_wetSieve_sample_time', 'fg_wetSieve_bag_no',
   'fg_drySieve__M', 'fg_drySieve__m', 'fg_drySieve',
+  'fg_drySieve_sample_time', 'fg_drySieve_bag_no',
   'fg_ph', 'fg_wettability', 'fg_foam_start', 'fg_foam_1min'
 ];
 
@@ -680,7 +694,13 @@ function fgFieldsForGrade_(grade) {
   function isHidden(key) {
     for (var i = 0; i < hidden.length; i++) {
       var card = hidden[i];
-      if (key === card || key.indexOf(card + '__') === 0) return true;
+      // A hidden card omits its result key, its formula-input keys
+      // ('<card>__<var>'), AND its sample-identity keys
+      // ('<card>_sample_time' / '<card>_bag_no').
+      if (key === card ||
+          key.indexOf(card + '__') === 0 ||
+          key === card + '_sample_time' ||
+          key === card + '_bag_no') return true;
     }
     return false;
   }
@@ -2964,10 +2984,16 @@ function buildFgSieveStack_(valueKey, logKey, vals, tsMap, kind) {
     var micron = coalesce_(e.targetLabel);
     var result = coalesce_(e.result);
     var status = coalesce_(e.status);
+    var sTime  = coalesce_(e.sampleTime);
+    var bagNo  = coalesce_(e.bagNo);
     var parts = ['#' + no];
     if (micron !== '') parts.push(micron);
     parts.push(result);
     if (status !== '') parts.push(status);
+    // Per-reading sample identity (entered on the website Record bar), appended
+    // so each stacked sieve reading line carries its own Sample Time + Bag No.
+    if (sTime !== '') parts.push('Sample: ' + sTime);
+    if (bagNo !== '') parts.push('Bag: ' + bagNo);
     values.push(parts.join('  '));
 
     // ALWAYS render the reading's time from its ISO moment in IST
@@ -3016,7 +3042,13 @@ function buildFgMoistureStack_(vals, tsMap, kind) {
     if (e.result === undefined || e.result === null || String(e.result) === '') continue;
     var no     = i + 1;
     var result = coalesce_(e.result);
-    values.push('#' + no + '  ' + result);
+    var sTime  = coalesce_(e.sampleTime);
+    var bagNo  = coalesce_(e.bagNo);
+    var mParts = ['#' + no, result];
+    // Per-reading sample identity (entered on the website Record bar).
+    if (sTime !== '') mParts.push('Sample: ' + sTime);
+    if (bagNo !== '') mParts.push('Bag: ' + bagNo);
+    values.push(mParts.join('  '));
     // ALWAYS render from the ISO moment in IST (see buildFgSieveStack_ note).
     var iso = (tsMap && tsMap[valueKey + '_reading_' + no]) ? tsMap[valueKey + '_reading_' + no]
             : (e.isoTime || null);
@@ -3582,10 +3614,17 @@ function writeFgSieveReadings_(ss, tabName, row) {
     var micron = coalesce_(e.micron);
     var result = coalesce_(e.result);
     var status = coalesce_(e.status);
+    var sTime  = coalesce_(e.sample_time);
+    var bagNo  = coalesce_(e.bag_no);
     var parts = ['#' + no];
     if (micron !== '') parts.push(micron);
     parts.push(result);
     if (status !== '') parts.push(status);
+    // Per-reading sample identity (present once the live readings table carries
+    // sample_time/bag_no; blank otherwise). Keeps the live writer's cell format
+    // identical to the Save-snapshot sieve stack.
+    if (sTime !== '') parts.push('Sample: ' + sTime);
+    if (bagNo !== '') parts.push('Bag: ' + bagNo);
     valueLines.push(parts.join('  '));
     tsLines.push(e.iso_time ? renderFieldTs_(kind, e.iso_time) : '');
 

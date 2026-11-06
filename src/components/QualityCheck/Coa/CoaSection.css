@@ -333,3 +333,78 @@ textarea.coa-input { resize: vertical; min-height: 44px; }
   .coa-party-bar { align-items: stretch; }
   .coa-status { margin-left: 0; }
 }
+
+/* ── Create / History view tabs ──────────────────────────────────────────── */
+.coa-view-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--coa-border);
+}
+.coa-view-tab {
+  padding: 9px 18px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  background: transparent;
+  color: var(--coa-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px 8px 0 0;
+  margin-bottom: -1px;
+}
+.coa-view-tab:hover { color: #111; background: var(--coa-bg-soft); }
+.coa-view-tab-active {
+  color: var(--coa-primary);
+  background: #fff;
+  border-color: var(--coa-border);
+  border-bottom: 1px solid #fff;
+}
+
+/* ── History view ────────────────────────────────────────────────────────── */
+.coa-history-filters {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+.coa-history-filters .coa-field { min-width: 150px; }
+.coa-history-filters .coa-input { width: auto; }
+
+.coa-history-scroll { overflow-x: auto; }
+.coa-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.coa-history-table th,
+.coa-history-table td {
+  border: 1px solid var(--coa-border);
+  padding: 8px 10px;
+  text-align: left;
+  vertical-align: middle;
+}
+.coa-history-table th {
+  background: var(--coa-bg-soft);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.coa-history-row-open td { background: #eff6ff; }
+.coa-history-actions { white-space: nowrap; }
+.coa-history-actions .coa-btn { margin-right: 6px; }
+.coa-history-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+  border-radius: 10px;
+  vertical-align: middle;
+}
+
+@media (max-width: 640px) {
+  .coa-history-filters { flex-direction: column; align-items: stretch; }
+  .coa-history-filters .coa-input { width: 100%; }
+}

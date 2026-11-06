@@ -558,6 +558,47 @@ function collectFGResults(product, values, hiddenTests = []) {
 }
 
 // ─────────────────────────────────────────────────────────────
+// SampleMetaRows — two formula-card variable rows (Sample Time + Bag No.)
+// rendered inside a FormulaCalculator via its extraFields slot, directly under
+// the last formula variable. Used by Suspensibility and the plain Wet/Dry Sieve
+// cards so each grade can record when the sample was drawn and its bag number.
+function SampleMetaRows({ sampleTime, bagNo, onSampleTime, onBagNo }) {
+  return (
+    <>
+      <div className="qc-var-row qc-var-row-extra">
+        <label className="qc-var-label">
+          <span className="qc-var-sym">Sample Time</span>
+          <span className="qc-var-desc">Time the sample was drawn</span>
+        </label>
+        <div className="qc-input-unit">
+          <input
+            type="text"
+            className="qc-input"
+            placeholder="e.g. 10:30 AM"
+            value={sampleTime}
+            onChange={e => onSampleTime(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="qc-var-row qc-var-row-extra">
+        <label className="qc-var-label">
+          <span className="qc-var-sym">Bag No.</span>
+          <span className="qc-var-desc">Bag number of the sample</span>
+        </label>
+        <div className="qc-input-unit">
+          <input
+            type="text"
+            className="qc-input"
+            placeholder="e.g. B12"
+            value={bagNo}
+            onChange={e => onBagNo(e.target.value)}
+          />
+        </div>
+      </div>
+    </>
+  )
+}
+
 // BatchHeader
 // ─────────────────────────────────────────────────────────────
 function BatchHeader({ date, setDate, dateLabel, testedBy, setTestedBy, extra = [], splitTime = false }) {
@@ -668,6 +709,14 @@ export default function QualityCheck({ user }) {
     valuesByDryer: { ND1: {}, ND2: {} },   // shape: { [dryer]: { [grade]: {...} } }
     uplValuesByGrade: {},                   // shape: { [grade]: {...} }
     sieveLogByGrade: {},                    // shape: { [grade]: { fg_wetSieve:[], fg_drySieve:[] } }
+    // Per-grade Suspensibility sample time + bag no. (persisted so refreshing
+    // mid-entry doesn't lose the fields).
+    suspSampleTimeByGrade: {},              // shape: { [grade]: string }
+    suspBagNoByGrade: {},                   // shape: { [grade]: string }
+    // Per-grade, per-test Wet/Dry Sieve sample time + bag no. for the PLAIN
+    // formula-card grades (non export/omri). shape: { [grade]: { [testId]: str } }
+    sieveCardSampleTimeByGrade: {},
+    sieveCardBagNoByGrade: {},
   })
 
   // When user logs in mid-session (e.g. tab restore), backfill empty testedBy fields
@@ -803,6 +852,10 @@ export default function QualityCheck({ user }) {
       sieveLogByGrade: {},
       moistureLogByGrade: {},
       fgFormulaInputsByGrade: {},   // clear Suspensibility (and any FG formula) inputs for the new batch
+      suspSampleTimeByGrade: {},    // clear Suspensibility sample time for the new batch
+      suspBagNoByGrade: {},         // clear Suspensibility bag no. for the new batch
+      sieveCardSampleTimeByGrade: {}, // clear plain-card Wet/Dry Sieve sample time
+      sieveCardBagNoByGrade: {},      // clear plain-card Wet/Dry Sieve bag no.
       // Time is per-batch → blank it for the new batch. (Date is kept for a
       // moment so the restore lookup can check whether this batch already has
       // saved data; if it does NOT, the restore effect blanks the date too so
@@ -835,6 +888,48 @@ export default function QualityCheck({ user }) {
     const fbg   = p.fgFormulaInputsByGrade || {}
     const curG  = fbg[grade] || {}
     return { ...p, fgFormulaInputsByGrade: { ...fbg, [grade]: { ...curG, [fid]: next } } }
+  })
+
+  // ── Suspensibility Sample Time + Bag No. per-grade ──────────────────────────
+  // Persisted in draft so a page refresh does not lose the entered values.
+  const suspSampleTimeByGrade = fgDraft.suspSampleTimeByGrade || {}
+  const suspBagNoByGrade      = fgDraft.suspBagNoByGrade      || {}
+  const suspSampleTime        = suspSampleTimeByGrade[fgGrade] || ''
+  const suspBagNo             = suspBagNoByGrade[fgGrade]      || ''
+  const setSuspSampleTime     = v => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const cur   = p.suspSampleTimeByGrade || {}
+    return { ...p, suspSampleTimeByGrade: { ...cur, [grade]: v } }
+  })
+  const setSuspBagNo          = v => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const cur   = p.suspBagNoByGrade || {}
+    return { ...p, suspBagNoByGrade: { ...cur, [grade]: v } }
+  })
+
+  // ── Wet/Dry Sieve Sample Time + Bag No. for PLAIN formula-card grades ───────
+  // For UPL Export/OMRI, Wet/Dry Sieve use the Record-flow (per-reading sample
+  // time/bag no. live inside each log entry). For every OTHER grade the sieve
+  // tests render as plain formula cards, so their sample time + bag no. are
+  // stored per-grade per-test here (shape: { [grade]: { [testId]: value } }),
+  // persisted in the draft so a refresh doesn't lose them.
+  const sieveCardSampleTimeByGrade = fgDraft.sieveCardSampleTimeByGrade || {}
+  const sieveCardBagNoByGrade      = fgDraft.sieveCardBagNoByGrade      || {}
+  const getSieveCardSampleTime = (testId) =>
+    (sieveCardSampleTimeByGrade[fgGrade] && sieveCardSampleTimeByGrade[fgGrade][testId]) || ''
+  const getSieveCardBagNo = (testId) =>
+    (sieveCardBagNoByGrade[fgGrade] && sieveCardBagNoByGrade[fgGrade][testId]) || ''
+  const setSieveCardSampleTime = (testId, v) => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const cur   = p.sieveCardSampleTimeByGrade || {}
+    const curG  = cur[grade] || {}
+    return { ...p, sieveCardSampleTimeByGrade: { ...cur, [grade]: { ...curG, [testId]: v } } }
+  })
+  const setSieveCardBagNo = (testId, v) => setFgDraft(p => {
+    const grade = p.uplGrade || 'normal'
+    const cur   = p.sieveCardBagNoByGrade || {}
+    const curG  = cur[grade] || {}
+    return { ...p, sieveCardBagNoByGrade: { ...cur, [grade]: { ...curG, [testId]: v } } }
   })
 
   // Sieve logs are per-grade. Legacy flat `sieveLog` migrates into 'normal'.
@@ -927,6 +1022,19 @@ export default function QualityCheck({ user }) {
   // Latest computed Suspensibility result (fg_susp is a formula card, so its
   // result lives in the card's local state — capture it for the live feed).
   const [suspResult, setSuspResult] = useState(null)
+
+  // ── Transient sample time / bag no. inputs for moisture and sieve recordings.
+  // These are LOCAL (not in the draft) — they are cleared after each "Record"
+  // press so the next reading starts with blank fields.
+  const [moistureSampleTime, setMoistureSampleTime] = useState('')
+  const [moistureBagNo, setMoistureBagNo]           = useState('')
+  // Per sieve test: { fg_wetSieve: { sampleTime, bagNo }, fg_drySieve: { ... } }
+  const [sieveSampleInputs, setSieveSampleInputs]   = useState({})
+  const getSieveSampleTime = (testId) => (sieveSampleInputs[testId] || {}).sampleTime || ''
+  const getSieveBagNo      = (testId) => (sieveSampleInputs[testId] || {}).bagNo || ''
+  const setSieveSampleTime = (testId, v) => setSieveSampleInputs(p => ({ ...p, [testId]: { ...(p[testId] || {}), sampleTime: v } }))
+  const setSieveBagNo_     = (testId, v) => setSieveSampleInputs(p => ({ ...p, [testId]: { ...(p[testId] || {}), bagNo: v } }))
+  const clearSieveSampleInputs = (testId) => setSieveSampleInputs(p => ({ ...p, [testId]: { sampleTime: '', bagNo: '' } }))
 
   // Latest computed Sulphur Content result (fg_sulphur formula card). Captured
   // so the ADMA parameter table can mirror it into its read-only Observation
@@ -1046,6 +1154,8 @@ export default function QualityCheck({ user }) {
       // latest value. Each entry: { result, time, isoTime }.
       moisture_log: moistureReadings,
       suspensibility_pct: override.susp !== undefined ? toNum(override.susp) : toNum(suspResult),
+      susp_sample_time: fgDraft.suspSampleTimeByGrade ? (fgDraft.suspSampleTimeByGrade[grade] || null) : null,
+      susp_bag_no: fgDraft.suspBagNoByGrade ? (fgDraft.suspBagNoByGrade[grade] || null) : null,
       wet_sieve_log: override.wetLog ?? (log.fg_wetSieve || []),
       dry_sieve_log: override.dryLog ?? (log.fg_drySieve || []),
       tested_by: d.testedBy || userName || null,
@@ -1674,7 +1784,7 @@ export default function QualityCheck({ user }) {
     }
     const t = setTimeout(() => pushQcActivity(), 700)
     return () => clearTimeout(t)
-  }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDraft.time, fgMoistureVal, moistureLogSig, wetSieveLogSig, drySieveLogSig, suspResult])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDraft.time, fgMoistureVal, moistureLogSig, wetSieveLogSig, drySieveLogSig, suspResult, suspSampleTime, suspBagNo])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Suspensibility is OPTIONAL for the readiness gate (it does not make a row go
   // live on its own), but when the chemist DOES enter it, it should appear on
@@ -1690,7 +1800,7 @@ export default function QualityCheck({ user }) {
     if (!fgPushReadyRef.current) return   // skip the mount/stale-draft run
     const t = setTimeout(() => pushQcActivity(), 700)
     return () => clearTimeout(t)
-  }, [activeTab, suspResult, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDryer])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, suspResult, suspSampleTime, suspBagNo, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDryer])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Load saved FG data from the database on date change ──────────
   // When the user selects a date, query quality_control_records for the most
@@ -1789,6 +1899,11 @@ export default function QualityCheck({ user }) {
             // reading logs + per-field timestamps + formula inputs are restored
             // on their own, below (not as plain measurement values):
             'fg_wetSieve_log','fg_drySieve_log','fg_moisture_log','fg_formula_inputs','__ts',
+            // Suspensibility + plain-card sieve sample time/bag no. restored
+            // separately below.
+            'fg_susp_sample_time','fg_susp_bag_no',
+            'fg_wetSieve_sample_time','fg_wetSieve_bag_no',
+            'fg_drySieve_sample_time','fg_drySieve_bag_no',
           ])
           const savedVals = {}
           Object.keys(v || {}).forEach(k => {
@@ -1851,6 +1966,33 @@ export default function QualityCheck({ user }) {
               ...fbg,
               [grade]: { ...curFg, ...v.fg_formula_inputs },
             }
+          }
+          // Restore Suspensibility Sample Time + Bag No. for this grade if the
+          // saved record carried them (records saved after this feature shipped).
+          if (v.fg_susp_sample_time != null && v.fg_susp_sample_time !== '') {
+            const cur = p.suspSampleTimeByGrade || {}
+            next.suspSampleTimeByGrade = { ...cur, [grade]: v.fg_susp_sample_time }
+          }
+          if (v.fg_susp_bag_no != null && v.fg_susp_bag_no !== '') {
+            const cur = p.suspBagNoByGrade || {}
+            next.suspBagNoByGrade = { ...cur, [grade]: v.fg_susp_bag_no }
+          }
+          // Restore plain-card Wet/Dry Sieve Sample Time + Bag No. per test.
+          const stNext = {}
+          const bnNext = {}
+          if (v.fg_wetSieve_sample_time) stNext.fg_wetSieve = v.fg_wetSieve_sample_time
+          if (v.fg_drySieve_sample_time) stNext.fg_drySieve = v.fg_drySieve_sample_time
+          if (v.fg_wetSieve_bag_no)      bnNext.fg_wetSieve = v.fg_wetSieve_bag_no
+          if (v.fg_drySieve_bag_no)      bnNext.fg_drySieve = v.fg_drySieve_bag_no
+          if (Object.keys(stNext).length) {
+            const cur  = p.sieveCardSampleTimeByGrade || {}
+            const curG = cur[grade] || {}
+            next.sieveCardSampleTimeByGrade = { ...cur, [grade]: { ...curG, ...stNext } }
+          }
+          if (Object.keys(bnNext).length) {
+            const cur  = p.sieveCardBagNoByGrade || {}
+            const curG = cur[grade] || {}
+            next.sieveCardBagNoByGrade = { ...cur, [grade]: { ...curG, ...bnNext } }
           }
           return next
         })
@@ -2443,6 +2585,19 @@ export default function QualityCheck({ user }) {
         // batch can restore the raw inputs and the cards RECOMPUTE their result —
         // otherwise only the computed result was kept and the cards showed blank.
         fg_formula_inputs: (fgDraft.fgFormulaInputsByGrade && fgDraft.fgFormulaInputsByGrade[uplGrade || 'normal']) || {},
+        // Suspensibility Sample Time + Bag No. for the active grade (single
+        // values, not a per-reading log). Saved so they persist in the record
+        // and restore on reopening the batch.
+        fg_susp_sample_time: suspSampleTime || null,
+        fg_susp_bag_no: suspBagNo || null,
+        // Plain-card Wet/Dry Sieve Sample Time + Bag No. for the active grade
+        // (non export/omri grades, where the sieve tests are plain formula cards
+        // with no per-reading Record log). Saved per test so they restore on
+        // reopening the batch.
+        fg_wetSieve_sample_time: getSieveCardSampleTime('fg_wetSieve') || null,
+        fg_wetSieve_bag_no: getSieveCardBagNo('fg_wetSieve') || null,
+        fg_drySieve_sample_time: getSieveCardSampleTime('fg_drySieve') || null,
+        fg_drySieve_bag_no: getSieveCardBagNo('fg_drySieve') || null,
         // Per-field first-entry times (ISO) → the trigger uses these as
         // field_entry_ts so each FG field (inputs + results) shows its REAL
         // entry time, not the single save-moment time. Includes synthetic
@@ -2960,8 +3115,14 @@ export default function QualityCheck({ user }) {
               // uplId: the designated UPL Extra Parameters result field this
               // reading feeds (e.g. 'upl_exp_ws_160'). Carried on the entry so the
               // live sync can update that exact UPL parameter cell + timestamp.
-              const entry = { result: String(res), status, time, isoTime: nowIso, targetLabel, uplId: target }
+              const entry = {
+                result: String(res), status, time, isoTime: nowIso, targetLabel, uplId: target,
+                sampleTime: getSieveSampleTime(test.id) || null,
+                bagNo: getSieveBagNo(test.id) || null,
+              }
               addSieveEntry(test.id, entry)
+              // Clear the sample time + bag no. inputs so the next reading starts fresh.
+              clearSieveSampleInputs(test.id)
               // Also push into the UPL row so its table status reflects the latest.
               setUplValues(p => ({ ...p, [target]: String(res) }))
               // The UPL value is set PROGRAMMATICALLY here (not typed), so the
@@ -3011,6 +3172,25 @@ export default function QualityCheck({ user }) {
                       >
                         {opts.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
                       </select>
+                    </div>
+                    {/* Sample Time + Bag No. for sieve — cleared after Record */}
+                    <div className="qc-record-meta-row">
+                      <label className="qc-record-meta-label">Sample Time</label>
+                      <input
+                        type="text"
+                        className="qc-record-meta-input"
+                        placeholder="e.g. 10:30 AM"
+                        value={getSieveSampleTime(test.id)}
+                        onChange={e => setSieveSampleTime(test.id, e.target.value)}
+                      />
+                      <label className="qc-record-meta-label">Bag No.</label>
+                      <input
+                        type="text"
+                        className="qc-record-meta-input"
+                        placeholder="e.g. B12"
+                        value={getSieveBagNo(test.id)}
+                        onChange={e => setSieveBagNo_(test.id, e.target.value)}
+                      />
                       <button
                         type="button"
                         className="qc-sieve-apply-btn"
@@ -3022,7 +3202,7 @@ export default function QualityCheck({ user }) {
                     </div>
                   </div>
 
-                  {/* Recorded entries — result + status + time */}
+                  {/* Recorded entries — result + status + time + sampleTime + bagNo */}
                   <div className="qc-sieve-log" data-sieve-log={test.id}>
                     <div className="qc-sieve-log-title">{test.name} — recorded</div>
                     {log.length === 0 ? (
@@ -3031,7 +3211,7 @@ export default function QualityCheck({ user }) {
                       <div className="qc-sieve-log-scroll">
                         <table className="qc-sieve-log-table">
                           <thead>
-                            <tr><th>#</th><th>Micron</th><th>Result</th><th>Status</th><th>Time</th><th></th></tr>
+                            <tr><th>#</th><th>Micron</th><th>Result</th><th>Status</th><th>Sample Time</th><th>Bag No.</th><th>Time</th><th></th></tr>
                           </thead>
                           <tbody>
                             {log.map((e, idx) => (
@@ -3044,6 +3224,8 @@ export default function QualityCheck({ user }) {
                                   {e.status === 'FAIL' && <span className="qc-upl-fail">Fail</span>}
                                   {e.status !== 'PASS' && e.status !== 'FAIL' && <span className="qc-upl-na">—</span>}
                                 </td>
+                                <td>{e.sampleTime || '—'}</td>
+                                <td>{e.bagNo || '—'}</td>
                                 <td>{e.time}</td>
                                 <td>
                                   <button type="button" className="qc-sieve-log-del"
@@ -3092,6 +3274,37 @@ export default function QualityCheck({ user }) {
               // / relogin and is part of the shared draft.
               storedInputs={getFgFormulaInputs(test.id)}
               onInputsChange={next => setFgFormulaInputs(test.id, next)}
+              // Sample Time + Bag No. rendered INSIDE the card, directly under
+              // the last formula variable row. Attached to:
+              //   • Suspensibility (fg_susp) — all grades, persisted per-grade.
+              //   • Wet/Dry Sieve (fg_wetSieve / fg_drySieve) — for the PLAIN
+              //     formula-card grades (non export/omri). Export/OMRI use the
+              //     Record flow above, which carries per-reading sample time/bag
+              //     no., so they never reach this branch for the sieve tests.
+              // Every other formula card leaves extraFields undefined.
+              extraFields={(() => {
+                if (test.id === 'fg_susp') {
+                  return (
+                    <SampleMetaRows
+                      sampleTime={suspSampleTime}
+                      bagNo={suspBagNo}
+                      onSampleTime={setSuspSampleTime}
+                      onBagNo={setSuspBagNo}
+                    />
+                  )
+                }
+                if (test.id === 'fg_wetSieve' || test.id === 'fg_drySieve') {
+                  return (
+                    <SampleMetaRows
+                      sampleTime={getSieveCardSampleTime(test.id)}
+                      bagNo={getSieveCardBagNo(test.id)}
+                      onSampleTime={v => setSieveCardSampleTime(test.id, v)}
+                      onBagNo={v => setSieveCardBagNo(test.id, v)}
+                    />
+                  )
+                }
+                return undefined
+              })()}
             />
           )
           if (test.type === 'moisture-readings') {
@@ -3108,10 +3321,16 @@ export default function QualityCheck({ user }) {
               const now    = new Date()
               const time   = istClock(now)           // IST-locked display time
               const nowIso = now.toISOString()
-              const entry  = { result: String(mVal), time, isoTime: nowIso }
+              const entry  = {
+                result: String(mVal), time, isoTime: nowIso,
+                sampleTime: moistureSampleTime || null,
+                bagNo: moistureBagNo || null,
+              }
               addMoistureEntry(entry)
-              // Clear the live input so the next reading starts fresh.
+              // Clear the live input AND sample time/bag no. so the next reading starts fresh.
               setVal(test.id, '')
+              setMoistureSampleTime('')
+              setMoistureBagNo('')
               // Live push the full updated list (state update is async → pass override).
               const newLog = [ ...(moistureLog || []), entry ]
               // Live push to Production → Activity immediately with the fresh log
@@ -3132,15 +3351,41 @@ export default function QualityCheck({ user }) {
                     <div className="qc-moisture-card">
                       <div className="qc-moisture-name">{test.name}</div>
                       <div className="qc-moisture-input-row">
-                        <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*"
-                          className="qc-input qc-moisture-input" placeholder="—"
-                          value={mVal}
-                          onChange={e => setVal(test.id, e.target.value)}
-                          onKeyDown={e => { if (e.key === 'Enter') recordMoisture() }} />
+                        {(() => {
+                          const moistureRule = (uplGrade === 'export' || uplGrade === 'omri')
+                            ? { type: 'range', min: 1.5, max: uplGrade === 'omri' ? 2.3 : 2.2 }
+                            : test.rule || null
+                          const mResult = evaluate(mVal, moistureRule)
+                          return (
+                            <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*"
+                              className={`qc-input qc-moisture-input${mResult === 'PASS' ? ' qc-input-pass' : mResult === 'FAIL' ? ' qc-input-fail' : ''}`}
+                              placeholder="—"
+                              value={mVal}
+                              onChange={e => setVal(test.id, e.target.value)}
+                              onKeyDown={e => { if (e.key === 'Enter') recordMoisture() }} />
+                          )
+                        })()}
                         {test.unit && <span className="qc-unit">{test.unit}</span>}
                       </div>
                     </div>
-                    <div className="qc-sieve-apply-bar">
+                    {/* Sample Time + Bag No. for moisture — cleared after Record */}
+                    <div className="qc-record-meta-row">
+                      <label className="qc-record-meta-label">Sample Time</label>
+                      <input
+                        type="text"
+                        className="qc-record-meta-input"
+                        placeholder="e.g. 10:30 AM"
+                        value={moistureSampleTime}
+                        onChange={e => setMoistureSampleTime(e.target.value)}
+                      />
+                      <label className="qc-record-meta-label">Bag No.</label>
+                      <input
+                        type="text"
+                        className="qc-record-meta-input"
+                        placeholder="e.g. B12"
+                        value={moistureBagNo}
+                        onChange={e => setMoistureBagNo(e.target.value)}
+                      />
                       <button
                         type="button"
                         className="qc-sieve-apply-btn"
@@ -3152,10 +3397,9 @@ export default function QualityCheck({ user }) {
                     </div>
                   </div>
 
-                  {/* Recorded moisture readings — result + time. For the UPL
-                      Export and UPL OMRI grades ONLY, each reading also shows a
-                      Pass/Fail status against the moisture spec (range 1.5–2.2).
-                      Other grades keep the original columns unchanged. */}
+                  {/* Recorded moisture readings — result + sampleTime + bagNo + time. For the
+                      UPL Export and UPL OMRI grades ONLY, each reading also shows a
+                      Pass/Fail status against the moisture spec (range 1.5–2.2). */}
                   <div className="qc-sieve-log" data-moisture-log={test.id}>
                     <div className="qc-sieve-log-title">{test.name} — recorded</div>
                     {mLog.length === 0 ? (
@@ -3168,20 +3412,22 @@ export default function QualityCheck({ user }) {
                               <th>#</th>
                               <th>Result ({test.unit})</th>
                               {(uplGrade === 'export' || uplGrade === 'omri') && <th>Status</th>}
+                              <th>Sample Time</th>
+                              <th>Bag No.</th>
                               <th>Time</th>
                               <th></th>
                             </tr>
                           </thead>
                           <tbody>
                             {mLog.map((e, idx) => {
-                              // Export + OMRI per-reading Pass/Fail (range 1.5–2.2).
+                              // Export: 1.5–2.2, OMRI: 1.5–2.3
                               const mStatus = (uplGrade === 'export' || uplGrade === 'omri')
-                                ? evaluate(e.result, { type: 'range', min: 1.5, max: 2.2 })
+                                ? evaluate(e.result, { type: 'range', min: 1.5, max: uplGrade === 'omri' ? 2.3 : 2.2 })
                                 : null
                               return (
                               <tr key={idx}>
                                 <td>{idx + 1}</td>
-                                <td>{e.result}</td>
+                                <td className={mStatus === 'PASS' ? 'qc-val-pass' : mStatus === 'FAIL' ? 'qc-val-fail' : ''}>{e.result}</td>
                                 {(uplGrade === 'export' || uplGrade === 'omri') && (
                                   <td>
                                     {mStatus === 'PASS' && <span className="qc-upl-pass">Pass</span>}
@@ -3189,6 +3435,8 @@ export default function QualityCheck({ user }) {
                                     {mStatus === null   && <span className="qc-upl-na">—</span>}
                                   </td>
                                 )}
+                                <td>{e.sampleTime || '—'}</td>
+                                <td>{e.bagNo || '—'}</td>
                                 <td>{e.time}</td>
                                 <td>
                                   <button type="button" className="qc-sieve-log-del"
@@ -3210,10 +3458,17 @@ export default function QualityCheck({ user }) {
               <div className="qc-single-name">{test.name}</div>
               {test.method && <div className="qc-method">{test.method}</div>}
               <div className="qc-input-unit">
-                <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*"
-                  className="qc-input" placeholder="—"
-                  value={values[test.id] ?? ''}
-                  onChange={e => setVal(test.id, e.target.value)} />
+                {(() => {
+                  const v = values[test.id] ?? ''
+                  const r = evaluate(v, test.rule)
+                  return (
+                    <input type="text" inputMode="text" pattern="-?[0-9]*\.?[0-9]*"
+                      className={`qc-input${r === 'PASS' ? ' qc-input-pass' : r === 'FAIL' ? ' qc-input-fail' : ''}`}
+                      placeholder="—"
+                      value={v}
+                      onChange={e => setVal(test.id, e.target.value)} />
+                  )
+                })()}
                 {test.unit && <span className="qc-unit">{test.unit}</span>}
               </div>
             </div>
@@ -3265,14 +3520,14 @@ export default function QualityCheck({ user }) {
                                 <input
                                   type="text"
                                   readOnly
-                                  className="qc-upl-input"
+                                  className={`qc-upl-input${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   placeholder="—"
                                   value={val}
                                   data-upl-id={row.id}
                                 />
                               ) : row.type === 'complies' ? (
                                 <select
-                                  className="qc-upl-select"
+                                  className={`qc-upl-select${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   value={val}
                                   data-upl-id={row.id}
                                   onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
@@ -3286,7 +3541,7 @@ export default function QualityCheck({ user }) {
                                   type="text"
                                   inputMode="text"
                                   pattern="-?[0-9]*\.?[0-9]*"
-                                  className="qc-upl-input"
+                                  className={`qc-upl-input${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   placeholder="—"
                                   value={val}
                                   data-upl-id={row.id}
@@ -3357,14 +3612,14 @@ export default function QualityCheck({ user }) {
                                 <input
                                   type="text"
                                   readOnly
-                                  className="qc-upl-input"
+                                  className={`qc-upl-input${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   placeholder="—"
                                   value={observed}
                                   data-upl-id={row.id}
                                 />
                               ) : row.type === 'complies' ? (
                                 <select
-                                  className="qc-upl-select"
+                                  className={`qc-upl-select${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   value={observed}
                                   data-upl-id={row.id}
                                   onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
@@ -3375,7 +3630,7 @@ export default function QualityCheck({ user }) {
                                 </select>
                               ) : row.type === 'droptest' ? (
                                 <select
-                                  className="qc-upl-select"
+                                  className={`qc-upl-select${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   value={observed}
                                   data-upl-id={row.id}
                                   onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
@@ -3388,7 +3643,7 @@ export default function QualityCheck({ user }) {
                                 // Free-text observation (e.g. Arsenic Content).
                                 <input
                                   type="text"
-                                  className="qc-upl-input"
+                                  className={`qc-upl-input${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   placeholder="—"
                                   value={observed}
                                   data-upl-id={row.id}
@@ -3397,7 +3652,7 @@ export default function QualityCheck({ user }) {
                               ) : row.type === 'arsenic' ? (
                                 // Arsenic Content — Not Detected (Pass) / Detected (Fail).
                                 <select
-                                  className="qc-upl-select"
+                                  className={`qc-upl-select${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   value={observed}
                                   data-upl-id={row.id}
                                   onChange={e => setUplValues(p => ({ ...p, [row.id]: e.target.value }))}
@@ -3411,7 +3666,7 @@ export default function QualityCheck({ user }) {
                                   type="text"
                                   inputMode="text"
                                   pattern="-?[0-9]*\.?[0-9]*"
-                                  className="qc-upl-input"
+                                  className={`qc-upl-input${status === 'PASS' ? ' qc-upl-input-pass' : status === 'FAIL' ? ' qc-upl-input-fail' : ''}`}
                                   placeholder="—"
                                   value={observed}
                                   data-upl-id={row.id}

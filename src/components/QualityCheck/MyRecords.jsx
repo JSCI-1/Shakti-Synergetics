@@ -258,18 +258,20 @@ function ReadonlyMoisture({ values, uplGrade }) {
                     <th>#</th>
                     <th>Result (%)</th>
                     {(uplGrade === 'export' || uplGrade === 'omri') && <th>Status</th>}
+                    <th>Sample Time</th>
+                    <th>Bag No.</th>
                     <th>Time</th>
                   </tr>
                 </thead>
                 <tbody>
                   {log.map((e, i) => {
                     const mStatus = (uplGrade === 'export' || uplGrade === 'omri')
-                      ? evaluate(e.result, { type: 'range', min: 1.5, max: 2.2 })
+                      ? evaluate(e.result, { type: 'range', min: 1.5, max: uplGrade === 'omri' ? 2.3 : 2.2 })
                       : null
                     return (
                       <tr key={i}>
                         <td>{i + 1}</td>
-                        <td>{e.result}</td>
+                        <td className={mStatus === 'PASS' ? 'qc-val-pass' : mStatus === 'FAIL' ? 'qc-val-fail' : ''}>{e.result}</td>
                         {(uplGrade === 'export' || uplGrade === 'omri') && (
                           <td>
                             {mStatus === 'PASS' && <span className="qc-upl-pass">Pass</span>}
@@ -277,6 +279,8 @@ function ReadonlyMoisture({ values, uplGrade }) {
                             {!mStatus && <span className="qc-upl-na">—</span>}
                           </td>
                         )}
+                        <td>{e.sampleTime || '—'}</td>
+                        <td>{e.bagNo || '—'}</td>
                         <td>{e.time}</td>
                       </tr>
                     )
@@ -322,6 +326,30 @@ function ReadonlySieve({ formula, values }) {
                   </div>
                 )
               })}
+              {/* Plain-card Wet/Dry Sieve Sample Time + Bag No. (non export/omri
+                  grades). Only shown when the saved record carried them. */}
+              {(values[`${formula.id}_sample_time`] || values[`${formula.id}_bag_no`]) && (
+                <>
+                  <div className="qc-var-row qc-var-row-extra">
+                    <label className="qc-var-label">
+                      <span className="qc-var-sym">Sample Time</span>
+                      <span className="qc-var-desc">Time the sample was drawn</span>
+                    </label>
+                    <div className="qc-input-unit">
+                      <span className="mr-readonly-val">{values[`${formula.id}_sample_time`] || '—'}</span>
+                    </div>
+                  </div>
+                  <div className="qc-var-row qc-var-row-extra">
+                    <label className="qc-var-label">
+                      <span className="qc-var-sym">Bag No.</span>
+                      <span className="qc-var-desc">Bag number of the sample</span>
+                    </label>
+                    <div className="qc-input-unit">
+                      <span className="mr-readonly-val">{values[`${formula.id}_bag_no`] || '—'}</span>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
             <div className="qc-calc-result">
               <span className="qc-calc-label">Result:</span>
@@ -341,7 +369,7 @@ function ReadonlySieve({ formula, values }) {
             <div className="qc-sieve-log-scroll">
               <table className="qc-sieve-log-table">
                 <thead>
-                  <tr><th>#</th><th>Micron</th><th>Result</th><th>Status</th><th>Time</th></tr>
+                  <tr><th>#</th><th>Micron</th><th>Result</th><th>Status</th><th>Sample Time</th><th>Bag No.</th><th>Time</th></tr>
                 </thead>
                 <tbody>
                   {log.map((e, i) => (
@@ -354,6 +382,8 @@ function ReadonlySieve({ formula, values }) {
                         {e.status === 'FAIL' && <span className="qc-upl-fail">Fail</span>}
                         {e.status !== 'PASS' && e.status !== 'FAIL' && <span className="qc-upl-na">—</span>}
                       </td>
+                      <td>{e.sampleTime || '—'}</td>
+                      <td>{e.bagNo || '—'}</td>
                       <td>{e.time}</td>
                     </tr>
                   ))}
@@ -401,12 +431,13 @@ function ReadonlyUplTable({ uplGrade, uplRows, observed }) {
                 </tr>
                 {g.rows.map(row => {
                   const obs = observed(row)
+                  const status = evaluate(obs, row.rule)
                   return (
                     <tr key={row.id}>
                       <td>{row.parameter}{row.unit ? ` (${row.unit})` : ''}</td>
                       <td>{row.specDisplay}</td>
                       <td>
-                        <span className="mr-readonly-val" style={{ minWidth: 60 }}>
+                        <span className={`mr-readonly-val${status === 'PASS' ? ' qc-val-pass' : status === 'FAIL' ? ' qc-val-fail' : ''}`} style={{ minWidth: 60 }}>
                           {obs !== '' ? obs : '—'}
                         </span>
                       </td>
@@ -459,12 +490,13 @@ function ReadonlyTableGrade({ tableGrade, gradeKey, observed }) {
                 </tr>
                 {g.rows.map(row => {
                   const obs = observed(row)
+                  const status = evaluate(obs, row.rule)
                   return (
                     <tr key={row.id}>
                       <td>{row.parameter}{row.unit ? ` (${row.unit})` : ''}</td>
                       <td>{row.specDisplay}</td>
                       <td>
-                        <span className="mr-readonly-val" style={{ minWidth: 60 }}>
+                        <span className={`mr-readonly-val${status === 'PASS' ? ' qc-val-pass' : status === 'FAIL' ? ' qc-val-fail' : ''}`} style={{ minWidth: 60 }}>
                           {obs !== '' ? obs : '—'}
                         </span>
                       </td>
@@ -554,6 +586,8 @@ function BatchInfoStrip({ tab, record }) {
     if (values.dryer)         fields.push(['Dryer',                values.dryer])
     if (values.time)          fields.push(['Batch Start Time',     values.time])
     if (values.end_time)      fields.push(['Batch End Time',       values.end_time])
+    if (values.fg_susp_sample_time) fields.push(['Susp. Sample Time', values.fg_susp_sample_time])
+    if (values.fg_susp_bag_no)      fields.push(['Susp. Bag No.',     values.fg_susp_bag_no])
   }
   if (fields.length === 0) return null
   return (

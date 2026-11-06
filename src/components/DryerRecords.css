@@ -1,0 +1,292 @@
+/*
+   DRYER RECORDS — Records history view
+   ════════════════════════════════════ */
+
+/* ── Wrapper ── */
+.drec-wrapper {
+  background: #fff;
+  min-height: 200px;
+}
+
+/* ── Toolbar (dryer type filter) ── */
+.drec-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fafaf8;
+  border-bottom: 1px solid #e0dbd4;
+  flex-wrap: wrap;
+}
+
+.drec-filter-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.drec-filter-btn {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #555;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.drec-filter-btn:hover  { border-color: #2e6da4; color: #2e6da4; }
+.drec-filter-active     { background: #2e6da4 !important; border-color: #2e6da4 !important; color: #fff !important; }
+
+/* ── Date filter bar ── */
+.drec-date-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: #f0f4fa;
+  border-bottom: 1px solid #e0dbd4;
+  flex-wrap: wrap;
+}
+.drec-date-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: #555;
+  white-space: nowrap;
+}
+.drec-date-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.drec-date-input {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #2d2d2d;
+  background: #fff;
+  cursor: pointer;
+}
+.drec-date-input:focus { outline: none; border-color: #2e6da4; }
+.drec-date-clear {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #666;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.drec-date-clear:hover { border-color: #2e6da4; color: #2e6da4; background: #eef3fb; }
+.drec-date-showing {
+  font-size: 11px;
+  color: #2e6da4;
+  font-weight: 600;
+  font-style: italic;
+}
+
+/* ── Count ── */
+.drec-count {
+  padding: 8px 16px 4px;
+  font-size: 11px;
+  color: #888;
+  font-style: italic;
+}
+
+/* ── Status messages ── */
+.drec-msg {
+  padding: 24px 20px;
+  color: #888;
+  font-size: 13px;
+  text-align: center;
+}
+.drec-msg-error {
+  color: #c62828;
+  background: #fff5f5;
+  border-top: 1px solid #ef9a9a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.drec-retry-btn {
+  background: #fff;
+  border: 1px solid #ef9a9a;
+  border-radius: 4px;
+  padding: 5px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #c62828;
+  cursor: pointer;
+}
+.drec-retry-btn:hover { background: #ffeaea; }
+
+/* ── Record list ── */
+.drec-list {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* ── Record card ── */
+.drec-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #fff;
+  border: 1px solid #e0dbd4;
+  border-radius: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  text-align: left;
+  transition: box-shadow 0.15s, border-color 0.15s;
+  width: 100%;
+}
+.drec-card:hover {
+  box-shadow: 0 2px 8px rgba(46,109,164,0.12);
+  border-color: #2e6da4;
+}
+.drec-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.drec-card-dryer {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2e6da4;
+}
+.drec-card-date {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d2d2d;
+}
+.drec-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.drec-card-chip {
+  background: #f0f4fa;
+  border: 1px solid #d0dae8;
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  color: #3a5070;
+  font-weight: 500;
+}
+.drec-card-saved {
+  font-size: 10px;
+  color: #aaa;
+  font-style: italic;
+}
+
+/* ── Pagination ── */
+.drec-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 16px;
+  border-top: 1px solid #e0dbd4;
+}
+.drec-page-btn {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2e6da4;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.drec-page-btn:hover:not(:disabled) { background: #eef3fb; border-color: #2e6da4; }
+.drec-page-btn:disabled { opacity: 0.4; cursor: default; }
+.drec-page-label { font-size: 12px; color: #666; }
+
+/* ════════════════════════════════════
+   READ-ONLY DETAIL VIEW OVERRIDES
+   The detail view reuses dr-* classes from DryerSection.css for the table,
+   blower bar, footer etc. These overrides only cover elements that need to
+   look "display" rather than "editable".
+   ════════════════════════════════════ */
+
+/* Wrapper keeps form look but no pointer events on inputs */
+.drec-readonly-wrapper {
+  pointer-events: auto; /* allow scrolling & Back button */
+}
+
+/* "View Only" badge beside the title */
+.drec-readonly-badge {
+  display: inline-block;
+  background: #f0f4fa;
+  border: 1px solid #2e6da4;
+  border-radius: 12px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #2e6da4;
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Read-only field display — replaces <input> for non-table fields */
+.drec-meta-display {
+  display: flex !important;
+  align-items: center;
+  background: #f8f7f4 !important;
+  cursor: default !important;
+  color: #2d2d2d;
+  min-height: 34px;
+  pointer-events: none;
+}
+
+/* Total production parts display */
+.drec-total-display {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  background: #f8f7f4 !important;
+  cursor: default !important;
+  color: #2d2d2d;
+  min-height: 34px;
+  font-size: 13px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Table cells — read-only value container */
+.drec-cell-val {
+  padding: 2px 4px;
+  font-size: 12px;
+  color: #2d2d2d;
+  text-align: center;
+  min-width: 30px;
+}
+
+/* Temperature cell tint (mirrors .dr-temp-cell) */
+.drec-temp-cell {
+  background: #f0f8ff;
+}
+
+/* Blank placeholder */
+.drec-blank {
+  color: #ccc;
+}
+
+/* Maintenance checkmark */
+.drec-maint-check {
+  color: #2e7d32;
+  font-weight: 700;
+  margin-right: 4px;
+}

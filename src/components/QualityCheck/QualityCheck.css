@@ -1270,3 +1270,106 @@
   margin-top: 6px;
   line-height: 1.4;
 }
+
+/* ── Value colour: green when PASS, red when FAIL ── */
+/* Applied to the input/select/span that holds the result value.
+   Use high-specificity selectors + !important to beat :focus overrides. */
+input.qc-upl-input-pass,
+select.qc-upl-input-pass,
+input.qc-upl-input-pass:focus,
+select.qc-upl-input-pass:focus {
+  border-color: #66bb6a !important;
+  background: #f1fdf2 !important;
+  color: #2e7d32 !important;
+  font-weight: 700 !important;
+  outline: none !important;
+}
+input.qc-upl-input-fail,
+select.qc-upl-input-fail,
+input.qc-upl-input-fail:focus,
+select.qc-upl-input-fail:focus {
+  border-color: #ef5350 !important;
+  background: #fff5f5 !important;
+  color: #c62828 !important;
+  font-weight: 700 !important;
+  outline: none !important;
+}
+
+/* For read-only spans (MyRecords UPL / TableGrade tables + moisture log) */
+.qc-val-pass {
+  color: #2e7d32 !important;
+  font-weight: 700;
+}
+.qc-val-fail {
+  color: #c62828 !important;
+  font-weight: 700;
+}
+
+/* ── qc-input value colour (spec-single, SpecTable, moisture input) ── */
+input.qc-input-pass,
+select.qc-input-pass,
+input.qc-input-pass:focus,
+select.qc-input-pass:focus {
+  border-color: #66bb6a !important;
+  background: #f1fdf2 !important;
+  color: #2e7d32 !important;
+  font-weight: 700 !important;
+  outline: none !important;
+}
+input.qc-input-fail,
+select.qc-input-fail,
+input.qc-input-fail:focus,
+select.qc-input-fail:focus {
+  border-color: #ef5350 !important;
+  background: #fff5f5 !important;
+  color: #c62828 !important;
+  font-weight: 700 !important;
+  outline: none !important;
+}
+
+/* ── Sample Time + Bag No. input row (Suspensibility / Moisture / Sieve) ──
+   Sits flush below the formula card, same bordered look as .qc-sieve-apply-bar.
+   Used for the per-reading sample time + bag no. captured on Record. */
+.qc-record-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: #fffdf9;
+  border: 1px solid #e0dbd4;
+  border-top: none;
+  flex-wrap: wrap;
+}
+/* When a meta-row is the last bar under a card, round its bottom corners. */
+.qc-record-meta-row:last-child {
+  border-radius: 0 0 6px 6px;
+}
+/* Extra variable rows injected into a formula card (Suspensibility Sample Time
+   + Bag No. under the BR row). Separated from the formula variables with a
+   subtle divider so it's clear they are sample-identity fields, not formula
+   inputs. */
+.qc-var-row-extra:first-of-type {
+  border-top: 1px dashed #e0dbd4;
+  margin-top: 6px;
+  padding-top: 10px;
+}
+.qc-record-meta-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  white-space: nowrap;
+}
+.qc-record-meta-input {
+  flex: 1 1 110px;
+  min-width: 0;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #fff;
+}
+.qc-record-meta-input:focus { outline: none; border-color: #b85c2c; }
+@media (max-width: 640px) {
+  .qc-record-meta-row { flex-direction: column; align-items: stretch; }
+  .qc-record-meta-input { flex: 1 1 auto; }
+}
