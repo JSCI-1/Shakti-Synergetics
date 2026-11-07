@@ -1542,6 +1542,18 @@ function DryerForm({
             startup:           form.startup,
             packed_production: form.packed_production,
             total_production:  computeTotalProduction(form),
+            // Calibration
+            calibration_due:   form.calibration_due,
+            cal_inlet_temp:    form.cal_inlet_temp,
+            cal_inlet_sensor:  form.cal_inlet_sensor,
+            cal_outlet_temp:   form.cal_outlet_temp,
+            cal_outlet_sensor: form.cal_outlet_sensor,
+            cal_ifbd_temp:     form.cal_ifbd_temp,
+            cal_ifbd_sensor:   form.cal_ifbd_sensor,
+            cal_fbd_temp:      form.cal_fbd_temp,
+            cal_fbd_sensor:    form.cal_fbd_sensor,
+            cal_chamber_temp:   form.cal_chamber_temp,
+            cal_chamber_sensor: form.cal_chamber_sensor,
           },
         }).catch(() => { /* non-fatal — email failure never blocks the save */ })
       }

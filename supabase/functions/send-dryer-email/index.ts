@@ -3,18 +3,14 @@
  *
  * Two modes:
  *   1. Normal call  { date, dryer_type, operator, incharge, rows, ... }
- *      → build + send email immediately
+ *      → build a CSV report (hourly log + blower + production + calibration)
+ *      → send a short email with the CSV attached
  *      → on failure → write to email_queue for retry
- *
  *   2. Retry call   { _retry: true }
- *      → pick up pending rows from email_queue
- *      → resend each one (up to 3 attempts)
+ *      → pick up pending rows from email_queue, resend (up to 3 attempts)
  *
  * Required Supabase secrets:
- *   GMAIL_SERVICE_ACCOUNT_KEYS_BASE64
- *   GMAIL_SENDER
- *   GMAIL_TO
- *   GMAIL_CC
+ *   GMAIL_SERVICE_ACCOUNT_KEYS_BASE64, GMAIL_SENDER, GMAIL_TO, GMAIL_CC
  */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -27,31 +23,47 @@ const TIME_SLOTS = [
   '00:00','01:00','02:00','03:00','04:00','05:00','06:00','07:00',
 ]
 
+// 22-column hourly table (Time + these 21). Order matches the website table.
 const HOURLY_COLS: { key: string; label: string }[] = [
-  { key: 'temp_inlet',    label: 'Inlet °C'      },
-  { key: 'temp_outlet',   label: 'Outlet °C'     },
-  { key: 'temp_actual',   label: 'Actual °C'     },
-  { key: 'temp_fbd1',     label: 'IFBD °C'       },
-  { key: 'temp_fbd2',     label: 'FBD °C'        },
-  { key: 'temp_chamber',  label: 'Chamber °C'    },
+  { key: 'temp_inlet',    label: 'Inlet' },
+  { key: 'temp_outlet',   label: 'Outlet' },
+  { key: 'temp_actual',   label: 'Actual' },
+  { key: 'temp_fbd1',     label: 'IFBD' },
+  { key: 'temp_fbd2',     label: 'FBD' },
+  { key: 'temp_chamber',  label: 'Chamber' },
   { key: 'atomizer_freq', label: 'Atomizer Freq' },
-  { key: 'feed_fc',       label: 'Feed F.C.'     },
-  { key: 'c_pressure',    label: 'C.Pressure'    },
+  { key: 'feed_fc',       label: 'Feed F.C.' },
+  { key: 'c_pressure',    label: 'C.Pressure' },
   { key: 'pressure',      label: 'Feed Pressure' },
-  { key: 'pt_temp',       label: 'Pt. Temp'      },
-  { key: 'batch_no',      label: 'Batch No.'     },
-  { key: 'bags_per_hr',   label: 'Bags/Hr'       },
-  { key: 'bag_size_wt',   label: 'Bag Size Wt'   },
-  { key: 'kg_per_hr',     label: 'Kg/Hr'         },
-  { key: 'colour',        label: 'Colour'        },
-  { key: 'id_frequency',  label: 'ID Freq.'      },
-  { key: 'remarks',       label: 'Remarks'       },
+  { key: 'pt_temp',       label: 'Pt. Temp' },
+  { key: 'batch_no',      label: 'Batch No.' },
+  { key: 'bags_per_hr',   label: 'Bags/Hr' },
+  { key: 'bag_size_wt',   label: 'Bag Size Wt' },
+  { key: 'kg_per_hr',     label: 'Kg/Hr' },
+  { key: 'colour',        label: 'Colour' },
+  { key: 'id_frequency',  label: 'I.D. Frequency' },
+  { key: 'remarks',       label: 'Remarks' },
+  { key: 'operator_name', label: 'Operator Name' },
+  // maintenance + timestamp handled specially (objects / display string)
 ]
 
 const RANGE_FIELDS = new Set([
   'temp_inlet','temp_outlet','temp_actual','temp_fbd1','temp_fbd2',
   'temp_chamber','atomizer_freq','feed_fc','c_pressure','pt_temp','id_frequency',
 ])
+
+const CAL_SENSORS = [
+  { key: 'inlet',   label: 'Inlet'   },
+  { key: 'outlet',  label: 'Outlet'  },
+  { key: 'ifbd',    label: 'IFBD'    },
+  { key: 'fbd',     label: 'FBD'     },
+  { key: 'chamber', label: 'Chamber' },
+]
+
+const MAINT_LABELS: Record<string, string> = {
+  shifter_screen: 'Shifter-Screen Cleaning',
+  atomizer_water: 'Running the Atomizer on Water',
+}
 
 const MAX_RETRIES = 3
 
@@ -60,14 +72,137 @@ const MAX_RETRIES = 3
 const env = (k: string) => (Deno.env.get(k) ?? '').trim()
 
 const v = (val: unknown): string =>
-  (val === undefined || val === null || val === '') ? '—' : String(val)
+  (val === undefined || val === null || val === '') ? '' : String(val)
 
-// Supabase admin client for email_queue access
 function adminClient() {
-  return createClient(
-    env('SUPABASE_URL'),
-    env('SUPABASE_SERVICE_ROLE_KEY'),
-  )
+  return createClient(env('SUPABASE_URL'), env('SUPABASE_SERVICE_ROLE_KEY'))
+}
+
+// CSV field escaper — wraps in quotes if it contains comma, quote or newline.
+function csv(val: unknown): string {
+  const s = v(val)
+  if (s === '') return ''
+  if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`
+  return s
+}
+
+// Render the maintenance object into a readable cell.
+function renderMaint(m: unknown): string {
+  if (!m || typeof m !== 'object') return ''
+  const obj = m as Record<string, string>
+  const parts: string[] = []
+  for (const key of Object.keys(MAINT_LABELS)) {
+    if (obj[key]) {
+      // obj[key] is an ISO timestamp; show label + HH:MM IST
+      let t = ''
+      try {
+        t = new Date(obj[key]).toLocaleTimeString('en-IN', {
+          timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true,
+        })
+      } catch { /* ignore */ }
+      parts.push(t ? `${MAINT_LABELS[key]} - ${t}` : MAINT_LABELS[key])
+    }
+  }
+  return parts.join(' | ')
+}
+
+// ── Build the CSV report ──────────────────────────────────────────────────────
+
+function buildCsv(payload: Record<string, unknown>): string {
+  const date       = v(payload.date)
+  const dryerType  = String(payload.dryer_type ?? '')
+  const dryerLabel = dryerType === 'new' ? 'New Dryer' : 'Old Dryer'
+  const operator   = v(payload.operator)
+  const incharge   = v(payload.incharge)
+  const rows       = Array.isArray(payload.rows) ? payload.rows : []
+
+  const lines: string[] = []
+
+  // ── Title + meta ──
+  lines.push('JAISHIL SULPHUR & CHEMICAL INDUSTRIES - DRYER LOG')
+  lines.push('')
+  lines.push(['Date', csv(date), '', 'Dryer', csv(dryerLabel), '', 'Operator', csv(operator), '', 'Incharge', csv(incharge)].join(','))
+  lines.push('')
+
+  // ── Hourly log table (22 columns) ──
+  lines.push('HOURLY LOG TABLE')
+  const header = ['Time', ...HOURLY_COLS.map(c => c.label), 'Maintenance', 'Timestamp']
+  lines.push(header.map(csv).join(','))
+
+  TIME_SLOTS.forEach((slot, idx) => {
+    const row      = (rows[idx] && typeof rows[idx] === 'object') ? rows[idx] as Record<string, unknown> : {}
+    const cautions = (row.__cautions && typeof row.__cautions === 'object') ? row.__cautions as Record<string, string> : {}
+    const cells: string[] = [csv(slot)]
+    HOURLY_COLS.forEach(col => {
+      let val = v(row[col.key])
+      if (RANGE_FIELDS.has(col.key) && cautions[col.key] && val !== '') {
+        val = `${val} (${cautions[col.key] === 'high' ? 'EXCEEDS LIMIT' : 'BELOW LIMIT'})`
+      }
+      cells.push(csv(val))
+    })
+    cells.push(csv(renderMaint(row.maintenance)))
+    cells.push(csv(row.timestamp))
+    lines.push(cells.join(','))
+  })
+
+  lines.push('')
+  lines.push('')
+
+  // ── Side-by-side summary tables: Blower | Production | Calibration ──
+  const blowers = [
+    { label: 'ID Blower', dp: v(payload.id_blower_dp), mr: v(payload.id_blower_mr) },
+    { label: 'FD Blower', dp: v(payload.fd_blower_dp), mr: v(payload.fd_blower_mr) },
+    { label: 'IFBD',      dp: v(payload.ifbd_dp),       mr: v(payload.ifbd_mr)      },
+    { label: 'FBD %',     dp: v(payload.fbd_pct_dp),    mr: v(payload.fbd_pct_mr)   },
+  ]
+  const prod = [
+    { label: 'Fine Powder',       val: v(payload.fine_powder)       },
+    { label: 'Crust / Papadi',    val: v(payload.crust_papadi)      },
+    { label: 'Startup',           val: v(payload.startup)           },
+    { label: 'Packed Production', val: v(payload.packed_production) },
+    { label: 'Total Production',  val: v(payload.total_production)  },
+  ]
+  const cal = CAL_SENSORS.map(s => ({
+    label: s.label,
+    temp:  v(payload[`cal_${s.key}_temp`]),
+    sens:  v(payload[`cal_${s.key}_sensor`]),
+  }))
+  const calDue = v(payload.calibration_due)
+
+  // Section header row (blank column between each block)
+  lines.push(['BLOWER READINGS', '', '', '', 'PRODUCTION SUMMARY', '', '', 'CALIBRATION'].map(csv).join(','))
+  // Column header row
+  lines.push(['Blower', 'DP', 'MR', '', 'Item', 'Qty', '', 'Sensor', 'Temp', 'Value'].map(csv).join(','))
+
+  // Build up to the tallest block (6 rows: 5 sensors + cal due; prod has 5; blower 4)
+  const maxLen = 6
+  for (let i = 0; i < maxLen; i++) {
+    const b = blowers[i]
+    const p = prod[i]
+    const c = cal[i]
+    const row: string[] = []
+    // Blower (3 cols)
+    row.push(csv(b ? b.label : ''), csv(b ? b.dp : ''), csv(b ? b.mr : ''))
+    row.push('') // gap
+    // Production (2 cols)
+    row.push(csv(p ? p.label : ''), csv(p ? p.val : ''))
+    row.push('') // gap
+    // Calibration (3 cols) — rows 0..4 are sensors, row 5 is Cal Due
+    if (c) {
+      row.push(csv(c.label), csv(c.temp), csv(c.sens))
+    } else if (i === 5) {
+      row.push(csv('Cal. Due'), csv(calDue), '')
+    } else {
+      row.push('', '', '')
+    }
+    lines.push(row.join(','))
+  }
+
+  lines.push('')
+  const savedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })
+  lines.push(`Saved at,${csv(savedAt)} IST`)
+
+  return lines.join('\r\n')
 }
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────
@@ -108,174 +243,15 @@ async function getAccessToken(saJson: Record<string, string>, subject: string): 
   return data.access_token
 }
 
-// ── HTML Builder ──────────────────────────────────────────────────────────────
-
-function buildHtml(payload: Record<string, unknown>): string {
-  const date       = v(payload.date)
-  const dryerType  = String(payload.dryer_type ?? '')
-  const dryerLabel = dryerType === 'new' ? 'New Dryer' : 'Old Dryer'
-  const operator   = v(payload.operator)
-  const incharge   = v(payload.incharge)
-  const rows       = Array.isArray(payload.rows) ? payload.rows : []
-
-  // Blower readings
-  const blowers = [
-    { label: 'ID Blower',  dp: v(payload.id_blower_dp),  mr: v(payload.id_blower_mr)  },
-    { label: 'FD Blower',  dp: v(payload.fd_blower_dp),  mr: v(payload.fd_blower_mr)  },
-    { label: 'IFBD',       dp: v(payload.ifbd_dp),        mr: v(payload.ifbd_mr)        },
-    { label: 'FBD %',      dp: v(payload.fbd_pct_dp),     mr: v(payload.fbd_pct_mr)     },
-  ]
-
-  // Production summary
-  const finePowder   = v(payload.fine_powder)
-  const crustPapadi  = v(payload.crust_papadi)
-  const startup      = v(payload.startup)
-  const packed       = v(payload.packed_production)
-  const total        = v(payload.total_production)
-
-  // Saved at
-  const savedAt = new Date().toLocaleString('en-IN', { timeZone:'Asia/Kolkata', hour12:true })
-
-  // ── Styles ──
-  const S = {
-    th:     `style="background:#b85c2c;color:#fff;padding:6px 8px;border:1px solid #c8773e;font-size:11px;white-space:nowrap;text-align:center;"`,
-    td:     `style="padding:5px 7px;border:1px solid #ddd;font-size:11px;text-align:center;background:#fff;"`,
-    tdAlt:  `style="padding:5px 7px;border:1px solid #ddd;font-size:11px;text-align:center;background:#fdf6ef;"`,
-    tdWarn: `style="padding:5px 7px;border:1px solid #ddd;font-size:11px;text-align:center;background:#fff8e1;text-decoration:underline;text-decoration-color:#b85c00;font-weight:700;color:#b85c00;"`,
-    thSm:   `style="background:#8d4a1e;color:#fff;padding:5px 8px;border:1px solid #c8773e;font-size:11px;text-align:center;"`,
-    tdSm:   `style="padding:5px 8px;border:1px solid #ddd;font-size:11px;text-align:center;background:#fff;"`,
-    label:  `style="padding:5px 8px;border:1px solid #ddd;font-size:11px;background:#fdf6ef;color:#555;font-weight:600;"`,
-    value:  `style="padding:5px 8px;border:1px solid #ddd;font-size:11px;text-align:center;background:#fff;font-weight:700;"`,
-  }
-
-  // ── Hourly rows ──
-  let hourlyRows = ''
-  TIME_SLOTS.forEach((slot, idx) => {
-    const row      = (rows[idx] && typeof rows[idx] === 'object') ? rows[idx] as Record<string,unknown> : {}
-    const cautions = (row.__cautions && typeof row.__cautions === 'object') ? row.__cautions as Record<string,string> : {}
-    const bg       = idx % 2 === 0 ? S.td : S.tdAlt
-    let cells = `<td ${bg}><strong>${slot}</strong></td>`
-    HOURLY_COLS.forEach(col => {
-      const val       = v(row[col.key])
-      const hasCaution = RANGE_FIELDS.has(col.key) && !!cautions[col.key]
-      const note       = hasCaution ? (cautions[col.key] === 'high' ? ' ⚠ Exceeds' : ' ⚠ Below') : ''
-      cells += hasCaution
-        ? `<td ${S.tdWarn}>${val}${note}</td>`
-        : `<td ${bg}>${val}</td>`
-    })
-    hourlyRows += `<tr>${cells}</tr>`
-  })
-
-  // ── Blower rows ──
-  const blowerRows = blowers.map(b =>
-    `<tr>
-      <td ${S.label}>${b.label}</td>
-      <td ${S.value}>${b.dp}</td>
-      <td ${S.value}>${b.mr}</td>
-    </tr>`
-  ).join('')
-
-  return `<!DOCTYPE html>
-<html>
-<head><meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-</head>
-<body style="margin:0;padding:0;background:#f0ebe4;font-family:Arial,sans-serif;">
-<div style="max-width:960px;margin:20px auto;background:#fff;border-radius:6px;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,0.15);">
-
-  <!-- ── Header ── -->
-  <div style="background:#b85c2c;padding:16px 24px;">
-    <div style="color:#fff;font-size:18px;font-weight:900;letter-spacing:0.5px;">JAISHIL SULPHUR &amp; CHEMICAL INDUSTRIES</div>
-    <div style="color:#ffe0cc;font-size:12px;margin-top:3px;">Dryer Log Sheet — ${dryerLabel}</div>
-  </div>
-
-  <!-- ── Meta bar ── -->
-  <table style="width:100%;border-collapse:collapse;background:#fdf6ef;border-bottom:2px solid #d8c8b8;">
-    <tr>
-      <td style="padding:10px 20px;font-size:12px;border-right:1px solid #e0d0c0;">
-        <span style="color:#888;">Date</span><br><strong>${date}</strong>
-      </td>
-      <td style="padding:10px 20px;font-size:12px;border-right:1px solid #e0d0c0;">
-        <span style="color:#888;">Dryer</span><br><strong>${dryerLabel}</strong>
-      </td>
-      <td style="padding:10px 20px;font-size:12px;border-right:1px solid #e0d0c0;">
-        <span style="color:#888;">Operator</span><br><strong>${operator}</strong>
-      </td>
-      <td style="padding:10px 20px;font-size:12px;">
-        <span style="color:#888;">Incharge</span><br><strong>${incharge}</strong>
-      </td>
-    </tr>
-  </table>
-
-  <!-- ── Section: Hourly Log ── -->
-  <div style="padding:16px 20px 8px;">
-    <div style="font-size:13px;font-weight:700;color:#b85c2c;margin-bottom:8px;border-left:4px solid #b85c2c;padding-left:8px;">
-      Hourly Log Table
-    </div>
-    <div style="overflow-x:auto;">
-      <table style="border-collapse:collapse;min-width:900px;width:100%;">
-        <thead>
-          <tr>
-            <th ${S.th}>Time</th>
-            ${HOURLY_COLS.map(c => `<th ${S.th}>${c.label}</th>`).join('')}
-          </tr>
-        </thead>
-        <tbody>${hourlyRows}</tbody>
-      </table>
-    </div>
-    <div style="margin-top:6px;font-size:10px;color:#b85c00;">
-      ⚠ Underlined values were outside the expected range and acknowledged by the operator.
-    </div>
-  </div>
-
-  <!-- ── Section: Blower Readings ── -->
-  <div style="padding:16px 20px 8px;">
-    <div style="font-size:13px;font-weight:700;color:#b85c2c;margin-bottom:8px;border-left:4px solid #b85c2c;padding-left:8px;">
-      Blower Readings
-    </div>
-    <table style="border-collapse:collapse;width:320px;">
-      <thead>
-        <tr>
-          <th ${S.thSm}>Blower</th>
-          <th ${S.thSm}>DP</th>
-          <th ${S.thSm}>MR</th>
-        </tr>
-      </thead>
-      <tbody>${blowerRows}</tbody>
-    </table>
-  </div>
-
-  <!-- ── Section: Production Summary ── -->
-  <div style="padding:16px 20px 8px;">
-    <div style="font-size:13px;font-weight:700;color:#b85c2c;margin-bottom:8px;border-left:4px solid #b85c2c;padding-left:8px;">
-      Production Summary
-    </div>
-    <table style="border-collapse:collapse;width:320px;">
-      <tbody>
-        <tr><td ${S.label}>Fine Powder</td><td ${S.value}>${finePowder} kg</td></tr>
-        <tr><td ${S.label}>Crust / Papadi</td><td ${S.value}>${crustPapadi} kg</td></tr>
-        <tr><td ${S.label}>Startup</td><td ${S.value}>${startup} kg</td></tr>
-        <tr><td ${S.label}>Packed Production</td><td ${S.value}>${packed} kg</td></tr>
-        <tr>
-          <td style="padding:5px 8px;border:1px solid #ddd;font-size:12px;background:#b85c2c;color:#fff;font-weight:700;">Total Production</td>
-          <td style="padding:5px 8px;border:1px solid #ddd;font-size:12px;background:#b85c2c;color:#fff;font-weight:700;text-align:center;">${total} kg</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
-  <!-- ── Footer ── -->
-  <div style="margin-top:16px;background:#f0e8df;padding:10px 20px;font-size:10px;color:#999;text-align:center;border-top:1px solid #e0d0c0;">
-    Saved at: ${savedAt} IST &nbsp;|&nbsp;
-    This is an automated email from Shakti Synergetics — Dryer Log System. Do not reply.
-  </div>
-
-</div>
-</body>
-</html>`
+// ── UTF-8 safe base64 ───────────────────────────────────────────────────────
+function utf8ToB64(str: string): string {
+  const bytes = new TextEncoder().encode(str)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i])
+  return btoa(binary)
 }
 
-// ── Send via Gmail API ────────────────────────────────────────────────────────
+// ── Send via Gmail API (with CSV attachment) ────────────────────────────────
 
 async function sendEmail(payload: Record<string, unknown>): Promise<void> {
   const saB64  = env('GMAIL_SERVICE_ACCOUNT_KEYS_BASE64')
@@ -285,35 +261,82 @@ async function sendEmail(payload: Record<string, unknown>): Promise<void> {
 
   if (!saB64 || !sender || !toRaw) throw new Error('Missing required email secrets')
 
+  // Empty-form guard: skip when the WHOLE form has no hourly data.
+  const guardRows = Array.isArray(payload.rows) ? payload.rows : []
+  const hasAnyData = guardRows.some(r => {
+    if (!r || typeof r !== 'object') return false
+    const row = r as Record<string, unknown>
+    return HOURLY_COLS.some(col => {
+      const val = row[col.key]
+      return val !== undefined && val !== null && String(val).trim() !== ''
+    })
+  })
+  if (!hasAnyData) {
+    console.log('[send-dryer-email] Skipped — form has no hourly data (empty payload).')
+    return
+  }
+
   const saJson      = JSON.parse(atob(saB64)) as Record<string, string>
   const accessToken = await getAccessToken(saJson, sender)
 
   const dryerType  = String(payload.dryer_type ?? '')
   const dryerLabel = dryerType === 'new' ? 'New Dryer' : 'Old Dryer'
-  const subject    = `Shakti Synergetics — Dryer Record | ${dryerLabel} | ${v(payload.date)} | Operator: ${v(payload.operator)} | Incharge: ${v(payload.incharge)}`
-  const html       = buildHtml(payload)
+  const date       = v(payload.date)
+  const operator   = v(payload.operator) || '—'
+  const incharge   = v(payload.incharge) || '—'
+  const subject    = `Shakti Synergetics — Dryer Record | ${dryerLabel} | ${date}`
+
+  const csvContent = buildCsv(payload)
+  const csvFileName = `Dryer_Log_${dryerLabel.replace(/\s+/g, '')}_${date || 'report'}.csv`
+
+  // Short HTML body
+  const bodyHtml = `<!DOCTYPE html><html><head><meta charset="UTF-8"></head>
+<body style="font-family:Arial,sans-serif;color:#222;font-size:14px;line-height:1.6;">
+  <p><strong>Dryer Log Sheet — ${dryerLabel}</strong></p>
+  <table style="border-collapse:collapse;font-size:13px;">
+    <tr><td style="padding:2px 12px 2px 0;color:#888;">Date</td><td style="font-weight:600;">${date}</td></tr>
+    <tr><td style="padding:2px 12px 2px 0;color:#888;">Operator</td><td style="font-weight:600;">${operator}</td></tr>
+    <tr><td style="padding:2px 12px 2px 0;color:#888;">Incharge</td><td style="font-weight:600;">${incharge}</td></tr>
+  </table>
+  <p>The full dryer log report (hourly readings, blower readings, production summary and calibration) is attached as a spreadsheet (CSV) file.</p>
+  <p style="color:#999;font-size:11px;">Automated email from Shakti Synergetics — Dryer Log System. Do not reply.</p>
+</body></html>`
 
   const toList = toRaw.split(',').map(s => s.trim()).filter(Boolean)
   const ccList = ccRaw ? ccRaw.split(',').map(s => s.trim()).filter(Boolean) : []
 
+  // RFC 2047 encode subject for unicode safety.
+  const encodedSubject = `=?UTF-8?B?${utf8ToB64(subject)}?=`
+
+  // Build a multipart/mixed message: HTML body + CSV attachment.
   const boundary = `----=_Part_${Date.now()}`
+  const csvB64 = utf8ToB64(csvContent)
+
   const rawLines = [
     `From: Shakti Synergetics <${sender}>`,
     `To: ${toList.join(', ')}`,
     ...(ccList.length ? [`Cc: ${ccList.join(', ')}`] : []),
-    `Subject: ${subject}`,
+    `Subject: ${encodedSubject}`,
     'MIME-Version: 1.0',
-    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
     '',
     `--${boundary}`,
     'Content-Type: text/html; charset=UTF-8',
     'Content-Transfer-Encoding: base64',
     '',
-    btoa(unescape(encodeURIComponent(html))),
+    utf8ToB64(bodyHtml),
+    '',
+    `--${boundary}`,
+    `Content-Type: text/csv; charset=UTF-8; name="${csvFileName}"`,
+    'Content-Transfer-Encoding: base64',
+    `Content-Disposition: attachment; filename="${csvFileName}"`,
+    '',
+    csvB64,
     '',
     `--${boundary}--`,
   ]
-  const rawB64 = btoa(rawLines.join('\r\n'))
+
+  const rawB64 = utf8ToB64(rawLines.join('\r\n'))
     .replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')
 
   const res  = await fetch(
@@ -326,28 +349,35 @@ async function sendEmail(payload: Record<string, unknown>): Promise<void> {
   )
   const data = await res.json() as { id?: string; error?: unknown }
   if (!res.ok) throw new Error(`Gmail API error: ${JSON.stringify(data)}`)
-  console.log('[send-dryer-email] Sent. Message ID:', data.id)
+  console.log('[send-dryer-email] Sent with CSV attachment. Message ID:', data.id)
 }
 
-// ── Write to retry queue ──────────────────────────────────────────────────────
+// ── Retry queue ─────────────────────────────────────────────────────────────
+
+// Dedup key for an entry = dryer_type|date. One email per entry, ever.
+function dedupKey(payload: Record<string, unknown>): string {
+  return `${String(payload.dryer_type ?? '')}|${v(payload.date)}`
+}
 
 async function queueForRetry(payload: Record<string, unknown>, errorMsg: string): Promise<void> {
   try {
     const sb = adminClient()
     const dryerLabel = payload.dryer_type === 'new' ? 'New Dryer' : 'Old Dryer'
-    await sb.from('email_queue').insert({
+    // Upsert on dedup_key so a failed send that was already claimed just updates
+    // the error instead of creating a second row.
+    await sb.from('email_queue').upsert({
+      dedup_key:     dedupKey(payload),
       subject:       `[Dryer Log] ${dryerLabel} | ${v(payload.date)}`,
       payload,
+      status:        'pending',
       error:         errorMsg,
-      next_retry_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(), // 5 min
-    })
+      next_retry_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    }, { onConflict: 'dedup_key' })
     console.log('[send-dryer-email] Queued for retry.')
   } catch (e) {
     console.error('[send-dryer-email] Failed to queue for retry:', e)
   }
 }
-
-// ── Process retry queue ───────────────────────────────────────────────────────
 
 async function processRetryQueue(): Promise<void> {
   const sb = adminClient()
@@ -369,21 +399,18 @@ async function processRetryQueue(): Promise<void> {
     try {
       await sendEmail(row.payload as Record<string, unknown>)
       await sb.from('email_queue').update({
-        status:        'sent',
-        last_tried_at: new Date().toISOString(),
-        error:         null,
+        status: 'sent', last_tried_at: new Date().toISOString(), error: null,
       }).eq('id', row.id)
       console.log(`[retry] Row ${row.id} sent successfully.`)
     } catch (e) {
-      const msg        = e instanceof Error ? e.message : String(e)
-      const newCount   = (row.retry_count ?? 0) + 1
-      const isFinal    = newCount >= MAX_RETRIES
-      const nextRetry  = new Date(Date.now() + 5 * 60 * 1000).toISOString()
+      const msg       = e instanceof Error ? e.message : String(e)
+      const newCount  = (row.retry_count ?? 0) + 1
+      const isFinal   = newCount >= MAX_RETRIES
       await sb.from('email_queue').update({
         status:        isFinal ? 'failed' : 'pending',
         retry_count:   newCount,
         last_tried_at: new Date().toISOString(),
-        next_retry_at: nextRetry,
+        next_retry_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
         error:         msg,
       }).eq('id', row.id)
       console.error(`[retry] Row ${row.id} failed (attempt ${newCount}): ${msg}`)
@@ -393,41 +420,84 @@ async function processRetryQueue(): Promise<void> {
 
 // ── Main handler ──────────────────────────────────────────────────────────────
 
+const CORS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, apikey, x-client-info',
+}
+
+const json = (obj: unknown, status = 200) =>
+  new Response(JSON.stringify(obj), { status, headers: { ...CORS, 'Content-Type': 'application/json' } })
+
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, {
-      headers: {
-        'Access-Control-Allow-Origin':  '*',
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-      },
-    })
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: CORS })
 
   try {
     const body = await req.json() as Record<string, unknown>
 
-    // Retry mode — called by pg_cron every 5 minutes
     if (body._retry === true) {
       await processRetryQueue()
-      return new Response(JSON.stringify({ ok: true, mode: 'retry' }), { status: 200 })
+      return json({ ok: true, mode: 'retry' })
     }
 
-    // Normal mode — called after Save Log Sheet
+    // ── Dedup claim (Idea 4) ──────────────────────────────────────────────
+    // Try to claim this entry's dedup_key by inserting a row. The unique index
+    // on dedup_key means a second attempt for the SAME entry is rejected, so
+    // we never send a duplicate — even across the cron retry path.
+    const key = dedupKey(body)
+    const sb  = adminClient()
+    let claimId: number | null = null
+    try {
+      const { data, error } = await sb.from('email_queue').insert({
+        dedup_key:     key,
+        subject:       `[Dryer Log] ${body.dryer_type === 'new' ? 'New Dryer' : 'Old Dryer'} | ${v(body.date)}`,
+        payload:       body,
+        status:        'pending',
+        next_retry_at: new Date().toISOString(),
+      }).select('id').single()
+
+      if (error) {
+        // 23505 = unique violation → already claimed/sent for this entry → skip.
+        if (error.code === '23505') {
+          console.log('[send-dryer-email] Duplicate entry — email already handled for', key)
+          return json({ ok: true, duplicate: true })
+        }
+        throw error
+      }
+      claimId = data?.id ?? null
+    } catch (e) {
+      // If the claim write itself fails (DB down), fall through to a plain send
+      // so an email still goes out; dedup is best-effort in that rare case.
+      console.warn('[send-dryer-email] Dedup claim failed, sending without claim:', e)
+    }
+
     try {
       await sendEmail(body)
-      return new Response(JSON.stringify({ ok: true }), { status: 200 })
+      // Mark the claimed row as sent.
+      if (claimId !== null) {
+        await sb.from('email_queue').update({
+          status: 'sent', last_tried_at: new Date().toISOString(), error: null,
+        }).eq('id', claimId)
+      }
+      return json({ ok: true })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
-      console.error('[send-dryer-email] Send failed, queuing for retry:', msg)
-      await queueForRetry(body, msg)
-      // Still return 200 so the frontend save flow is never affected
-      return new Response(JSON.stringify({ ok: false, queued: true, error: msg }), { status: 200 })
+      console.error('[send-dryer-email] Send failed, leaving row pending for retry:', msg)
+      // Leave the claimed row pending (cron will retry it). If there was no
+      // claim, queueForRetry upserts one.
+      if (claimId !== null) {
+        await sb.from('email_queue').update({
+          status: 'pending', error: msg,
+          next_retry_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+        }).eq('id', claimId)
+      } else {
+        await queueForRetry(body, msg)
+      }
+      return json({ ok: false, queued: true, error: msg })
     }
-
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('[send-dryer-email] Unexpected error:', msg)
-    return new Response(JSON.stringify({ error: msg }), { status: 500 })
+    return json({ error: msg }, 500)
   }
 })
