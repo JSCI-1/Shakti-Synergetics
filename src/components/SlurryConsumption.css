@@ -26,6 +26,7 @@
   overflow-x: auto;
   overflow-y: auto;
   max-height: 560px;
+  max-width: 100%;            /* keep the horizontal scroll INSIDE this box */
   -webkit-overflow-scrolling: touch;
   position: relative;
 }

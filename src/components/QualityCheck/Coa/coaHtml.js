@@ -11,7 +11,6 @@
 // ═══════════════════════════════════════════════════════════════════════════
 
 import { resolveValue, resolveParameters, resolveFinalRowValue } from './coaState.js'
-import { LOGO_B64 } from './coaLogo.js'
 
 function esc(s) {
   return String(s === undefined || s === null ? '' : s)
@@ -39,7 +38,11 @@ export function buildCoaHtml(draft, entries, template) {
   const params = resolveParameters(draft, template)
   const header = (draft && draft.header) || {}
   const multi = (template && template.layout === 'multi') || cols.length > 1
-  const orientation = multi ? 'landscape' : 'portrait'
+  // Print orientation is ALWAYS portrait (vertical) per requirement — even for
+  // wide multi-batch reports. The table uses table-layout:fixed with scaled
+  // column widths + a reduced font (fontScale) so multiple batch columns still
+  // fit on the portrait page instead of switching to landscape.
+  const orientation = 'portrait'
 
   // Column widths matching the reference image (portrait single-batch):
   // table = 72% page width; param ~25%, spec ~45%, result ~30% of table.
@@ -118,18 +121,13 @@ export function buildCoaHtml(draft, entries, template) {
   const conformity = header.conformity !== undefined ? header.conformity : (template.conformityDefault || '')
   const footer = header.footer !== undefined ? header.footer : (template.footerDefault || '')
 
-  const materialName = header.materialName || template.materialName ||
-    (cols[0] && cols[0].product) || ''
-
-  // Title: "CERTIFICATE OF ANALYSIS FOR <MATERIAL>" — reference image style.
-  const certTitle = materialName
-    ? `CERTIFICATE OF ANALYSIS FOR ${materialName.toUpperCase()}`
-    : 'CERTIFICATE OF ANALYSIS'
+  // Title: just "CERTIFICATE OF ANALYSIS" — the material name (e.g. "Sulphur
+  // 80% WDG") is intentionally NOT shown after / under the title.
+  const certTitle = 'CERTIFICATE OF ANALYSIS'
   const titleHtml = template.hideBatchMeta
     ? `<div class="coa-title">${esc(certTitle)}</div>`
     : `<div class="coa-title">${esc(header.companyHeading || template.name || '')}</div>
-       <div class="coa-sub">CERTIFICATE OF ANALYSIS</div>
-       ${materialName ? `<div class="coa-material">${esc(materialName)}</div>` : ''}`
+       <div class="coa-sub">CERTIFICATE OF ANALYSIS</div>`
 
   // Optional footer labels row above the signature lines (e.g. AUTHORISED
   // SIGNATORY / CHECKED BY for UPL Export).
@@ -200,30 +198,6 @@ export function buildCoaHtml(draft, entries, template) {
     .coa-sign-label { font-size:10px; color:#000; margin-top:2px; }
   </style></head><body>
   <div class="coa-doc">
-
-    <div class="coa-letterhead">
-      <div class="coa-lh-factory">
-        <div><b>FACTORY :</b></div>
-        <div>Plot No. A-20 / 1,</div>
-        <div>&amp; B-11 / 9, Phase - 1, M.I.D.C.,</div>
-        <div>Dombivli - 421 203. Dist. Thane</div>
-        <br/>
-        <div>52 KM Stone, Opp. Murthal Haveli,</div>
-        <div>Dhaturi - Malikpur, NH-1, Murthal,</div>
-        <div>Sonipat, Haryana - 131027</div>
-      </div>
-      <div class="coa-lh-logo"><img src="${LOGO_B64}" alt="Jaishil Logo" /></div>
-      <div class="coa-lh-company">
-        <div class="coa-lh-name">JAISHIL SULPHUR &amp;<br/>CHEMICAL INDUSTRIES</div>
-        <div class="coa-lh-mfg">Manufacturers of : <span>SULPHUR POWDER &amp; FORMULATIONS.</span></div>
-        <div class="coa-lh-office">
-          OFFICE : B-202/203, 2nd Floor, Pratik Industrial Estate,<br/>
-          Mulund Goregaon Link Road, Near Fortis hospital,<br/>
-          Bhandup (West), Mumbai - 400 078. India.<br/>
-          Tel. : +91-22-4920 7900 &nbsp;&bull;&nbsp; Web : www.jaishilsulphur.com
-        </div>
-      </div>
-    </div>
 
     ${titleHtml}
     <div class="coa-hdr">${headerRows}${dispatchRows}</div>

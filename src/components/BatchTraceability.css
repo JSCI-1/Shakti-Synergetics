@@ -52,6 +52,7 @@
   overflow-x: auto;
   overflow-y: auto;
   max-height: 500px;
+  max-width: 100%;            /* keep the horizontal scroll INSIDE this box */
   -webkit-overflow-scrolling: touch;
   position: relative;
 }
@@ -103,7 +104,7 @@
 .bt-th-del   { width: 26px; }
 .bt-td-batch { min-width: 64px; width: 64px; }
 .bt-td-sm    { min-width: 96px; }
-.bt-td-time  { min-width: 94px; }
+.bt-td-time  { min-width: 120px; }
 .bt-td-del   { text-align: center; padding: 2px; width: 26px; }
 
 /* alternating rows */
@@ -124,6 +125,25 @@ input[type="time"].bt-input-cell { min-width: 84px; }
   font-size: 11px; background: transparent; cursor: pointer; color: #2d2d2d;
 }
 .bt-select-cell:focus { outline: none; background: rgba(184,92,44,0.07); }
+
+/* ── 12-hour time dropdowns (Hour : Minute AM/PM) ── */
+.bt-time12 {
+  display: flex; align-items: center; justify-content: center;
+  gap: 1px; padding: 2px;
+}
+.bt-time12-sel {
+  border: 1px solid #d8d2c8; border-radius: 3px; padding: 4px 2px;
+  font-size: 11px; background: #fff; cursor: pointer; color: #2d2d2d;
+  text-align: center; text-align-last: center;
+}
+.bt-time12-sel:focus { outline: none; border-color: #b85c2c; background: rgba(184,92,44,0.07); }
+.bt-time12-mer { font-weight: 600; }
+.bt-time12-colon { font-weight: 700; color: #777; }
+
+/* Auto-calculated Total Running Hours (read-only) */
+.bt-total-auto {
+  background: #f5f2ee; font-weight: 700; color: #b85c2c; cursor: default;
+}
 
 .bt-del-btn {
   background: transparent; border: 1px solid #e0a0a0; color: #c0392b;

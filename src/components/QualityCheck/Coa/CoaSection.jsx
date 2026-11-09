@@ -36,6 +36,10 @@ export default function CoaSection({ user }) {
   const [busy, setBusy] = useState(false)
   const [notice, setNotice] = useState('')
   const [previewOpen, setPreviewOpen] = useState(false)
+  // True once THIS session has finalized the current COA (finalizedByOther only
+  // flips on the next poll/reload). Print/Download is allowed only after the COA
+  // is finalized — here (just finalized) or already locked (finalizedByOther).
+  const [justFinalized, setJustFinalized] = useState(false)
 
   const template = partyKey ? getCoaTemplate(partyKey) : null
 
@@ -93,6 +97,7 @@ export default function CoaSection({ user }) {
         product: null, specSnapshot: spec, userName, initialHeader,
       })
       if (!id) { setNotice('Could not create the draft.'); return }
+      setJustFinalized(false)   // a fresh draft starts un-finalized
       setDraftId(id)
     } finally { setBusy(false) }
   }, [partyKey, template, userName])
@@ -194,6 +199,9 @@ export default function CoaSection({ user }) {
         snapshot, userName,
       })
       if (error) { setNotice('Finalization failed.'); return }
+      // Issued (new or already-issued duplicate) → COA is now finalized, so
+      // enable Print/Download and lock further editing in this session.
+      setJustFinalized(true)
       setNotice(duplicate
         ? `Certificate ${certNo} was already issued — no duplicate created.`
         : `Certificate ${certNo} issued and locked.`)
@@ -434,15 +442,16 @@ export default function CoaSection({ user }) {
             <button type="button" className="coa-btn" onClick={() => setPreviewOpen(v => !v)}>
               {previewOpen ? 'Hide Preview' : 'Preview'}
             </button>
-            <button type="button" className="coa-btn" onClick={handlePrint} disabled={cols.length === 0}>
+            {/* Print/Download is allowed ONLY after the COA is finalized. */}
+            <button type="button" className="coa-btn" onClick={handlePrint}
+              disabled={cols.length === 0 || !(finalizedByOther || justFinalized)}
+              title={finalizedByOther || justFinalized ? '' : 'Finalize the COA first to enable printing'}>
               Print / Download PDF
             </button>
-            {!template.hideFinalize && (
-              <button type="button" className="coa-btn coa-btn-primary" onClick={handleFinalize}
-                disabled={busy || finalizedByOther || cols.length === 0}>
-                Finalize
-              </button>
-            )}
+            <button type="button" className="coa-btn coa-btn-primary" onClick={handleFinalize}
+              disabled={busy || finalizedByOther || justFinalized || cols.length === 0}>
+              {finalizedByOther || justFinalized ? 'Finalized' : 'Finalize'}
+            </button>
           </div>
 
           {previewOpen && (

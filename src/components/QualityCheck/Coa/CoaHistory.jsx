@@ -35,10 +35,14 @@ function fmtIssuedAt(iso) {
 
 export default function CoaHistory() {
   const today = isoDay(new Date())
-  const monthAgo = isoDay(new Date(Date.now() - 30 * 24 * 60 * 60 * 1000))
 
-  const [fromDate, setFromDate] = useState(monthAgo)
-  const [toDate, setToDate] = useState(today)
+  // Single date filter: show certificates issued on this one day. Passed to
+  // listIssuedCoas as both fromDate and toDate so the whole day (00:00–23:59) is
+  // included. Defaults to today.
+  const [date, setDate] = useState(today)
+  // When true, ignore the date filter and show ALL issued certificates
+  // (newest-first). Toggled by the "All" button.
+  const [showAll, setShowAll] = useState(false)
   const [party, setParty] = useState('')
   const [rows, setRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -49,11 +53,15 @@ export default function CoaHistory() {
   const load = useCallback(async () => {
     setLoading(true); setNotice('')
     try {
-      const data = await listIssuedCoas({ party, fromDate, toDate })
+      // "All" → no date bounds (every issued COA). Otherwise the one selected
+      // day (same date as both bounds → start → end of that day).
+      const data = showAll
+        ? await listIssuedCoas({ party })
+        : await listIssuedCoas({ party, fromDate: date, toDate: date })
       setRows(data)
       if (data.length === 0) setNotice('No issued certificates match these filters.')
     } finally { setLoading(false) }
-  }, [party, fromDate, toDate])
+  }, [party, date, showAll])
 
   // Load on mount and whenever the filters change.
   useEffect(() => { load() }, [load])
@@ -86,22 +94,23 @@ export default function CoaHistory() {
 
   return (
     <div className="coa-history">
-      {/* Filter bar — date picker (From / To) + party */}
+      {/* Filter bar — single date picker + party */}
       <div className="coa-section-card">
         <div className="coa-section-title">Certificate History</div>
         <div className="coa-history-filters">
           <label className="coa-field">
-            <span className="coa-field-label">From</span>
-            <input className="coa-input" type="date" value={fromDate}
-              max={toDate || undefined}
-              onChange={e => setFromDate(e.target.value)} />
+            <span className="coa-field-label">Date</span>
+            <input className="coa-input" type="date" value={date}
+              max={today} disabled={showAll}
+              onChange={e => setDate(e.target.value)} />
           </label>
-          <label className="coa-field">
-            <span className="coa-field-label">To</span>
-            <input className="coa-input" type="date" value={toDate}
-              min={fromDate || undefined}
-              onChange={e => setToDate(e.target.value)} />
-          </label>
+          <button type="button"
+            className={`coa-btn${showAll ? ' coa-btn-primary' : ''}`}
+            aria-pressed={showAll}
+            title="Show every issued certificate (ignores the date)"
+            onClick={() => setShowAll(v => !v)}>
+            {showAll ? 'All ✓' : 'All'}
+          </button>
           <label className="coa-field">
             <span className="coa-field-label">Party</span>
             <select className="coa-input" value={party} onChange={e => setParty(e.target.value)}>

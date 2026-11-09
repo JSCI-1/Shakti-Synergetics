@@ -38,13 +38,24 @@
 }
 
 /* ── Content ── */
-.sw-content { width: 100%; }
+/* max-width:100% + overflow-x guard so a wide inner table scrolls INSIDE its own
+   container and never pushes the whole page sideways on mobile. */
+.sw-wrapper { max-width: 100%; }
+.sw-content { width: 100%; max-width: 100%; overflow-x: hidden; }
 
 /* ── Mobile ── */
 @media (max-width: 640px) {
+  /* Let the three tab names wrap and shrink instead of forcing the bar wider
+     than the screen (which made the whole page slide sideways). */
+  .sw-tab-bar { padding: 0; }
   .sw-tab-btn {
-    padding: 10px 8px;
-    font-size: 11px;
+    padding: 9px 4px;
+    font-size: 10.5px;
+    line-height: 1.2;
+    white-space: normal;       /* allow wrapping so full name is visible */
+    min-width: 0;
+    word-break: break-word;
+    hyphens: auto;
   }
 }
 
