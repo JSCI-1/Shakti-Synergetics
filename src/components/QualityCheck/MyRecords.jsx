@@ -584,8 +584,6 @@ function BatchInfoStrip({ tab, record }) {
     if (values.brand)         fields.push(['Brand / Type',         values.brand])
     if (values.grade)         fields.push(['Grade',                gradeLabel(values.grade)])
     if (values.dryer)         fields.push(['Dryer',                values.dryer])
-    if (values.time)          fields.push(['Batch Start Time',     values.time])
-    if (values.end_time)      fields.push(['Batch End Time',       values.end_time])
     if (values.fg_susp_sample_time) fields.push(['Susp. Sample Time', values.fg_susp_sample_time])
     if (values.fg_susp_bag_no)      fields.push(['Susp. Bag No.',     values.fg_susp_bag_no])
   }

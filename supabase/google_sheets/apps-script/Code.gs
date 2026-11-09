@@ -357,8 +357,6 @@ var QC_IDENTITY = {
     ['date',      'Manufactured Date'],
     ['tested_by', 'Tested By'],
     ['batch_no',  'Batch No.'],
-    ['time',      'Batch Start Time'],
-    ['end_time',  'Batch End Time'],
     ['product',   'Product'],
     ['grade',     'Grade'],
     ['dryer',     'Dryer']
@@ -486,6 +484,7 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['upl_exp_wps',   'UPL Export – Wet Particle Size median (µm)'],
     ['upl_exp_alk',   'UPL Export – Alkalinity (% w/w)'],
     ['upl_exp_disp',  'UPL Export – Dispersibility'],
+    ['upl_exp_moisture', 'UPL Export – Moisture (% W/W)'],
     ['upl_exp_appearance', 'UPL Export – Appearance']
   ],
   omri: [
@@ -493,6 +492,8 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['upl_omri_susp',      'UPL OMRI – Suspension as Sulphur (%w/w)'],
     ['upl_omri_water_kf',  'UPL OMRI – Water by KF (%w/w)'],
     ['upl_omri_ph',        'UPL OMRI – pH of 1.0% Aqu Sol'],
+    ['upl_omri_foam',      'UPL OMRI – Persistent foam after 1min (ml)'],
+    ['upl_omri_foam_25',   'UPL OMRI – Persistent foam after 1.0 min (ml)'],
     ['upl_omri_wettability','UPL OMRI – Wettability (sec)'],
     ['upl_omri_ps_10',     'UPL OMRI – Particle >10µm (%)'],
     ['upl_omri_ps_6',      'UPL OMRI – Particle >6µm (%)'],
@@ -513,55 +514,89 @@ var FG_GRADE_EXTRA_FIELDS = {
   // uplData.js (ADMA_EXTRA_PARAMS) are 'adma_*' (legacy spelling). The website
   // stores values under those 'adma_*' ids, so the sheet columns MUST key on
   // 'adma_*' or the values never land. Display labels use the correct "ADAMA".
+  // ADAMA family row order mirrors uplData.js: Appearance, Sulphur, pH,
+  // Wettability, Foaming (start / after 1 min), Wet Sieve, Suspensibility,
+  // Drop Test. Each grade uses its OWN ids (legacy 'adma_*' for the adama grade).
   adama: [
+    ['adma_appearance',  'ADAMA – Appearance'],
     ['adma_sulphur',     'ADAMA – Active Content of Sulphur % by mass'],
     ['adma_ph',          'ADAMA – pH'],
     ['adma_wettability', 'ADAMA – Wettability (max)'],
-    ['adma_appearance',  'ADAMA – Appearance'],
+    ['adma_foam_start',  'ADAMA – Persistent Foaming (at start)'],
+    ['adma_foam_1min',   'ADAMA – Persistent Foaming (after 1.0 minute)'],
+    ['adma_wet_sieve',   'ADAMA – Wet Sieve Test (max)'],
+    ['adma_susp',        'ADAMA – Suspensibility % by mass (min)'],
     ['adma_drop_test',   'ADAMA – Drop Test of bags']
   ],
   lohiya: [
+    ['lohiya_appearance',  'LOHIYA – Appearance'],
     ['lohiya_sulphur',     'LOHIYA – Active Content of Sulphur % By mass'],
     ['lohiya_ph',          'LOHIYA – PH of 1.0 % Aqu Sol'],
     ['lohiya_wettability', 'LOHIYA – Wettability (max)'],
-    ['lohiya_appearance',  'LOHIYA – Appearance'],
+    ['lohiya_foam_start',  'LOHIYA – Persistent Foaming (at start)'],
+    ['lohiya_foam_1min',   'LOHIYA – Persistent Foaming (after 1.0 minute)'],
+    ['lohiya_wet_sieve',   'LOHIYA – Wet Sieve Test (max)'],
+    ['lohiya_susp',        'LOHIYA – Suspensibility % by mass (min)'],
     ['lohiya_drop_test',   'LOHIYA – Drop Test of bags']
   ],
   biostadt: [
+    ['biostadt_appearance',  'BIOSTADT – Appearance'],
     ['biostadt_sulphur',     'BIOSTADT – Active Content of Sulphur % By mass'],
     ['biostadt_ph',          'BIOSTADT – PH of 1.0 % Aqu Sol'],
     ['biostadt_wettability', 'BIOSTADT – Wettability (max)'],
-    ['biostadt_appearance',  'BIOSTADT – Appearance'],
+    ['biostadt_foam_start',  'BIOSTADT – Persistent Foaming (at start)'],
+    ['biostadt_foam_1min',   'BIOSTADT – Persistent Foaming (after 1.0 minute)'],
+    ['biostadt_wet_sieve',   'BIOSTADT – Wet Sieve Test (max)'],
+    ['biostadt_susp',        'BIOSTADT – Suspensibility % by mass (min)'],
     ['biostadt_drop_test',   'BIOSTADT – Drop Test of bags']
   ],
   sumitomo: [
+    ['sumitomo_appearance',  'SUMITOMO – Appearance'],
     ['sumitomo_sulphur',     'SUMITOMO – Active Content of Sulphur % By mass'],
     ['sumitomo_ph',          'SUMITOMO – PH of 1.0 % Aqu Sol'],
     ['sumitomo_wettability', 'SUMITOMO – Wettability (max)'],
-    ['sumitomo_appearance',  'SUMITOMO – Appearance'],
+    ['sumitomo_foam_start',  'SUMITOMO – Persistent Foaming (at start)'],
+    ['sumitomo_foam_1min',   'SUMITOMO – Persistent Foaming (after 1.0 minute)'],
+    ['sumitomo_wet_sieve',   'SUMITOMO – Wet Sieve Test (max)'],
+    ['sumitomo_susp',        'SUMITOMO – Suspensibility % by mass (min)'],
     ['sumitomo_drop_test',   'SUMITOMO – Drop Test of bags']
   ],
   hemani_v: [
+    ['hemani_appearance',  'HEMANI – Appearance'],
     ['hemani_sulphur',     'HEMANI – Active Content of Sulphur % By mass'],
     ['hemani_ph',          'HEMANI – PH of 1.0 % Aqu Sol'],
     ['hemani_wettability', 'HEMANI – Wettability (max)'],
-    ['hemani_appearance',  'HEMANI – Appearance'],
+    ['hemani_foam_start',  'HEMANI – Persistent Foaming (at start)'],
+    ['hemani_foam_1min',   'HEMANI – Persistent Foaming (after 1.0 minute)'],
+    ['hemani_wet_sieve',   'HEMANI – Wet Sieve Test (max)'],
+    ['hemani_susp',        'HEMANI – Suspensibility % by mass (min)'],
     ['hemani_drop_test',   'HEMANI – Drop Test of bags']
   ],
   iffco: [
+    ['iffco_appearance',  'IFFCO – Appearance'],
     ['iffco_sulphur',     'IFFCO – Active Content of Sulphur % By mass'],
     ['iffco_ph',          'IFFCO – pH of 1.0 % Aqu Sol'],
     ['iffco_wettability', 'IFFCO – Wettability (max)'],
-    ['iffco_appearance',  'IFFCO – Appearance'],
+    ['iffco_foam_start',  'IFFCO – Persistent Foaming (at start)'],
+    ['iffco_foam_1min',   'IFFCO – Persistent Foaming (after 1.0 minute)'],
+    ['iffco_wet_sieve',   'IFFCO – Wet Sieve Test (max)'],
+    ['iffco_susp',        'IFFCO – Suspensibility % by mass (min)'],
     ['iffco_drop_test',   'IFFCO – Drop Test of bags']
   ],
   // Sanaca family (Sanaca Dubai, Villa Crop, Yellowstone): Appearance, Sulphur,
   // pH, Wettability, Suspensibility, Bulk Density, Arsenic Content. Own row ids.
+  // Sanaca family (Sanaca Dubai, Villa Crop, Yellowstone/CropSure, Pratasha,
+  // Haychem, Farmalinx, McDonald) + normal/colour: row order mirrors uplData.js:
+  // Appearance, Sulphur, pH, Wettability, Foaming (start / after 1 min),
+  // Wet Sieve, Suspensibility, Bulk Density, Arsenic Content. Own ids per grade.
   sanaca: [
     ['sanaca_appearance',     'Sanaca Dubai – Appearance'],
     ['sanaca_sulphur',        'Sanaca Dubai – Active content of Sulphur % by mass'],
     ['sanaca_ph',             'Sanaca Dubai – PH of 1.0% Aqueous solution'],
     ['sanaca_wettability',    'Sanaca Dubai – Wettability'],
+    ['sanaca_foam_start',     'Sanaca Dubai – Persistent Foaming (at start)'],
+    ['sanaca_foam_1min',      'Sanaca Dubai – Persistent Foaming (after 1.0 minute)'],
+    ['sanaca_wet_sieve',      'Sanaca Dubai – Wet Sieve Test'],
     ['sanaca_suspensibility', 'Sanaca Dubai – Suspensibility % by mass'],
     ['sanaca_bulk_density',   'Sanaca Dubai – Bulk Density'],
     ['sanaca_arsenic',        'Sanaca Dubai – Arsenic Content']
@@ -571,6 +606,9 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['villacrop_sulphur',        'Villa Crop – Active content of Sulphur % by mass'],
     ['villacrop_ph',             'Villa Crop – PH of 1.0% Aqueous solution'],
     ['villacrop_wettability',    'Villa Crop – Wettability'],
+    ['villacrop_foam_start',     'Villa Crop – Persistent Foaming (at start)'],
+    ['villacrop_foam_1min',      'Villa Crop – Persistent Foaming (after 1.0 minute)'],
+    ['villacrop_wet_sieve',      'Villa Crop – Wet Sieve Test'],
     ['villacrop_suspensibility', 'Villa Crop – Suspensibility % by mass'],
     ['villacrop_bulk_density',   'Villa Crop – Bulk Density'],
     ['villacrop_arsenic',        'Villa Crop – Arsenic Content']
@@ -580,6 +618,9 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['yellowstone_sulphur',        'Yellowstone – Active content of Sulphur % by mass'],
     ['yellowstone_ph',             'Yellowstone – PH of 1.0% Aqueous solution'],
     ['yellowstone_wettability',    'Yellowstone – Wettability'],
+    ['yellowstone_foam_start',     'Yellowstone – Persistent Foaming (at start)'],
+    ['yellowstone_foam_1min',      'Yellowstone – Persistent Foaming (after 1.0 minute)'],
+    ['yellowstone_wet_sieve',      'Yellowstone – Wet Sieve Test'],
     ['yellowstone_suspensibility', 'Yellowstone – Suspensibility % by mass'],
     ['yellowstone_bulk_density',   'Yellowstone – Bulk Density'],
     ['yellowstone_arsenic',        'Yellowstone – Arsenic Content']
@@ -589,6 +630,9 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['pratasha_sulphur',        'Pratasha – Active content of Sulphur % by mass'],
     ['pratasha_ph',             'Pratasha – PH of 1.0% Aqueous solution'],
     ['pratasha_wettability',    'Pratasha – Wettability'],
+    ['pratasha_foam_start',     'Pratasha – Persistent Foaming (at start)'],
+    ['pratasha_foam_1min',      'Pratasha – Persistent Foaming (after 1.0 minute)'],
+    ['pratasha_wet_sieve',      'Pratasha – Wet Sieve Test'],
     ['pratasha_suspensibility', 'Pratasha – Suspensibility % by mass'],
     ['pratasha_bulk_density',   'Pratasha – Bulk Density'],
     ['pratasha_arsenic',        'Pratasha – Arsenic Content']
@@ -598,6 +642,9 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['haychem_sulphur',        'Haychem – Active content of Sulphur % by mass'],
     ['haychem_ph',             'Haychem – PH of 1.0% Aqueous solution'],
     ['haychem_wettability',    'Haychem – Wettability'],
+    ['haychem_foam_start',     'Haychem – Persistent Foaming (at start)'],
+    ['haychem_foam_1min',      'Haychem – Persistent Foaming (after 1.0 minute)'],
+    ['haychem_wet_sieve',      'Haychem – Wet Sieve Test'],
     ['haychem_suspensibility', 'Haychem – Suspensibility % by mass'],
     ['haychem_bulk_density',   'Haychem – Bulk Density'],
     ['haychem_arsenic',        'Haychem – Arsenic Content']
@@ -607,6 +654,9 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['farmalinx_sulphur',        'Farmalinx – Active content of Sulphur % by mass'],
     ['farmalinx_ph',             'Farmalinx – PH of 1.0% Aqueous solution'],
     ['farmalinx_wettability',    'Farmalinx – Wettability'],
+    ['farmalinx_foam_start',     'Farmalinx – Persistent Foaming (at start)'],
+    ['farmalinx_foam_1min',      'Farmalinx – Persistent Foaming (after 1.0 minute)'],
+    ['farmalinx_wet_sieve',      'Farmalinx – Wet Sieve Test'],
     ['farmalinx_suspensibility', 'Farmalinx – Suspensibility % by mass'],
     ['farmalinx_bulk_density',   'Farmalinx – Bulk Density'],
     ['farmalinx_arsenic',        'Farmalinx – Arsenic Content']
@@ -616,6 +666,9 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['mcdonald_sulphur',        'McDonald – Active content of Sulphur % by mass'],
     ['mcdonald_ph',             'McDonald – PH of 1.0% Aqueous solution'],
     ['mcdonald_wettability',    'McDonald – Wettability'],
+    ['mcdonald_foam_start',     'McDonald – Persistent Foaming (at start)'],
+    ['mcdonald_foam_1min',      'McDonald – Persistent Foaming (after 1.0 minute)'],
+    ['mcdonald_wet_sieve',      'McDonald – Wet Sieve Test'],
     ['mcdonald_suspensibility', 'McDonald – Suspensibility % by mass'],
     ['mcdonald_bulk_density',   'McDonald – Bulk Density'],
     ['mcdonald_arsenic',        'McDonald – Arsenic Content']
@@ -625,6 +678,9 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['normal_sulphur',        'Normal – Active content of Sulphur % by mass'],
     ['normal_ph',             'Normal – PH of 1.0% Aqueous solution'],
     ['normal_wettability',    'Normal – Wettability'],
+    ['normal_foam_start',     'Normal – Persistent Foaming (at start)'],
+    ['normal_foam_1min',      'Normal – Persistent Foaming (after 1.0 minute)'],
+    ['normal_wet_sieve',      'Normal – Wet Sieve Test'],
     ['normal_suspensibility', 'Normal – Suspensibility % by mass'],
     ['normal_bulk_density',   'Normal – Bulk Density'],
     ['normal_arsenic',        'Normal – Arsenic Content']
@@ -634,11 +690,13 @@ var FG_GRADE_EXTRA_FIELDS = {
     ['colour_sulphur',        'Colour – Active content of Sulphur % by mass'],
     ['colour_ph',             'Colour – PH of 1.0% Aqueous solution'],
     ['colour_wettability',    'Colour – Wettability'],
+    ['colour_foam_start',     'Colour – Persistent Foaming (at start)'],
+    ['colour_foam_1min',      'Colour – Persistent Foaming (after 1.0 minute)'],
+    ['colour_wet_sieve',      'Colour – Wet Sieve Test'],
     ['colour_suspensibility', 'Colour – Suspensibility % by mass'],
     ['colour_bulk_density',   'Colour – Bulk Density'],
     ['colour_arsenic',        'Colour – Arsenic Content']
   ]
-  // normal, colour: no extra rows (core WDG only, preserved exactly).
 };
 
 /**
@@ -1298,6 +1356,136 @@ function rebuildFinishedGoodsTab() {
     + 'Now run `select sheets_sync_requeue_qc_fg();` in the Supabase SQL editor. '
     + 'Within ~1 min Finished Goods records re-populate the clean tab. '
     + 'Then run clearReplayFlag() and delete the archived tab once verified.');
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ONE-CLICK FINISHED GOODS REBUILD (menu button)
+ * ───────────────────────────────────────────────────────────────────────────
+ * rebuildAllFinishedGoodsTabs() does the ENTIRE archive job for Finished Goods
+ * in a single call so no tab has to be renamed/recreated by hand:
+ *   1. ARCHIVES every EXISTING FG tab (the fallback "Finished Goods" tab AND
+ *      every "FG - <grade>" tab that currently exists) by renaming it to
+ *      "<name> (archived <ts>)". Nothing is deleted.
+ *   2. CREATES a fresh tab for the fallback AND for EVERY grade in FG_GRADE_TABS
+ *      — even grades that never had a tab before — each with the correct current
+ *      header (no Batch Start/End Time; current per-grade fields).
+ *   3. Turns REPLAY on so the requeued records re-populate the clean tabs.
+ *
+ * Touches ONLY the Quality Control spreadsheet's Finished Goods tabs. Raw
+ * Material, In-Process, and the Dryer book are never opened.
+ *
+ * After it runs, run ONE line in the Supabase SQL editor:
+ *     select sheets_sync_requeue_qc_fg();
+ * then (once the tabs look right) use the menu "Finish rebuild" item, which
+ * calls clearReplayFlag(). Delete the archived tabs manually whenever you like.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+function rebuildAllFinishedGoodsTabs() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[rebuildAllFinishedGoodsTabs] Fail-closed: ' + e.message);
+    return 'Setup incomplete: ' + e.message;
+  }
+
+  var qcSS  = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_QC);
+  var stamp = Utilities.formatDate(new Date(), 'Asia/Kolkata', 'yyyyMMdd-HHmm');
+
+  // The full set of FG tab names: the fallback 'Finished Goods' + every grade tab.
+  var fgTabNames = [TAB.QC.qc_fg];           // 'Finished Goods'
+  for (var gk in FG_GRADE_TABS) {
+    if (FG_GRADE_TABS.hasOwnProperty(gk)) fgTabNames.push(FG_GRADE_TABS[gk]);
+  }
+
+  // 1. Archive every EXISTING FG tab (rename, never delete). Skip the ones that
+  //    don't exist yet — they'll just be created fresh in step 2.
+  var archived = 0;
+  for (var a = 0; a < fgTabNames.length; a++) {
+    var existing = qcSS.getSheetByName(fgTabNames[a]);
+    if (existing) {
+      existing.setName(fgTabNames[a] + ' (archived ' + stamp + ')');
+      archived++;
+    }
+  }
+  Logger.log('[rebuildAllFinishedGoodsTabs] Archived ' + archived + ' existing FG tab(s).');
+
+  // 2. Create a fresh fallback tab (full global layout) + every grade tab (its
+  //    own narrow per-grade layout), each with the correct current header.
+  var fallbackSh = getOrCreateSheet_(qcSS, TAB.QC.qc_fg);
+  ensureHeader_(fallbackSh, buildQcLayout_('qc_fg').header);
+  formatQcTab_(fallbackSh);
+
+  var created = 1;   // the fallback
+  for (var gk2 in FG_GRADE_TABS) {
+    if (!FG_GRADE_TABS.hasOwnProperty(gk2)) continue;
+    var gsh = getOrCreateSheet_(qcSS, FG_GRADE_TABS[gk2]);
+    ensureHeader_(gsh, buildQcLayout_('qc_fg', gk2).header);
+    formatQcTab_(gsh);
+    created++;
+  }
+  Logger.log('[rebuildAllFinishedGoodsTabs] Created/verified ' + created + ' fresh FG tab(s).');
+
+  // 3. Turn on replay so requeued FG events re-populate the clean tabs.
+  PropertiesService.getScriptProperties().setProperty('REPLAY_FORCE_WRITE', '1');
+
+  var msg = 'Finished Goods rebuilt. Archived ' + archived + ' old tab(s), created '
+    + created + ' fresh tab(s), replay ON. Next: in the Supabase SQL editor run '
+    + '`select sheets_sync_requeue_qc_fg();`. When the tabs look right, use '
+    + '"QC Tools → Finish rebuild (restore dedup)". Delete the "(archived …)" '
+    + 'tabs whenever you like.';
+  Logger.log('[rebuildAllFinishedGoodsTabs] ' + msg);
+  return msg;
+}
+
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Spreadsheet custom menu. Adds a "QC Tools" dropdown to the Quality Control
+ * spreadsheet's menu bar (next to File / Edit / …) with one-click buttons so the
+ * Finished Goods rebuild never has to be done by hand. Runs automatically when
+ * the spreadsheet is opened; also safe to run once manually to create the menu
+ * immediately. QC-only; does not touch Dryer.
+ * ───────────────────────────────────────────────────────────────────────── */
+function onOpen() {
+  try {
+    SpreadsheetApp.getUi()
+      .createMenu('QC Tools')
+      .addItem('Rebuild ALL Finished Goods tabs (archive + fresh)', 'menuRebuildAllFinishedGoods_')
+      .addSeparator()
+      .addItem('Finish rebuild (restore dedup)', 'menuFinishRebuild_')
+      .addToUi();
+  } catch (e) {
+    // getUi() is unavailable in non-UI contexts (e.g. triggers) — ignore.
+    Logger.log('[onOpen] menu not added: ' + e.message);
+  }
+}
+
+// Menu handler: confirm, run the full archive+rebuild, then tell the user the
+// one SQL line to run next. Wrapped so a click shows a readable dialog.
+function menuRebuildAllFinishedGoods_() {
+  var ui = SpreadsheetApp.getUi();
+  var resp = ui.alert(
+    'Rebuild all Finished Goods tabs?',
+    'This ARCHIVES (renames, never deletes) every existing Finished Goods tab '
+      + 'and creates fresh tabs with the latest columns. Your data is replayed '
+      + 'back afterward. Dryer / Raw Material / In-Process are not touched.\n\n'
+      + 'Continue?',
+    ui.ButtonSet.YES_NO);
+  if (resp !== ui.Button.YES) return;
+
+  var msg = rebuildAllFinishedGoodsTabs();
+  ui.alert('Finished Goods rebuild started', msg, ui.ButtonSet.OK);
+}
+
+// Menu handler: clear replay mode once the rebuilt tabs are verified.
+function menuFinishRebuild_() {
+  clearReplayFlag();
+  SpreadsheetApp.getUi().alert(
+    'Done',
+    'Replay mode turned OFF (strict dedup restored). You can delete the '
+      + '"(archived …)" Finished Goods tabs whenever you have confirmed the '
+      + 'fresh tabs look correct.',
+    SpreadsheetApp.getUi().ButtonSet.OK);
 }
 
 
@@ -2775,12 +2963,15 @@ var QC_RULES = {
   'upl_exp_wps':     { type: 'range', min: 2.20, max: 4.90 },
   'upl_exp_alk':     { type: 'max',   max: 0.6 },
   'upl_exp_disp':    { type: 'text',  accepted: 'Complies' },
+  'upl_exp_moisture':{ type: 'range', min: 1.5, max: 2.2 },
   // Finished Goods — UPL OMRI
   'upl_omri_ps_10':  { type: 'max',   max: 20 },
   'upl_omri_ps_6':   { type: 'max',   max: 35 },
   'upl_omri_ps_1':   { type: 'min',   min: 75 },
+  'upl_omri_foam':   { type: 'max',   max: 60 },
+  'upl_omri_foam_25':{ type: 'max',   max: 25 },
   'upl_omri_ds_500': { type: 'min',   min: 99 },
-  'upl_omri_ds_106': { type: 'max',   max: 11 },
+  'upl_omri_ds_106': { type: 'max',   max: 11.5 },
   'upl_omri_disp_self': { type: 'text', accepted: 'Complies' },
   'upl_omri_disp_1h':   { type: 'text', accepted: 'Complies' },
   'upl_omri_disp_24h':  { type: 'text', accepted: 'Complies' },
@@ -2796,7 +2987,7 @@ var QC_RULES = {
   'upl_exp_sulphur': { type: 'min',   min: 80.0 },
   'upl_exp_susp':    { type: 'min',   min: 80.0 },
   'upl_exp_appearance': { type: 'text', accepted: 'Complies' },
-  'upl_omri_sulphur':   { type: 'range', min: 82, max: 82.5 },
+  'upl_omri_sulphur':   { type: 'range', min: 80, max: 82.5 },
   'upl_omri_susp':      { type: 'min',   min: 80 },
   'upl_omri_water_kf':  { type: 'range', min: 1.5, max: 2.3 },
   'upl_omri_ph':        { type: 'range', min: 7.0, max: 9.0 },
@@ -2804,85 +2995,120 @@ var QC_RULES = {
   'upl_omri_appearance': { type: 'text', accepted: 'Complies' },
   // ADAMA family (ADAMA uses legacy 'adma_*' ids): pH, Wettability, Appearance,
   // Drop Test are ruled; the 'calc' Sulphur is UNRULED (omitted).
+  // Each family grade's Persistent Foaming (start / after 1 min) is ruled
+  // (max 60 / max 25) per uplData.js; the 'calc' Wet Sieve + Suspensibility rows
+  // are UNRULED there (no `rule`) and so are intentionally OMITTED here.
   'adma_ph':             { type: 'range', min: 5.0, max: 9.0 },
   'adma_wettability':    { type: 'max',   max: 60 },
   'adma_appearance':     { type: 'text',  accepted: 'Complies' },
+  'adma_foam_start':     { type: 'max',   max: 60 },
+  'adma_foam_1min':      { type: 'max',   max: 25 },
   'adma_drop_test':      { type: 'text',  accepted: 'Found OK no leakage' },
   'lohiya_ph':           { type: 'range', min: 5.0, max: 9.0 },
   'lohiya_wettability':  { type: 'max',   max: 60 },
   'lohiya_appearance':   { type: 'text',  accepted: 'Complies' },
+  'lohiya_foam_start':   { type: 'max',   max: 60 },
+  'lohiya_foam_1min':    { type: 'max',   max: 25 },
   'lohiya_drop_test':    { type: 'text',  accepted: 'Found OK no leakage' },
   'biostadt_ph':         { type: 'range', min: 5.0, max: 9.0 },
   'biostadt_wettability':{ type: 'max',   max: 60 },
   'biostadt_appearance': { type: 'text',  accepted: 'Complies' },
+  'biostadt_foam_start': { type: 'max',   max: 60 },
+  'biostadt_foam_1min':  { type: 'max',   max: 25 },
   'biostadt_drop_test':  { type: 'text',  accepted: 'Found OK no leakage' },
   'sumitomo_ph':         { type: 'range', min: 5.0, max: 9.0 },
   'sumitomo_wettability':{ type: 'max',   max: 60 },
   'sumitomo_appearance': { type: 'text',  accepted: 'Complies' },
+  'sumitomo_foam_start': { type: 'max',   max: 60 },
+  'sumitomo_foam_1min':  { type: 'max',   max: 25 },
   'sumitomo_drop_test':  { type: 'text',  accepted: 'Found OK no leakage' },
   'hemani_ph':           { type: 'range', min: 5.0, max: 9.0 },
   'hemani_wettability':  { type: 'max',   max: 60 },
   'hemani_appearance':   { type: 'text',  accepted: 'Complies' },
+  'hemani_foam_start':   { type: 'max',   max: 60 },
+  'hemani_foam_1min':    { type: 'max',   max: 25 },
   'hemani_drop_test':    { type: 'text',  accepted: 'Found OK no leakage' },
   'iffco_ph':            { type: 'range', min: 5.0, max: 9.0 },
   'iffco_wettability':   { type: 'max',   max: 60 },
   'iffco_appearance':    { type: 'text',  accepted: 'Complies' },
+  'iffco_foam_start':    { type: 'max',   max: 60 },
+  'iffco_foam_1min':     { type: 'max',   max: 25 },
   'iffco_drop_test':     { type: 'text',  accepted: 'Found OK no leakage' },
   // Sanaca family (Sanaca Dubai, Villa Crop, Yellowstone): Appearance, Sulphur
   // (ruled 78–85), pH, Wettability, Suspensibility (min 80), Arsenic ruled;
   // Bulk Density is UNRULED (omitted → value only).
+  // Sanaca family + normal/colour also rule Persistent Foaming (start max 60 /
+  // after 1 min max 25); their 'calc' Wet Sieve + Bulk Density rows stay UNRULED.
   'sanaca_appearance':      { type: 'text',  accepted: 'Complies' },
   'sanaca_sulphur':         { type: 'range', min: 78.0, max: 85.0 },
   'sanaca_ph':              { type: 'range', min: 5.0, max: 9.0 },
   'sanaca_wettability':     { type: 'max',   max: 60 },
+  'sanaca_foam_start':      { type: 'max',   max: 60 },
+  'sanaca_foam_1min':       { type: 'max',   max: 25 },
   'sanaca_suspensibility':  { type: 'min',   min: 80.0 },
   'sanaca_arsenic':         { type: 'text',  accepted: 'Not Detected' },
   'villacrop_appearance':     { type: 'text',  accepted: 'Complies' },
   'villacrop_sulphur':        { type: 'range', min: 78.0, max: 85.0 },
   'villacrop_ph':             { type: 'range', min: 5.0, max: 9.0 },
   'villacrop_wettability':    { type: 'max',   max: 60 },
+  'villacrop_foam_start':     { type: 'max',   max: 60 },
+  'villacrop_foam_1min':      { type: 'max',   max: 25 },
   'villacrop_suspensibility': { type: 'min',   min: 80.0 },
   'villacrop_arsenic':        { type: 'text',  accepted: 'Not Detected' },
   'yellowstone_appearance':     { type: 'text',  accepted: 'Complies' },
   'yellowstone_sulphur':        { type: 'range', min: 78.0, max: 85.0 },
   'yellowstone_ph':             { type: 'range', min: 5.0, max: 9.0 },
   'yellowstone_wettability':    { type: 'max',   max: 60 },
+  'yellowstone_foam_start':     { type: 'max',   max: 60 },
+  'yellowstone_foam_1min':      { type: 'max',   max: 25 },
   'yellowstone_suspensibility': { type: 'min',   min: 80.0 },
   'yellowstone_arsenic':        { type: 'text',  accepted: 'Not Detected' },
   'pratasha_appearance':        { type: 'text',  accepted: 'Complies' },
   'pratasha_sulphur':           { type: 'range', min: 78.0, max: 85.0 },
   'pratasha_ph':                { type: 'range', min: 5.0, max: 9.0 },
   'pratasha_wettability':       { type: 'max',   max: 60 },
+  'pratasha_foam_start':        { type: 'max',   max: 60 },
+  'pratasha_foam_1min':         { type: 'max',   max: 25 },
   'pratasha_suspensibility':    { type: 'min',   min: 80.0 },
   'pratasha_arsenic':           { type: 'text',  accepted: 'Not Detected' },
   'haychem_appearance':         { type: 'text',  accepted: 'Complies' },
   'haychem_sulphur':            { type: 'range', min: 78.0, max: 85.0 },
   'haychem_ph':                 { type: 'range', min: 5.0, max: 9.0 },
   'haychem_wettability':        { type: 'max',   max: 60 },
+  'haychem_foam_start':         { type: 'max',   max: 60 },
+  'haychem_foam_1min':          { type: 'max',   max: 25 },
   'haychem_suspensibility':     { type: 'min',   min: 80.0 },
   'haychem_arsenic':            { type: 'text',  accepted: 'Not Detected' },
   'farmalinx_appearance':       { type: 'text',  accepted: 'Complies' },
   'farmalinx_sulphur':          { type: 'range', min: 78.0, max: 85.0 },
   'farmalinx_ph':               { type: 'range', min: 5.0, max: 9.0 },
   'farmalinx_wettability':      { type: 'max',   max: 60 },
+  'farmalinx_foam_start':       { type: 'max',   max: 60 },
+  'farmalinx_foam_1min':        { type: 'max',   max: 25 },
   'farmalinx_suspensibility':   { type: 'min',   min: 80.0 },
   'farmalinx_arsenic':          { type: 'text',  accepted: 'Not Detected' },
   'mcdonald_appearance':        { type: 'text',  accepted: 'Complies' },
   'mcdonald_sulphur':           { type: 'range', min: 78.0, max: 85.0 },
   'mcdonald_ph':                { type: 'range', min: 5.0, max: 9.0 },
   'mcdonald_wettability':       { type: 'max',   max: 60 },
+  'mcdonald_foam_start':        { type: 'max',   max: 60 },
+  'mcdonald_foam_1min':         { type: 'max',   max: 25 },
   'mcdonald_suspensibility':    { type: 'min',   min: 80.0 },
   'mcdonald_arsenic':           { type: 'text',  accepted: 'Not Detected' },
   'normal_appearance':          { type: 'text',  accepted: 'Complies' },
   'normal_sulphur':             { type: 'range', min: 78.0, max: 85.0 },
   'normal_ph':                  { type: 'range', min: 5.0, max: 9.0 },
   'normal_wettability':         { type: 'max',   max: 60 },
+  'normal_foam_start':          { type: 'max',   max: 60 },
+  'normal_foam_1min':           { type: 'max',   max: 25 },
   'normal_suspensibility':      { type: 'min',   min: 80.0 },
   'normal_arsenic':             { type: 'text',  accepted: 'Not Detected' },
   'colour_appearance':          { type: 'text',  accepted: 'Complies' },
   'colour_sulphur':             { type: 'range', min: 78.0, max: 85.0 },
   'colour_ph':                  { type: 'range', min: 5.0, max: 9.0 },
   'colour_wettability':         { type: 'max',   max: 60 },
+  'colour_foam_start':          { type: 'max',   max: 60 },
+  'colour_foam_1min':           { type: 'max',   max: 25 },
   'colour_suspensibility':      { type: 'min',   min: 80.0 },
   'colour_arsenic':             { type: 'text',  accepted: 'Not Detected' }
 };
@@ -3192,12 +3418,16 @@ function writeQcSnapshot_(ss, tabName, kind, row) {
       var labelMap = (kind === 'qc_ip') ? IP_MATERIAL_LABELS : RM_MATERIAL_LABELS;
       idv = labelMap[mid] || mid;   // label if known, else raw id
     } else if (idk === 'time' || idk === 'end_time') {
-      // Batch Start / End Time identity fields (FG). The website <input
+      // "Time" identity field (Raw Material / In-Process). The website <input
       // type="time"> submits a 24-hour wall-clock string (e.g. "14:35"). Display
       // it in 12-hour AM/PM (e.g. "02:35:00 PM") consistently. This is a DISPLAY
       // reformat of a date-less clock value — it does NOT shift the time and is
       // a plain local wall-clock (NOT subject to any timezone conversion), so it
       // is DISTINCT from the per-field "Timestamp" columns (renderFieldTs_).
+      // NOTE: Finished Goods no longer carries a time identity column (the old
+      // Batch Start/End Time fields were removed), so for qc_fg this branch is
+      // never reached. 'end_time' is kept here only so any legacy RM/IP payload
+      // still renders; it is harmless for sections that never send it.
       idv = renderClockTime_(coalesce_(vals[idk]));
     } else {
       idv = coalesce_(vals[idk]);

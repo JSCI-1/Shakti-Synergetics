@@ -759,8 +759,6 @@ export default function QualityCheck({ user }) {
   const ipBatchNo      = ipDraft.batchNo
   const ipTime         = ipDraft.time
   const fgBatchNo      = fgDraft.batchNo
-  const fgTime         = fgDraft.time
-  const fgEndTime      = fgDraft.endTime || ''
   const uplGrade       = fgDraft.uplGrade
   // UPL values are per-grade. Legacy flat `uplValues` migrates into 'normal'.
   const uplValuesByGrade = fgDraft.uplValuesByGrade || { normal: fgDraft.uplValues || {} }
@@ -866,8 +864,6 @@ export default function QualityCheck({ user }) {
       __ts: {},
     }))
   }
-  const setFgTime         = v => setFgDraft(p => ({ ...p, time: v }))
-  const setFgEndTime      = v => setFgDraft(p => ({ ...p, endTime: v }))
   const setUplGrade       = v => setFgDraft(p => ({ ...p, uplGrade: v }))
   const setUplValues      = fn => setFgDraft(p => {
     const grade = p.uplGrade || 'normal'
@@ -1095,8 +1091,8 @@ export default function QualityCheck({ user }) {
     // The row goes live in Production → Activity ONLY once ALL of the required
     // fields below are active. Until then nothing is pushed, so no partial /
     // incomplete row ever appears. Required (per request):
-    //   • Batch No.                       • Batch Start Time
-    //   • Dryer (ND1/ND2)                 • Moisture readings (≥1 recorded)
+    //   • Batch No.                       • Dryer (ND1/ND2)
+    //   • Moisture readings (≥1 recorded)
     //   • Wet/Dry Sieve readings AS PER GRADE:
     //       – OMRI   → BOTH Wet Sieve AND Dry Sieve have ≥1 reading
     //       – Export → Wet Sieve has ≥1 reading (Dry Sieve is not an Export parameter)
@@ -1122,7 +1118,6 @@ export default function QualityCheck({ user }) {
     const FG_ACTIVITY_REQUIRED_READY =
       notEmpty(logDate) &&
       notEmpty(d.batchNo) &&
-      notEmpty(d.time) &&                 // Batch Start Time
       notEmpty(dryer) &&
       (hasList(moistureReadings) || notEmpty(curVals.fg_moisture)) &&
       sieveReady
@@ -1141,7 +1136,6 @@ export default function QualityCheck({ user }) {
       grade,
       product,
       batch_no: batchKey,
-      batch_start_time: d.time || null,   // FG Batch Start Time
       // Prefer the LATEST recorded moisture reading; fall back to the legacy
       // single value for older drafts.
       moisture_pct: toNum(
@@ -1784,7 +1778,7 @@ export default function QualityCheck({ user }) {
     }
     const t = setTimeout(() => pushQcActivity(), 700)
     return () => clearTimeout(t)
-  }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgDraft.time, fgMoistureVal, moistureLogSig, wetSieveLogSig, drySieveLogSig, suspResult, suspSampleTime, suspBagNo])  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeTab, fgDryer, fgDraft.date, fgDraft.uplGrade, fgDraft.batchNo, fgMoistureVal, moistureLogSig, wetSieveLogSig, drySieveLogSig, suspResult, suspSampleTime, suspBagNo])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // Suspensibility is OPTIONAL for the readiness gate (it does not make a row go
   // live on its own), but when the chemist DOES enter it, it should appear on
@@ -2489,7 +2483,6 @@ export default function QualityCheck({ user }) {
       const missing = []
       if (!date) missing.push('Manufactured Date')
       if (!fgBatchNo) missing.push('Batch No.')
-      if (!fgTime) missing.push('Batch Start Time')
       // Grade is always set — dropdown defaults to Normal (uplGrade null = normal).
       if (!fgDryer) missing.push('Dryer')
       if (!fgSelected) missing.push('Product')
@@ -2560,8 +2553,6 @@ export default function QualityCheck({ user }) {
         date: date || null,
         shift: null,            // FG form has no shift input today — stored null for forward-compat
         batch_no: fgBatchNo || null,
-        time: fgTime || null,
-        end_time: fgEndTime || null,
         brand: fgBrand || null,
         product: fgSelected || null,
         grade: uplGrade || null,
@@ -3762,8 +3753,6 @@ export default function QualityCheck({ user }) {
             { key: 'itime',  label: 'Time / समय',          value: ipTime,               onChange: setIpTime, type: 'time' },
           ] : [
             { key: 'fbatch',   label: 'Batch No. / बैच नं.',                 placeholder: 'e.g. 3512', value: fgBatchNo,   onChange: setFgBatchNo },
-            { key: 'ftime',    label: 'Batch Start Time / बॅच सुरू वेळ',     value: fgTime,             onChange: setFgTime,    type: 'time' },
-            { key: 'fendtime', label: 'Batch End Time / बॅच समाप्ती वेळ',   value: fgEndTime,          onChange: setFgEndTime, type: 'time' },
           ]
         }
       />

@@ -367,7 +367,6 @@ function QcCard({ row }) {
       <div className="pa-qc-body">
         <div className="pa-qc-fields">
           <div className="pa-qc-field"><span className="pa-qc-field-k">Batch No.</span><span className="pa-qc-field-v">{cellVal(row.batch_no)}</span></div>
-          <div className="pa-qc-field"><span className="pa-qc-field-k">Sample Time</span><span className="pa-qc-field-v">{cellVal(row.batch_start_time)}</span></div>
           <div className="pa-qc-field"><span className="pa-qc-field-k">Dryer</span><span className="pa-qc-field-v">{cellVal(row.dryer)}</span></div>
           <div className="pa-qc-field"><span className="pa-qc-field-k">Product</span><span className="pa-qc-field-v">{cellVal(row.product)}</span></div>
           <div className="pa-qc-field"><span className="pa-qc-field-k">Moisture (%)</span><span className="pa-qc-field-v">{cellVal(row.moisture_pct)}</span></div>
@@ -415,7 +414,7 @@ export default function ProductionActivity() {
         .order('log_date', { ascending: false }),
       supabase
         .from('qc_activity_draft')
-        .select('dryer, log_date, grade, product, batch_no, batch_start_time, moisture_pct, moisture_log, suspensibility_pct, susp_sample_time, susp_bag_no, wet_sieve_log, dry_sieve_log, tested_by, went_live_at, last_saved_at')
+        .select('dryer, log_date, grade, product, batch_no, moisture_pct, moisture_log, suspensibility_pct, susp_sample_time, susp_bag_no, wet_sieve_log, dry_sieve_log, tested_by, went_live_at, last_saved_at')
         .gt('last_saved_at', cutoff)
         .order('log_date', { ascending: false }),
     ])

@@ -114,11 +114,16 @@ for (const g of Object.keys(EXPECT)) eq('off: ' + g + ' → Finished Goods', X.f
 eq('off: blank → Finished Goods', X.fgTabForGrade_(''), 'Finished Goods')
 scriptProps = {}   // restore ON
 
-// ── 4. Normal & Colour = core WDG only, NO company/UPL params ────────────────
+// ── 4. Normal & Colour catalogs ──────────────────────────────────────────────
+// Normal and Colour are now TABLE GRADES in uplData.js (TABLE_GRADES.normal /
+// .colour): they keep the core WDG cards AND add their own 'normal_*' / 'colour_*'
+// parameter rows, and they hide the fg_foam card. So the catalog must contain
+// the core WDG, its OWN normal_*/colour_* rows, and NO OTHER grade's company/UPL
+// params.
 console.log('\n[4] Normal & Colour catalogs')
-const COMPANY_UPL_PREFIXES = ['upl_exp_', 'upl_omri_', 'adama_', 'lohiya_', 'biostadt_',
-  'sumitomo_', 'hemani_', 'sanaca_', 'villacrop_', 'yellowstone_', 'pratasha_',
-  'haychem_', 'farmalinx_', 'mcdonald_', 'normal_', 'colour_', 'iffco_']
+const OTHER_GRADE_PREFIXES = ['upl_exp_', 'upl_omri_', 'adama_', 'adma_', 'lohiya_',
+  'biostadt_', 'sumitomo_', 'hemani_', 'sanaca_', 'villacrop_', 'yellowstone_',
+  'pratasha_', 'haychem_', 'farmalinx_', 'mcdonald_', 'iffco_']
 function hasAnyPrefix(keys, prefixes) {
   return keys.some(k => prefixes.some(p => k.indexOf(p) === 0))
 }
@@ -126,11 +131,15 @@ for (const g of ['normal', 'colour']) {
   const keys = X.fgFieldsForGrade_(g).map(f => f[0])
   assert(g + ': contains core WDG (fg_sulphur, fg_moisture, fg_drySieve)',
     keys.includes('fg_sulphur') && keys.includes('fg_moisture') && keys.includes('fg_drySieve'))
-  assert(g + ': contains NO company/UPL params', !hasAnyPrefix(keys, COMPANY_UPL_PREFIXES))
+  assert(g + ': includes its OWN table rows (' + g + '_sulphur, ' + g + '_arsenic)',
+    keys.includes(g + '_sulphur') && keys.includes(g + '_arsenic'))
+  assert(g + ': contains NO OTHER grade company/UPL params',
+    !hasAnyPrefix(keys, OTHER_GRADE_PREFIXES))
 }
-// Normal and Colour must have IDENTICAL catalogs (Colour is not a company grade)
-assert('Normal and Colour catalogs are identical',
-  JSON.stringify(X.fgFieldsForGrade_('normal')) === JSON.stringify(X.fgFieldsForGrade_('colour')))
+// Normal and Colour have their OWN distinct id namespaces (normal_* vs colour_*),
+// so the catalogs are NOT identical.
+assert('Normal and Colour catalogs differ (own id namespaces)',
+  JSON.stringify(X.fgFieldsForGrade_('normal')) !== JSON.stringify(X.fgFieldsForGrade_('colour')))
 
 // ── 5. Company grades: own rows present, hidden cards absent ─────────────────
 console.log('\n[5] company-grade catalogs (own rows in, hidden cards out)')
