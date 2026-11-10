@@ -651,11 +651,11 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                         <tbody>
                           {batch.rows.map(row => (
                             <tr key={row.id}>
-                              <td>{row.inputName || '—'}</td>
-                              <td>{row.origin    || '—'}</td>
-                              <td>{row.batchNo   || '—'}</td>
-                              <td>{row.qty       || '—'}</td>
-                              <td>
+                              <td data-label="Input / इनपुट">{row.inputName || '—'}</td>
+                              <td data-label="Origin/RM / उद्गम">{row.origin    || '—'}</td>
+                              <td data-label="Batch No. / बैच नं.">{row.batchNo   || '—'}</td>
+                              <td data-label="Qty (kg) / मात्रा">{row.qty       || '—'}</td>
+                              <td data-label="Timestamp / समय">
                                 {(rowTimestamps[row.id] || row.timestamp)
                                   ? <span className="sl-ts-badge">{rowTimestamps[row.id] || row.timestamp}</span>
                                   : <span className="sl-ts-empty">—</span>}
@@ -718,7 +718,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                         const saveState = rowSaveState[saveKey]
                         return (
                           <tr key={row.id}>
-                            <td className="sl-td-input">
+                            <td className="sl-td-input" data-label="Input / इनपुट">
                               <InputDropdown
                                 value={row.inputName}
                                 onChange={name => setBatchRowField(batch.id, row.id, 'inputName', name)}
@@ -742,7 +742,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                 }}
                               />
                             </td>
-                            <td>
+                            <td data-label="Origin/RM / उद्गम">
                               <input
                                 className="sl-input-cell"
                                 placeholder="RM / Origin"
@@ -754,7 +754,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                 }}
                               />
                             </td>
-                            <td>
+                            <td data-label="Batch No. / बैच नं.">
                               <input
                                 className="sl-input-cell"
                                 placeholder="Batch No."
@@ -762,7 +762,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                                 onChange={e => setBatchRowField(batch.id, row.id, 'batchNo', e.target.value)}
                               />
                             </td>
-                            <td>
+                            <td data-label="Qty (kg) / मात्रा">
                               <input
                                 type="number"
                                 className="sl-input-num"
@@ -800,7 +800,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
                               {saveState === 'saved'  && <span className="sl-autosave-indicator sl-autosave-ok">Saved ✓</span>}
                               {saveState === 'error'  && <span className="sl-autosave-indicator sl-autosave-err">!</span>}
                             </td>
-                            <td className="sl-td-ts">
+                            <td className="sl-td-ts" data-label="Timestamp / समय">
                               {(rowTimestamps[row.id] || row.timestamp)
                                 ? <span className="sl-ts-badge">{rowTimestamps[row.id] || row.timestamp}</span>
                                 : <span className="sl-ts-empty">—</span>}

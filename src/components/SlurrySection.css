@@ -1795,6 +1795,69 @@
   .sl-batch-card-table td {
     padding: 5px 6px;
   }
+
+  /* Keep everything inside the screen width */
+  .sl-batch-card,
+  .sl-batch-card-body,
+  .sl-batch-cards-wrap { min-width: 0; max-width: 100%; box-sizing: border-box; }
+  .sl-batch-card-body { padding: 10px 8px; }
+
+  /* Stack each table row into a labeled block instead of a wide table */
+  .sl-batch-card-table,
+  .sl-batch-card-table tbody,
+  .sl-batch-card-table tr,
+  .sl-batch-card-table td { display: block; width: 100%; box-sizing: border-box; }
+  .sl-batch-card-table thead { display: none; }
+
+  .sl-batch-card-table tr {
+    position: relative;
+    border: 1px solid #d8d0c8;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    background: #fff;
+  }
+
+  .sl-batch-card-table td,
+  .sl-batch-card-table td.sl-td-input,
+  .sl-batch-card-table td.sl-td-ts,
+  .sl-batch-card-table td.sl-td-action {
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+    border: none;
+    border-bottom: 1px solid #eee;
+    padding: 6px 10px;
+    text-align: left;
+  }
+
+  .sl-batch-card-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    color: #888;
+    margin-bottom: 2px;
+  }
+
+  .sl-batch-card-table .sl-input-cell,
+  .sl-batch-card-table .sl-input-num {
+    width: 100%;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    padding: 8px;
+    font-size: 14px;   /* avoids iOS zoom on focus */
+  }
+
+  .sl-batch-card-table td.sl-td-action {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: auto;
+    border: none;
+    padding: 4px;
+  }
+
+  .sl-input-dropdown-popup { width: min(220px, 80vw); }
 }
 
 /* ── Toast notification ── */
