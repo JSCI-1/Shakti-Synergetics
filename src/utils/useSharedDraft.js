@@ -47,7 +47,10 @@ const same = (a, b) => canon(a) === canon(b)
 
 function mergeLeaf(base, local, remote) {
   if (same(local, remote)) return local
-  if (base === undefined) return isBlank(local) ? remote : local
+  // First sync for this date (no agreed base yet): what is already shared
+  // wins, so stale values left in this browser never hide what the other
+  // operators entered. Local only fills fields the shared copy has empty.
+  if (base === undefined) return isBlank(remote) ? local : remote
   return same(local, base) ? remote : local
 }
 
@@ -128,9 +131,10 @@ export async function deleteSharedDraft(section, date) {
  * @param {Function} o.onRemoteCleared () => void — shared row was deleted by someone else
  * @returns {{ suppress: Function }}   suppress() — call right before a permanent save
  */
-export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCleared, loadSaved }) {
+export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCleared, loadSaved, onDateSwitch }) {
   const latest = useRef({})
-  latest.current = { blob, hasData, apply, onRemoteCleared, loadSaved }
+  latest.current = { blob, hasData, apply, onRemoteCleared, loadSaved, onDateSwitch }
+  const lastDate = useRef(date)
 
   const base = useRef(undefined)         // last agreed blob
   const seenRemote = useRef(false)
@@ -222,12 +226,25 @@ export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCl
     savedTried.current = false
     savedPending.current = false
     savedBaseline.current = null
+
+    // Switching from one date to ANOTHER date: what is on screen belongs to
+    // the previous date (it is still kept in that date's shared draft), so
+    // empty the form first — otherwise it would be copied onto the new date
+    // and could hide what the operators entered there. Picking the date for
+    // the first time (previous date empty) keeps what was typed and shares it.
+    const prev = lastDate.current
+    lastDate.current = date
+    const switched = !!(prev && date && prev !== date && latest.current.onDateSwitch)
+    if (switched) latest.current.onDateSwitch()
+
     if (!supabaseReady || !supabase || !date) return undefined
-    syncRef.current()
+    // After a switch, wait for the emptied form to render before syncing.
+    const first = setTimeout(() => syncRef.current(), switched ? 300 : 0)
     const id = setInterval(() => syncRef.current(), POLL_MS)
     const onVisible = () => { if (document.visibilityState === 'visible') syncRef.current() }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
+      clearTimeout(first)
       clearInterval(id)
       document.removeEventListener('visibilitychange', onVisible)
     }

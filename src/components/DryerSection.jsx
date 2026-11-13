@@ -41,6 +41,25 @@ function shiftForHour(hour) {
 }
 
 
+// ── Kg./Hour Production — calculated, not typed ─────────────────────────────
+// Kg./Hour = [No. of Bag Per Hours(25) × Bag Size By Wt.(25)]
+//          + [No. of Bag Per Hours(50/1000) × Bag Size By Wt(50/1000)]
+// A blank input counts as 0; if all four inputs are blank the result is blank.
+const KG_INPUT_FIELDS = ['bags_per_hr', 'bag_size_wt', 'bags_per_hr_50', 'bag_size_wt_50']
+
+function computeKgPerHr(row) {
+  const blank = KG_INPUT_FIELDS.every(f => String(row[f] ?? '').trim() === '')
+  if (blank) return ''
+  const n = f => {
+    const v = parseFloat(row[f])
+    return isNaN(v) ? 0 : v
+  }
+  const kg = n('bags_per_hr') * n('bag_size_wt') + n('bags_per_hr_50') * n('bag_size_wt_50')
+  // Round to 3 decimals and drop trailing zeros (e.g. 1250, 37.5, 0.125)
+  return String(Math.round(kg * 1000) / 1000)
+}
+
+
 function stamp12hr() {
   // Include SECONDS so rows saved together in one sitting (e.g. backfilling
   // hours 03:00–07:00 at 07:02) are visually distinct (07:02:30, 07:02:31, …)
@@ -72,6 +91,8 @@ function emptyRow() {
     batch_no: '',
     bags_per_hr: '',
     bag_size_wt: '',
+    bags_per_hr_50: '',   // No. of Bag Per Hours(50)
+    bag_size_wt_50: '',   // Bag Size By Wt.(50)
     kg_per_hr: '',
 
     colour: '',
@@ -332,6 +353,16 @@ function DryerForm({
   // the very first render of a malformed draft cannot throw either.
   const safeForm = normalizeForm(form, dryerType)
 
+  // Total of Kg./Hour Production over all 24 hours ('' when no hour has a value)
+  const kgTotal = (() => {
+    let sum = 0, any = false
+    safeForm.rows.forEach(r => {
+      const v = parseFloat(r.kg_per_hr)
+      if (!isNaN(v)) { sum += v; any = true }
+    })
+    return any ? String(Math.round(sum * 1000) / 1000) : ''
+  })()
+
   // ── Check whether this (dryer_type, date) already has a saved log sheet ──
   // Runs every time the date changes. When a record already exists we store its
   // operator + saved_at so the UI can show a locked banner and disable the
@@ -515,6 +546,8 @@ function DryerForm({
     if (rowEditing[i]) {
       const cur = rowTouchedRef.current[i] || new Set()
       cur.add(field)
+      // A bag-column edit also changes the calculated Kg./Hour Production.
+      if (KG_INPUT_FIELDS.includes(field)) cur.add('kg_per_hr')
       rowTouchedRef.current[i] = cur
     }
     // Reflect this hour's shift in the read-only Shift box.
@@ -526,7 +559,7 @@ function DryerForm({
         const iso = stampTs(r[field], val, prevTs[field])
         const nextTs = { ...prevTs }
         if (iso === undefined) delete nextTs[field]; else nextTs[field] = iso
-        return {
+        const next = {
           ...r,
           [field]: val,
           __ts: nextTs,
@@ -534,6 +567,14 @@ function DryerForm({
           // and the hour can be re-saved (last-write-wins).
           saved: false,
         }
+        // Kg./Hour Production is calculated from the four bag columns.
+        if (KG_INPUT_FIELDS.includes(field)) {
+          const kg = computeKgPerHr(next)
+          const kgIso = stampTs(r.kg_per_hr, kg, prevTs.kg_per_hr)
+          if (kgIso === undefined) delete nextTs.kg_per_hr; else nextTs.kg_per_hr = kgIso
+          next.kg_per_hr = kg
+        }
+        return next
       })
 
       // Update range warning for this cell if it's a tracked field
@@ -1464,6 +1505,9 @@ function DryerForm({
           // Total Production of the Day = sum of the four parts (derived).
           total_production: computeTotalProduction(form),
 
+          // Total Kg./Hour Production = sum of the 24 hourly Kg./Hour values.
+          kg_per_hr_total: numOrNull(kgTotal),
+
           incharge: form.incharge,
           operator: form.operator,
 
@@ -1542,6 +1586,7 @@ function DryerForm({
             startup:           form.startup,
             packed_production: form.packed_production,
             total_production:  computeTotalProduction(form),
+            kg_per_hr_total:   kgTotal,
             // Calibration
             calibration_due:   form.calibration_due,
             cal_inlet_temp:    form.cal_inlet_temp,
@@ -1786,10 +1831,16 @@ function DryerForm({
               (locked || rangeBlocked ? ' dr-cell-locked' : '')
             }
             placeholder="—"
-            readOnly={locked || rangeBlocked}
+            readOnly={locked || rangeBlocked || field === 'kg_per_hr'}
+            tabIndex={field === 'kg_per_hr' ? -1 : undefined}
+            title={field === 'kg_per_hr'
+              ? 'Auto-calculated: (Bags/Hr(25) × Bag Size(25)) + (Bags/Hr(50/1000) × Bag Size(50/1000))'
+              : undefined}
+            style={field === 'kg_per_hr' ? { background: '#f5f0ea' } : undefined}
             value={safeForm.rows[ri][field]}
             onChange={e => {
-              if (locked || rangeBlocked) return
+              // Kg./Hour Production is calculated from the bag columns
+              if (locked || rangeBlocked || field === 'kg_per_hr') return
               setRow(ri, field, e.target.value)
             }}
           />
@@ -2291,12 +2342,12 @@ function DryerForm({
 
                   <th rowSpan={2}>
 
-                    No. of Bag Per Hours
+                    No. of Bag Per Hours(25)
 
                     <br />
 
                     <span className="dr-hi">
-                      बैग प्रति घंटा
+                      बैग प्रति घंटा (25)
                     </span>
 
                   </th>
@@ -2304,12 +2355,38 @@ function DryerForm({
 
                   <th rowSpan={2}>
 
-                    Bag Size By Wt.
+                    Bag Size By Wt.(25)
 
                     <br />
 
                     <span className="dr-hi">
-                      बैग का वजन
+                      बैग का वजन (25)
+                    </span>
+
+                  </th>
+
+
+                  <th rowSpan={2}>
+
+                    No. of Bag Per Hours(50/1000)
+
+                    <br />
+
+                    <span className="dr-hi">
+                      बैग प्रति घंटा (50/1000)
+                    </span>
+
+                  </th>
+
+
+                  <th rowSpan={2}>
+
+                    Bag Size By Wt(50/1000)
+
+                    <br />
+
+                    <span className="dr-hi">
+                      बैग का वजन (50/1000)
                     </span>
 
                   </th>
@@ -2598,6 +2675,16 @@ function DryerForm({
                     )}
 
                     {renderNC(
+                      'bags_per_hr_50',
+                      i
+                    )}
+
+                    {renderNC(
+                      'bag_size_wt_50',
+                      i
+                    )}
+
+                    {renderNC(
                       'kg_per_hr',
                       i
                     )}
@@ -2763,6 +2850,24 @@ function DryerForm({
                 ))}
 
               </tbody>
+
+              {/* Total of the Kg./Hour Production column (all 24 hours).
+                  17 columns before it (Time … Bag Size By Wt(50/1000)),
+                  7 after it (Colour … Save). */}
+              <tfoot>
+                <tr className="dr-kg-total-row">
+                  <td
+                    colSpan={17}
+                    style={{ textAlign: 'right', fontWeight: 700, padding: '6px 10px' }}
+                  >
+                    Total Kg./Hour Production / <span className="dr-hi">कुल किग्रा/घंटा</span>
+                  </td>
+                  <td style={{ textAlign: 'center', fontWeight: 700, background: '#f5f0ea' }}>
+                    {kgTotal === '' ? '—' : kgTotal}
+                  </td>
+                  <td colSpan={7} />
+                </tr>
+              </tfoot>
 
             </table>
 

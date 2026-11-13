@@ -284,6 +284,12 @@ export default function BatchTraceability({ sharedBatches = [] }) {
       if (!row.rows.every(r => r && r.id != null)) return null
       return { rows: row.rows, checked_by: row.checked_by || '', approved_by: row.approved_by || '' }
     },
+    // Date changed: empty the rows so the new date's shared values load
+    // instead of the previous date's being copied onto it.
+    onDateSwitch: () => {
+      setForm(p => ({ ...emptyForm(sharedBatches), date: p.date }))
+      setSaved(false); setError('')
+    },
     onRemoteCleared: () => {
       // This record was saved by another operator.
       clearFormDraft(); setSaved(false); setError('')

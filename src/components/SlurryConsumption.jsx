@@ -45,8 +45,8 @@ const COL_HEADERS = (
 
 export default function SlurryConsumption() {
   const uid = useUserId()
-  // ── Today's entry ──
-  const today = todayISO()
+  // ── Entry for the date the operator selects (defaults to today) ──
+  const [entryDate, setEntryDateRaw] = useDraft(`draft:${uid}:batch:consumptionDate`, todayISO())
   const [form, setForm, clearFormDraft] = useDraft(`draft:${uid}:batch:consumption`, emptyForm())
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
@@ -78,13 +78,13 @@ export default function SlurryConsumption() {
   // Load cumulative diff of the most recent record before today
   // Formula: today's cumulative = previous record's cumulative_diff + today's diff
   const loadPrevCumDiff = useCallback(async () => {
-    if (!supabaseReady) return
+    if (!supabaseReady || !entryDate) return
     const { data } = await supabase.from('slurry_consumption').select('rows')
     if (!data) return
 
-    // Flatten, filter before today, sort by date descending → take most recent
+    // Flatten, filter before the selected date, sort by date descending → take most recent
     const all = data.flatMap(r => r.rows || [])
-      .filter(r => r.date && r.date < today)
+      .filter(r => r.date && r.date < entryDate)
       .sort((a, b) => a.date > b.date ? 1 : -1)
 
     // Use the stored cumulative_diff of the most recent previous record
@@ -92,8 +92,8 @@ export default function SlurryConsumption() {
     const prevCum = lastRecord ? (parseFloat(lastRecord.cumulative_diff) || 0) : 0
     setPrevCumDiff(prevCum)
 
-    // Pre-fill today if already saved
-    const existing = data.flatMap(r => r.rows || []).find(r => r.date === today)
+    // Pre-fill the selected date if already saved
+    const existing = data.flatMap(r => r.rows || []).find(r => r.date === entryDate)
     if (existing) {
       const loaded = {
         opening_bal:     existing.opening_bal     != null ? String(existing.opening_bal)     : '',
@@ -112,22 +112,33 @@ export default function SlurryConsumption() {
       savedSnap.current = canon(loaded)
       setForm(loaded)
     }
-  }, [today])
+  }, [entryDate])
 
   useEffect(() => { loadPrevCumDiff() }, [loadPrevCumDiff])
 
-  // ── Shared draft: other Batch Operators see today's values ──
-  // Keyed by today's date; deleted when the report is saved.
+  // Operator picks another date: start that date's entry from a clean form
+  // (the saved record / shared draft for it, if any, loads in right after).
+  function changeEntryDate(v) {
+    if (!v || v === entryDate) return
+    savedSnap.current = ''
+    clearFormDraft()
+    setSaved(false); setError('')
+    setPrevCumDiff(0)
+    setEntryDateRaw(v)
+  }
+
+  // ── Shared draft: other Batch Operators see the values for the selected date ──
+  // Keyed by the selected date; deleted when the report is saved.
   const sharedDraft = useSharedDraft({
     section: 'slurry_consumption',
-    date: today,
+    date: entryDate,
     blob: form,
     hasData: b => canon(b) !== savedSnap.current && Object.values(b).some(v => v !== '' && v != null),
     apply: m => {
       if (m && typeof m === 'object') setForm(p => ({ ...p, ...m }))
     },
     onRemoteCleared: () => {
-      // The report for today was saved by another operator.
+      // The report for this date was saved by another operator.
       clearFormDraft(); setSaved(false); setError('')
       loadPrevCumDiff()
     },
@@ -166,7 +177,7 @@ export default function SlurryConsumption() {
     setSaving(true); setError(''); setSaved(false)
     const { error: err } = await supabase.from('slurry_consumption').insert([{
       rows: [{
-        date:            today,
+        date:            entryDate,
         opening_bal:     parseFloat(form.opening_bal)     || null,
         total_batches:   parseFloat(form.total_batches)   || null,
         closing_bal:     parseFloat(form.closing_bal)     || null,
@@ -187,7 +198,7 @@ export default function SlurryConsumption() {
     else {
       setSaved(true)
       sharedDraft.suppress()
-      deleteSharedDraft('slurry_consumption', today)
+      deleteSharedDraft('slurry_consumption', entryDate)
       clearFormDraft()
       loadPrevCumDiff()
     }
@@ -213,10 +224,20 @@ export default function SlurryConsumption() {
         </div>
       </div>
 
-      {/* ══ SECTION 1: Today's Entry ══ */}
+      {/* ══ SECTION 1: Entry for the selected date ══ */}
       <div className="sc-section-title">
-        Today's Entry / <span className="sc-hi-inline">आज की प्रविष्टि</span>
-        <span className="sc-today-badge">{fmtDate(today)}</span>
+        Entry / <span className="sc-hi-inline">प्रविष्टि</span>
+        <span className="sc-today-badge">{entryDate ? fmtDate(entryDate) : '—'}</span>
+      </div>
+
+      <div className="sc-date-bar">
+        <label className="sc-date-label">Select Date / <span className="sc-hi-inline">तारीख चुनें</span></label>
+        <input
+          type="date"
+          className="sc-date-input"
+          value={entryDate || ''}
+          onChange={e => changeEntryDate(e.target.value)}
+        />
       </div>
 
       <div className="sc-table-scroll">
@@ -224,7 +245,7 @@ export default function SlurryConsumption() {
           <thead>{COL_HEADERS}</thead>
           <tbody>
             <tr className="sc-current-row">
-              <td className="sc-td-sticky sc-td-date"><strong>{fmtDate(today)}</strong></td>
+              <td className="sc-td-sticky sc-td-date"><strong>{entryDate ? fmtDate(entryDate) : '—'}</strong></td>
               <td><input type="number" className="sc-input-num" placeholder="—" value={form.opening_bal}     onChange={e => set('opening_bal',     e.target.value)} /></td>
               <td><input type="number" className="sc-input-num" placeholder="—" value={form.total_batches}   onChange={e => set('total_batches',   e.target.value)} /></td>
               <td><input type="number" className="sc-input-num" placeholder="—" value={form.closing_bal}     onChange={e => set('closing_bal',     e.target.value)} /></td>

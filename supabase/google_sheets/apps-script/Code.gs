@@ -1994,8 +1994,10 @@ var DRYER_V2_HOURLY_COLS = [
   ['pressure',      'Feed Pressure'],
   ['pt_temp',       'Pt. Temp'],
   ['batch_no',      'Batch No.'],
-  ['bags_per_hr',   'No. of Bag Per Hours'],
-  ['bag_size_wt',   'Bag Size By Wt.'],
+  ['bags_per_hr',   'No. of Bag Per Hours(25)'],
+  ['bag_size_wt',   'Bag Size By Wt.(25)'],
+  ['bags_per_hr_50', 'No. of Bag Per Hours(50/1000)'],
+  ['bag_size_wt_50', 'Bag Size By Wt(50/1000)'],
   ['kg_per_hr',     'Kg./Hour Production'],
   ['colour',        'Colour/Normal/OMRI'],
   ['id_frequency',  'I.D. Frequency'],
@@ -2035,6 +2037,7 @@ var DRYER_V2_FORM_COLS = [
   ['crust_papadi',      'Crust (Papadi) (kg)'],
   ['startup',           'Startup (kg)'],
   ['packed_production', 'Packed Production (kg)'],
+  ['kg_per_hr_total',   'Total Kg./Hour Production'],   // sum of the 24 hourly Kg./Hour values
   ['total_production','Total Production of the Day (kg)'],
   ['incharge',        'Incharge'],
   ['operator',        'Operator']
@@ -2161,6 +2164,123 @@ function addDryerNewHourlyColumns() {
     formatQcTab_(sh);   // re-apply widths/wrap/centering/hidden-key
   }
   Logger.log('[addDryerNewHourlyColumns] Done. Existing data preserved; C.Pressure + Maintenance added.');
+}
+
+/**
+ * ONE-SHOT, NON-DESTRUCTIVE: relabel the existing bag columns
+ * "No. of Bag Per Hours" / "Bag Size By Wt." as "...(25)", then insert the two
+ * "(50/1000)" bag columns into the EXISTING "New Dryer" / "Old Dryer" hourly
+ * tabs WITHOUT clearing any data:
+ *   • "No. of Bag Per Hours(50/1000)" — right AFTER "Bag Size By Wt.(25)"
+ *   • "Bag Size By Wt(50/1000)"       — right AFTER "No. of Bag Per Hours(50/1000)"
+ * (both BEFORE "Kg./Hour Production", matching DRYER_V2_HOURLY_COLS so the
+ * hourly writer stays aligned). insertColumnAfter shifts existing cells right,
+ * so no value is lost or misaligned. Idempotent: a present column is skipped.
+ * Existing rows show blank in the new columns until their next save/replay.
+ * Touches ONLY the two Dryer hourly tabs (the bottom form lives in its own
+ * "– Form" tabs). RUN ONCE from the Apps Script editor BEFORE the website
+ * change goes live, otherwise new hourly rows are written one column off.
+ */
+function addDryerBag50Columns() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[addDryerBag50Columns] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+
+  function insertAfter_(sh, tabName, newLabel, afterLabel) {
+    var lastCol = Math.max(sh.getLastColumn(), 1);
+    var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (hdr.indexOf(newLabel) !== -1) {
+      Logger.log('[addDryerBag50Columns] "' + newLabel + '" already present: ' + tabName);
+      return true;
+    }
+    var anchor = hdr.indexOf(afterLabel);
+    if (anchor === -1) {
+      Logger.log('[addDryerBag50Columns] No "' + afterLabel + '" column on ' + tabName
+        + ' — "' + newLabel + '" skipped.');
+      return false;
+    }
+    sh.insertColumnAfter(anchor + 1);            // shifts everything right; data preserved
+    sh.getRange(1, anchor + 2).setValue(newLabel);
+    Logger.log('[addDryerBag50Columns] Inserted "' + newLabel + '" after "' + afterLabel + '" on ' + tabName);
+    return true;
+  }
+
+  // Rename an existing header cell in place (no column moves, data untouched).
+  function rename_(sh, tabName, oldLabel, newLabel) {
+    var lastCol = Math.max(sh.getLastColumn(), 1);
+    var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    var idx = hdr.indexOf(oldLabel);
+    if (idx === -1) return;
+    sh.getRange(1, idx + 1).setValue(newLabel);
+    Logger.log('[addDryerBag50Columns] Renamed "' + oldLabel + '" → "' + newLabel + '" on ' + tabName);
+  }
+
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[addDryerBag50Columns] Tab missing (skip): ' + tabName); continue; }
+    // The existing two bag columns are now labelled "(25)".
+    rename_(sh, tabName, 'No. of Bag Per Hours', 'No. of Bag Per Hours(25)');
+    rename_(sh, tabName, 'Bag Size By Wt.',      'Bag Size By Wt.(25)');
+    // If an earlier run used the short "(50)" labels, relabel them in place.
+    rename_(sh, tabName, 'No. of Bag Per Hours(50)', 'No. of Bag Per Hours(50/1000)');
+    rename_(sh, tabName, 'Bag Size By Wt.(50)',      'Bag Size By Wt(50/1000)');
+    if (insertAfter_(sh, tabName, 'No. of Bag Per Hours(50/1000)', 'Bag Size By Wt.(25)')) {
+      insertAfter_(sh, tabName, 'Bag Size By Wt(50/1000)', 'No. of Bag Per Hours(50/1000)');
+    }
+    formatQcTab_(sh);   // re-apply widths/wrap/centering/hidden-key
+  }
+  Logger.log('[addDryerBag50Columns] Done. Existing data preserved; (50/1000) bag columns added.');
+}
+
+/**
+ * ONE-SHOT, NON-DESTRUCTIVE: insert the "Total Kg./Hour Production" column into
+ * the EXISTING bottom-form tabs "New Dryer – Form" / "Old Dryer – Form", right
+ * BEFORE "Total Production of the Day (kg)" (matching DRYER_V2_FORM_COLS so the
+ * form writer stays aligned). insertColumnBefore shifts existing cells — and
+ * the hidden key column — right, so no value is lost or misaligned.
+ * Idempotent: skipped if the column already exists. RUN ONCE from the Apps
+ * Script editor BEFORE the website change goes live.
+ */
+function addDryerKgTotalColumn() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[addDryerKgTotalColumn] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  var NEW_LABEL = 'Total Kg./Hour Production';
+  var ANCHOR = 'Total Production of the Day (kg)';
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2_FORM[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[addDryerKgTotalColumn] Tab missing (skip): ' + tabName); continue; }
+    var lastCol = Math.max(sh.getLastColumn(), 1);
+    var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+    if (hdr.indexOf(NEW_LABEL) !== -1) {
+      Logger.log('[addDryerKgTotalColumn] Already present: ' + tabName);
+      continue;
+    }
+    var anchor = hdr.indexOf(ANCHOR);
+    if (anchor === -1) {
+      Logger.log('[addDryerKgTotalColumn] No "' + ANCHOR + '" column on ' + tabName + ' — skipped.');
+      continue;
+    }
+    sh.insertColumnBefore(anchor + 1);           // shifts Total Production+ right
+    sh.getRange(1, anchor + 1).setValue(NEW_LABEL);
+    formatQcTab_(sh);
+    Logger.log('[addDryerKgTotalColumn] Inserted "' + NEW_LABEL + '" before "' + ANCHOR + '" on ' + tabName);
+  }
+  Logger.log('[addDryerKgTotalColumn] Done. Existing data preserved.');
 }
 
 /**
@@ -2719,7 +2839,8 @@ function writeDryerFormRow_(ss, row) {
 
   // Bottom-form fields whose cell shows the VALUE ONLY (no timestamp), by
   // request: Batch No. and Calibration Due Date.
-  var DRYER_V2_FORM_NO_TS = { 'batch_no': true, 'calibration_due': true };
+  // Total Kg./Hour Production is calculated, so it has no entry time either.
+  var DRYER_V2_FORM_NO_TS = { 'batch_no': true, 'calibration_due': true, 'kg_per_hr_total': true };
 
   var vals = p.values || {};
   var ts   = p.ts || {};

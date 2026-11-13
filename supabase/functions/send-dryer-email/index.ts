@@ -37,8 +37,10 @@ const HOURLY_COLS: { key: string; label: string }[] = [
   { key: 'pressure',      label: 'Feed Pressure' },
   { key: 'pt_temp',       label: 'Pt. Temp' },
   { key: 'batch_no',      label: 'Batch No.' },
-  { key: 'bags_per_hr',   label: 'Bags/Hr' },
-  { key: 'bag_size_wt',   label: 'Bag Size Wt' },
+  { key: 'bags_per_hr',   label: 'Bags/Hr (25)' },
+  { key: 'bag_size_wt',   label: 'Bag Size Wt (25)' },
+  { key: 'bags_per_hr_50', label: 'Bags/Hr (50/1000)' },
+  { key: 'bag_size_wt_50', label: 'Bag Size Wt (50/1000)' },
   { key: 'kg_per_hr',     label: 'Kg/Hr' },
   { key: 'colour',        label: 'Colour' },
   { key: 'id_frequency',  label: 'I.D. Frequency' },
@@ -160,6 +162,7 @@ function buildCsv(payload: Record<string, unknown>): string {
     { label: 'Crust / Papadi',    val: v(payload.crust_papadi)      },
     { label: 'Startup',           val: v(payload.startup)           },
     { label: 'Packed Production', val: v(payload.packed_production) },
+    { label: 'Total Kg./Hour Production', val: v(payload.kg_per_hr_total) },
     { label: 'Total Production',  val: v(payload.total_production)  },
   ]
   const cal = CAL_SENSORS.map(s => ({

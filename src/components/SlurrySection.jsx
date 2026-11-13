@@ -73,8 +73,8 @@ function emptyBatchCard(prefillNames = []) {
 function emptyForm() {
   return {
     date: '',
-    shift1_operator: '',
-    shift2_operator: '',
+    shift: '',
+    operator_name: '',
     operator: '',
     supervisor: '',
     manager: '',
@@ -272,6 +272,16 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  // Operator name comes from the logged-in user (jsci_user, set at login).
+  // Runs whenever it is empty, so it is also restored after Save / Reset.
+  useEffect(() => {
+    if (form.operator_name) return
+    try {
+      const profile = JSON.parse(localStorage.getItem('jsci_user') || '{}')
+      if (profile?.name) setForm(p => ({ ...p, operator_name: profile.name }))
+    } catch { /* silent */ }
+  }, [form.operator_name]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // =========================================================
   // BATCH HELPERS
   // =========================================================
@@ -295,8 +305,6 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
   const sharedBlob = {
     meta: {
-      shift1_operator: form.shift1_operator,
-      shift2_operator: form.shift2_operator,
       supervisor:      form.supervisor,
       manager:         form.manager,
     },
@@ -308,7 +316,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
   function sharedHasData(blob) {
     const m = blob.meta || {}
-    if (m.shift1_operator || m.shift2_operator || m.supervisor || m.manager) return true
+    if (m.supervisor || m.manager) return true
     return (blob.batches || []).some(b =>
       b.batchNo || b.tankType || b.completed ||
       b.rows.some(r => r.inputName || r.origin || r.batchNo || r.qty)
@@ -354,8 +362,8 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       let k = 0
       return {
         meta: {
-          shift1_operator: row.shift1_operator || '',
-          shift2_operator: row.shift2_operator || '',
+          shift:           row.shift           || '',
+          operator_name:   row.operator_name   || '',
           supervisor:      row.supervisor      || '',
           manager:         row.manager         || '',
         },
@@ -364,6 +372,14 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
           rows: (b.rows || []).map(r => ({ ...r, timestamp: (flat[k++] || {}).timestamp || r.timestamp || '' })),
         })),
       }
+    },
+    // Date changed: empty the card (keep date, shift, own name) so the new
+    // date's shared values load instead of the previous date's being copied.
+    onDateSwitch: () => {
+      setForm(p => ({ ...emptyForm(), date: p.date, shift: p.shift, operator_name: p.operator_name }))
+      clearTimestampsDraft()
+      syncParent([emptyBatchCard()])
+      setBatchErrors({})
     },
     onRemoteCleared: () => {
       // The job card for this date was saved by another operator.
@@ -583,8 +599,8 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       .from('process_job_cards')
       .insert([{
         date:             form.date || null,
-        shift1_operator:  form.shift1_operator,
-        shift2_operator:  form.shift2_operator,
+        shift:            form.shift,
+        operator_name:    form.operator_name,
         batches:          batches,
         input_rows:       batches.flatMap(b =>
           b.rows.map(r => ({
@@ -657,25 +673,29 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
           <div className="sl-meta-field">
             <label className="sl-label">
-              Shift 1 Operator / <span className="sl-label-hi">पहली पाली ऑपरेटर</span>
+              Shift / <span className="sl-label-hi">पाली</span>
             </label>
-            <input
+            <select
               className="sl-input"
-              placeholder="Operator name"
-              value={form.shift1_operator}
-              onChange={e => set('shift1_operator', e.target.value)}
-            />
+              value={form.shift || ''}
+              onChange={e => set('shift', e.target.value)}
+            >
+              <option value="">— Select Shift —</option>
+              <option value="Day">Day / दिन</option>
+              <option value="Night">Night / रात</option>
+            </select>
           </div>
 
           <div className="sl-meta-field">
             <label className="sl-label">
-              Shift 2 Operator / <span className="sl-label-hi">दूसरी पाली ऑपरेटर</span>
+              Operator Name / <span className="sl-label-hi">ऑपरेटर नाम</span>
             </label>
             <input
               className="sl-input"
-              placeholder="Operator name"
-              value={form.shift2_operator}
-              onChange={e => set('shift2_operator', e.target.value)}
+              placeholder="Auto-filled from login"
+              value={form.operator_name || ''}
+              readOnly
+              style={{ background: '#f5f0ea' }}
             />
           </div>
         </div>

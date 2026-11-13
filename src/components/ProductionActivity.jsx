@@ -32,8 +32,10 @@ const OTHER_COLUMNS = [
   { key: 'pressure',      label: 'Feed Pressure',       hi: 'फीड दबाव' },
   { key: 'pt_temp',       label: 'Pt. Temp',            hi: 'पीटी. तापमान' },
   { key: 'batch_no',      label: 'Batch No.',           hi: 'बैच नं.' },
-  { key: 'bags_per_hr',   label: 'No. of Bag Per Hours', hi: 'बैग प्रति घंटा' },
-  { key: 'bag_size_wt',   label: 'Bag Size By Wt.',     hi: 'बैग का वजन' },
+  { key: 'bags_per_hr',   label: 'No. of Bag Per Hours(25)', hi: 'बैग प्रति घंटा (25)' },
+  { key: 'bag_size_wt',   label: 'Bag Size By Wt.(25)',      hi: 'बैग का वजन (25)' },
+  { key: 'bags_per_hr_50', label: 'No. of Bag Per Hours(50/1000)', hi: 'बैग प्रति घंटा (50/1000)' },
+  { key: 'bag_size_wt_50', label: 'Bag Size By Wt(50/1000)',       hi: 'बैग का वजन (50/1000)' },
   { key: 'kg_per_hr',     label: 'Kg./Hour Production', hi: 'किग्रा/घंटा' },
   { key: 'colour',        label: 'Colour/Normal/OMRI',  hi: 'रंग/सामान्य' },
   { key: 'id_frequency',  label: 'I.D. Frequency',      hi: 'आईडी फ्रीक्वेंसी' },
@@ -176,6 +178,14 @@ function ActivityTable({ group }) {
   if (!presentHours.length) {
     return <div className="pa-empty-hours">No hours shared yet. / अभी तक कोई घंटा साझा नहीं किया गया।</div>
   }
+  // Total Kg./Hour Production over the shared hours (same rule as the Dryer form)
+  const kgIdx = OTHER_COLUMNS.findIndex(c => c.key === 'kg_per_hr')
+  let kgSum = 0, kgAny = false
+  presentHours.forEach(h => {
+    const n = parseFloat(group.hours[h]?.kg_per_hr)
+    if (!isNaN(n)) { kgSum += n; kgAny = true }
+  })
+  const kgTotal = kgAny ? String(Math.round(kgSum * 1000) / 1000) : ''
   return (
     <div className="pa-table-scroll">
       <table className="pa-table">
@@ -250,6 +260,24 @@ function ActivityTable({ group }) {
             )
           })}
         </tbody>
+        {kgIdx !== -1 && (
+          <tfoot>
+            <tr className="pa-kg-total-row">
+              <td
+                colSpan={1 + TEMP_COLUMNS.length + kgIdx}
+                style={{ textAlign: 'right', fontWeight: 700 }}
+              >
+                Total Kg./Hour Production / <span className="pa-th-hi">कुल किग्रा/घंटा</span>
+              </td>
+              <td style={{ fontWeight: 700, background: '#f5f0ea' }}>
+                {kgTotal === '' ? '—' : kgTotal}
+              </td>
+              {OTHER_COLUMNS.length - kgIdx - 1 > 0 && (
+                <td colSpan={OTHER_COLUMNS.length - kgIdx - 1} />
+              )}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   )

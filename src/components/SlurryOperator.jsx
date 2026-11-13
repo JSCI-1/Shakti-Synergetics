@@ -282,6 +282,12 @@ export default function SlurryOperator() {
         })),
       }
     },
+    // Date changed: empty the card (keep date, shift, own name) so the new
+    // date's shared values load instead of the previous date's being copied.
+    onDateSwitch: () => {
+      setForm(p => ({ ...emptyForm(), date: p.date, shift: p.shift, operator_name: p.operator_name }))
+      clearMillFlowTs(); clearMillAmpTs(); clearMillBeadsTs()
+    },
     onRemoteCleared: () => {
       // The sand-milling card for this date was saved by another operator.
       clearFormDraft(); clearMillFlowTs(); clearMillAmpTs(); clearMillBeadsTs()
@@ -340,6 +346,11 @@ export default function SlurryOperator() {
           stop_ts:   m.stop_ts   || '',
         })),
       }
+    },
+    // Running date changed: empty the readings (keep date and Checked By).
+    onDateSwitch: () => {
+      setMotorForm(p => ({ ...emptyMotorForm(), running_date: p.running_date, checked_by: p.checked_by }))
+      clearMotorAmpTs(); clearMotorStopTs(); clearMotorRowTs()
     },
     onRemoteCleared: () => {
       // The motor status for this date was saved by another operator.

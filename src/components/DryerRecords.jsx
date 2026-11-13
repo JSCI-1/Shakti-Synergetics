@@ -131,8 +131,10 @@ function ReadonlyLogTable({ record }) {
               <th rowSpan={2}>Feed Pressure<br /><span className="dr-hi">फीड दबाव</span></th>
               <th rowSpan={2}>Pt. Temp<br /><span className="dr-hi">पीटी. तापमान</span></th>
               <th rowSpan={2}>Batch No.<br /><span className="dr-hi">बैच नं.</span></th>
-              <th rowSpan={2}>No. of Bag Per Hours<br /><span className="dr-hi">बैग प्रति घंटा</span></th>
-              <th rowSpan={2}>Bag Size By Wt.<br /><span className="dr-hi">बैग का वजन</span></th>
+              <th rowSpan={2}>No. of Bag Per Hours(25)<br /><span className="dr-hi">बैग प्रति घंटा (25)</span></th>
+              <th rowSpan={2}>Bag Size By Wt.(25)<br /><span className="dr-hi">बैग का वजन (25)</span></th>
+              <th rowSpan={2}>No. of Bag Per Hours(50/1000)<br /><span className="dr-hi">बैग प्रति घंटा (50/1000)</span></th>
+              <th rowSpan={2}>Bag Size By Wt(50/1000)<br /><span className="dr-hi">बैग का वजन (50/1000)</span></th>
               <th rowSpan={2}>Kg./Hour Production<br /><span className="dr-hi">किग्रा/घंटा</span></th>
               <th rowSpan={2}>Colour/Normal/OMRI<br /><span className="dr-hi">रंग/सामान्य</span></th>
               <th rowSpan={2}>I.D. Frequency<br /><span className="dr-hi">आईडी फ्रीक्वेंसी</span></th>
@@ -182,6 +184,8 @@ function ReadonlyLogTable({ record }) {
                   <ReadonlyCell value={row.batch_no} />
                   <ReadonlyCell value={row.bags_per_hr} />
                   <ReadonlyCell value={row.bag_size_wt} />
+                  <ReadonlyCell value={row.bags_per_hr_50} />
+                  <ReadonlyCell value={row.bag_size_wt_50} />
                   <ReadonlyCell value={row.kg_per_hr} />
                   <ReadonlyCell value={row.colour} />
                   <ReadonlyCell value={row.id_frequency} />

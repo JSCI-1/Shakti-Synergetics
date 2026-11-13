@@ -22,7 +22,8 @@
 export const HISTORY_SCALAR_FIELDS = [
   'temp_inlet', 'temp_outlet', 'temp_actual', 'temp_fbd1', 'temp_fbd2',
   'temp_chamber', 'atomizer_freq', 'feed_fc', 'c_pressure', 'pressure',
-  'pt_temp', 'batch_no', 'bags_per_hr', 'bag_size_wt', 'kg_per_hr',
+  'pt_temp', 'batch_no', 'bags_per_hr', 'bag_size_wt',
+  'bags_per_hr_50', 'bag_size_wt_50', 'kg_per_hr',
   'colour', 'id_frequency', 'remarks',
 ]
 
