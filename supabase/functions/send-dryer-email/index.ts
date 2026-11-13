@@ -147,6 +147,18 @@ function buildCsv(payload: Record<string, unknown>): string {
     lines.push(cells.join(','))
   })
 
+  // Total of the Kg/Hr column (all 24 hours): the field name at the start of the
+  // row (same wording as the website's footer row; it reads across the empty
+  // cells) and the calculated value directly under the Kg/Hr column.
+  const kgTotal = v(payload.kg_per_hr_total)
+  if (kgTotal !== '') {
+    const kgIdx = 1 + HOURLY_COLS.findIndex(c => c.key === 'kg_per_hr')   // +1 for the Time column
+    const totalCells: string[] = header.map(() => '')
+    totalCells[0] = csv('Total Kg./Hour Production / कुल किग्रा/घंटा')
+    totalCells[kgIdx] = csv(kgTotal)
+    lines.push(totalCells.join(','))
+  }
+
   lines.push('')
   lines.push('')
 
@@ -157,13 +169,14 @@ function buildCsv(payload: Record<string, unknown>): string {
     { label: 'IFBD',      dp: v(payload.ifbd_dp),       mr: v(payload.ifbd_mr)      },
     { label: 'FBD %',     dp: v(payload.fbd_pct_dp),    mr: v(payload.fbd_pct_mr)   },
   ]
+  // Production summary mirrors the website: per part No. of Bags, Quantity (kg)
+  // and Total (kg). Older submissions carry the total only (bags/qty blank).
   const prod = [
-    { label: 'Fine Powder',       val: v(payload.fine_powder)       },
-    { label: 'Crust / Papadi',    val: v(payload.crust_papadi)      },
-    { label: 'Startup',           val: v(payload.startup)           },
-    { label: 'Packed Production', val: v(payload.packed_production) },
-    { label: 'Total Kg./Hour Production', val: v(payload.kg_per_hr_total) },
-    { label: 'Total Production',  val: v(payload.total_production)  },
+    { label: 'Fine Powder',       bags: v(payload.fine_powder_bags),       qty: v(payload.fine_powder_qty),       total: v(payload.fine_powder) },
+    { label: 'Crust / Papadi',    bags: v(payload.crust_papadi_bags),      qty: v(payload.crust_papadi_qty),      total: v(payload.crust_papadi) },
+    { label: 'Startup',           bags: v(payload.startup_bags),           qty: v(payload.startup_qty),           total: v(payload.startup) },
+    { label: 'Packed Production', bags: v(payload.packed_production_bags), qty: v(payload.packed_production_qty), total: v(payload.packed_production) },
+    { label: 'Total Production',  bags: '', qty: '', total: v(payload.total_production) },
   ]
   const cal = CAL_SENSORS.map(s => ({
     label: s.label,
@@ -173,9 +186,9 @@ function buildCsv(payload: Record<string, unknown>): string {
   const calDue = v(payload.calibration_due)
 
   // Section header row (blank column between each block)
-  lines.push(['BLOWER READINGS', '', '', '', 'PRODUCTION SUMMARY', '', '', 'CALIBRATION'].map(csv).join(','))
+  lines.push(['BLOWER READINGS', '', '', '', 'PRODUCTION SUMMARY', '', '', '', '', 'CALIBRATION'].map(csv).join(','))
   // Column header row
-  lines.push(['Blower', 'DP', 'MR', '', 'Item', 'Qty', '', 'Sensor', 'Temp', 'Value'].map(csv).join(','))
+  lines.push(['Blower', 'DP', 'MR', '', 'Item', 'No. of Bags', 'Quantity (kg)', 'Total (kg)', '', 'Sensor', 'Temp', 'Value'].map(csv).join(','))
 
   // Build up to the tallest block (6 rows: 5 sensors + cal due; prod has 5; blower 4)
   const maxLen = 6
@@ -187,8 +200,8 @@ function buildCsv(payload: Record<string, unknown>): string {
     // Blower (3 cols)
     row.push(csv(b ? b.label : ''), csv(b ? b.dp : ''), csv(b ? b.mr : ''))
     row.push('') // gap
-    // Production (2 cols)
-    row.push(csv(p ? p.label : ''), csv(p ? p.val : ''))
+    // Production (4 cols)
+    row.push(csv(p ? p.label : ''), csv(p ? p.bags : ''), csv(p ? p.qty : ''), csv(p ? p.total : ''))
     row.push('') // gap
     // Calibration (3 cols) — rows 0..4 are sensors, row 5 is Cal Due
     if (c) {
@@ -205,7 +218,8 @@ function buildCsv(payload: Record<string, unknown>): string {
   const savedAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: true })
   lines.push(`Saved at,${csv(savedAt)} IST`)
 
-  return lines.join('\r\n')
+  // Leading UTF-8 BOM: without it Excel opens the file as ANSI and garbles Hindi.
+  return '\uFEFF' + lines.join('\r\n')
 }
 
 // ── Google OAuth ──────────────────────────────────────────────────────────────

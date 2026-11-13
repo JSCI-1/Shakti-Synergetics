@@ -1782,6 +1782,84 @@ details[open] .dr-cal-summary::after {
   color: #fff;
 }
 
+/* ── Production breakdown: No. of Bags × Quantity = Total, per part ── */
+.dr-prod-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.dr-prod-head,
+.dr-prod-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) minmax(80px, 1fr) minmax(80px, 1fr) minmax(80px, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.dr-prod-head-cell {
+  font-size: 10px;
+  color: #8a7f70;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.dr-prod-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b4a2b;
+}
+
+.dr-prod-input {
+  width: 100%;
+  box-sizing: border-box;
+  text-align: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #6b4a2b;
+  background: #faf7f2;
+  border: 1.5px solid #c9b79f;
+  border-radius: 8px;
+  padding: 7px 8px;
+  outline: none;
+}
+
+.dr-prod-input:focus {
+  border-color: #b85c2c;
+}
+
+.dr-prod-total {
+  background: #f5f0ea;
+  border-style: dashed;
+}
+
+.dr-prod-sum {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 10px;
+  background: #b85c2c;
+  border-radius: 8px;
+  padding: 8px 14px;
+}
+
+.dr-prod-sum-label {
+  font-size: 12px;
+  color: #f3dccb;
+}
+
+@media (max-width: 640px) {
+  .dr-prod-head { display: none; }
+  .dr-prod-row {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .dr-prod-name {
+    grid-column: 1 / -1;
+  }
+}
+
 /* ════════════════════════════════════
    SUCCESS TOAST
    ════════════════════════════════════

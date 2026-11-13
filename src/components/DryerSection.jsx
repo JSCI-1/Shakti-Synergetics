@@ -122,6 +122,26 @@ const MAINTENANCE_OPTIONS = [
   { key: 'atomizer_water', label: 'Running the Atomizer on Water' },
 ]
 
+// Production breakdown parts. For each part the operator enters
+// "No. of Bags" (<key>_bags) and "Quantity" per bag in kg (<key>_qty); the
+// part's Total (kg) is bags × quantity and is stored under <key> itself
+// (fine_powder / crust_papadi / startup / packed_production), so everything
+// downstream that reads those four totals keeps working.
+const PROD_PARTS = [
+  { key: 'fine_powder',       label: 'Fine Powder' },
+  { key: 'crust_papadi',      label: 'Crust (Papadi)' },
+  { key: 'startup',           label: 'Startup' },
+  { key: 'packed_production', label: 'Packed Production' },
+]
+
+// bags × quantity as a string for the form ('' unless BOTH are numbers).
+function computeProdPart(bags, qty) {
+  const b = parseFloat(bags)
+  const q = parseFloat(qty)
+  if (!Number.isFinite(b) || !Number.isFinite(q)) return ''
+  return String(+(b * q).toFixed(2))
+}
+
 // Total Production of the Day (kg) = fine powder + crust(papadi) + startup +
 // packed production. Returns a number (sum of the parsed parts; blanks = 0).
 function computeTotalProduction(form) {
@@ -215,7 +235,13 @@ function emptyForm(dryerType) {
     cal_chamber_temp: '',
     cal_chamber_sensor: '',
 
-    // Production breakdown — entered; Total Production is their computed sum.
+    // Production breakdown — per part: No. of Bags × Quantity (kg/bag) = Total.
+    // The four totals below are DERIVED (bags × qty); Total Production of the
+    // Day is their computed sum.
+    fine_powder_bags: '',       fine_powder_qty: '',
+    crust_papadi_bags: '',      crust_papadi_qty: '',
+    startup_bags: '',           startup_qty: '',
+    packed_production_bags: '', packed_production_qty: '',
     fine_powder: '',
     crust_papadi: '',
     startup: '',
@@ -536,6 +562,27 @@ function DryerForm({
       const nextTs = { ...prevTs }
       if (iso === undefined) delete nextTs[k]; else nextTs[k] = iso
       return { ...p, [k]: v, __ts: nextTs }
+    })
+  }
+
+  // Production breakdown input: `field` is 'bags' or 'qty' for part `key`.
+  // Updates that input and recomputes the part's Total (bags × quantity),
+  // stamping each changed field's own entry time like set() does.
+  const setProd = (key, field, v) => {
+    const inputKey = `${key}_${field}`
+    setForm(p => {
+      const prevTs = p.__ts || {}
+      const nextTs = { ...prevTs }
+      const stamp = (k, oldV, newV) => {
+        const iso = stampTs(oldV, newV, prevTs[k])
+        if (iso === undefined) delete nextTs[k]; else nextTs[k] = iso
+      }
+      const next = { ...p, [inputKey]: v }
+      next[key] = computeProdPart(next[`${key}_bags`], next[`${key}_qty`])
+      stamp(inputKey, p[inputKey], v)
+      stamp(key, p[key], next[key])
+      next.__ts = nextTs
+      return next
     })
   }
 
@@ -1497,10 +1544,19 @@ function DryerForm({
           // Production breakdown (entered) — sent so the sheet shows each part.
           // These are NUMERIC columns: send a number or null, never "" (an
           // empty string triggers "invalid input syntax for type numeric").
-          fine_powder:       numOrNull(form.fine_powder),
-          crust_papadi:      numOrNull(form.crust_papadi),
-          startup:           numOrNull(form.startup),
-          packed_production: numOrNull(form.packed_production),
+          // Each part: No. of Bags, Quantity (kg/bag), and Total (= bags × qty).
+          fine_powder_bags:       numOrNull(form.fine_powder_bags),
+          fine_powder_qty:        numOrNull(form.fine_powder_qty),
+          fine_powder:            numOrNull(form.fine_powder),
+          crust_papadi_bags:      numOrNull(form.crust_papadi_bags),
+          crust_papadi_qty:       numOrNull(form.crust_papadi_qty),
+          crust_papadi:           numOrNull(form.crust_papadi),
+          startup_bags:           numOrNull(form.startup_bags),
+          startup_qty:            numOrNull(form.startup_qty),
+          startup:                numOrNull(form.startup),
+          packed_production_bags: numOrNull(form.packed_production_bags),
+          packed_production_qty:  numOrNull(form.packed_production_qty),
+          packed_production:      numOrNull(form.packed_production),
 
           // Total Production of the Day = sum of the four parts (derived).
           total_production: computeTotalProduction(form),
@@ -1581,10 +1637,18 @@ function DryerForm({
             fbd_pct_dp:        form.fbd_pct_dp,
             fbd_pct_mr:        form.fbd_pct_mr,
             // Production summary
-            fine_powder:       form.fine_powder,
-            crust_papadi:      form.crust_papadi,
-            startup:           form.startup,
-            packed_production: form.packed_production,
+            fine_powder_bags:       form.fine_powder_bags,
+            fine_powder_qty:        form.fine_powder_qty,
+            fine_powder:            form.fine_powder,
+            crust_papadi_bags:      form.crust_papadi_bags,
+            crust_papadi_qty:       form.crust_papadi_qty,
+            crust_papadi:           form.crust_papadi,
+            startup_bags:           form.startup_bags,
+            startup_qty:            form.startup_qty,
+            startup:                form.startup,
+            packed_production_bags: form.packed_production_bags,
+            packed_production_qty:  form.packed_production_qty,
+            packed_production:      form.packed_production,
             total_production:  computeTotalProduction(form),
             kg_per_hr_total:   kgTotal,
             // Calibration
@@ -3126,89 +3190,72 @@ function DryerForm({
           </div>
 
 
-          {/* Total Production of the Day — computed = fine powder + crust
-              (papadi) + startup + packed production, shown as a formula bar. */}
+          {/* Total Production of the Day — each part is No. of Bags × Quantity
+              (kg per bag) = Total (kg); the day's total is the sum of the four
+              part totals. The part totals are computed (read-only). */}
           <div className="dr-footer-field dr-footer-total">
 
             <label className="dr-label">
-
               Total Production of the Day (kg) /{' '}
-
               <span className="dr-label-hi">
                 दिन का कुल उत्पादन
               </span>
-
             </label>
 
-            <div className="dr-total-formula">
+            <div className="dr-prod-grid">
 
-              <div className="dr-total-part">
-                <span className="dr-total-part-label">Fine Powder (kg)</span>
-                <input
-                  type="text"
-                  inputMode="text"
-                  pattern="-?[0-9]*\.?[0-9]*"
-                  className="dr-total-input"
-                  placeholder="0"
-                  value={form.fine_powder}
-                  onChange={e => set('fine_powder', e.target.value)}
-                />
+              <div className="dr-prod-head">
+                <span className="dr-prod-head-name" />
+                <span className="dr-prod-head-cell">No. of Bags</span>
+                <span className="dr-prod-head-cell">Quantity (kg)</span>
+                <span className="dr-prod-head-cell">Total (kg)</span>
               </div>
 
-              <span className="dr-total-op">+</span>
+              {PROD_PARTS.map(part => (
+                <div className="dr-prod-row" key={part.key}>
+                  <span className="dr-prod-name">{part.label}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*\.?[0-9]*"
+                    className="dr-prod-input"
+                    placeholder="0"
+                    aria-label={`${part.label} — No. of Bags`}
+                    value={form[`${part.key}_bags`] ?? ''}
+                    onChange={e => setProd(part.key, 'bags', e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    pattern="[0-9]*\.?[0-9]*"
+                    className="dr-prod-input"
+                    placeholder="0"
+                    aria-label={`${part.label} — Quantity (kg)`}
+                    value={form[`${part.key}_qty`] ?? ''}
+                    onChange={e => setProd(part.key, 'qty', e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    className="dr-prod-input dr-prod-total"
+                    placeholder="0"
+                    readOnly
+                    tabIndex={-1}
+                    aria-label={`${part.label} — Total (kg)`}
+                    title="Auto-calculated: No. of Bags × Quantity"
+                    value={form[part.key] ?? ''}
+                  />
+                </div>
+              ))}
 
-              <div className="dr-total-part">
-                <span className="dr-total-part-label">Crust (Papadi) (kg)</span>
-                <input
-                  type="text"
-                  inputMode="text"
-                  pattern="-?[0-9]*\.?[0-9]*"
-                  className="dr-total-input"
-                  placeholder="0"
-                  value={form.crust_papadi}
-                  onChange={e => set('crust_papadi', e.target.value)}
-                />
-              </div>
+            </div>
 
-              <span className="dr-total-op">+</span>
-
-              <div className="dr-total-part">
-                <span className="dr-total-part-label">Startup (kg)</span>
-                <input
-                  type="text"
-                  inputMode="text"
-                  pattern="-?[0-9]*\.?[0-9]*"
-                  className="dr-total-input"
-                  placeholder="0"
-                  value={form.startup}
-                  onChange={e => set('startup', e.target.value)}
-                />
-              </div>
-
-              <span className="dr-total-op">+</span>
-
-              <div className="dr-total-part">
-                <span className="dr-total-part-label">Packed Production (kg)</span>
-                <input
-                  type="text"
-                  inputMode="text"
-                  pattern="-?[0-9]*\.?[0-9]*"
-                  className="dr-total-input"
-                  placeholder="0"
-                  value={form.packed_production}
-                  onChange={e => set('packed_production', e.target.value)}
-                />
-              </div>
-
-              <span className="dr-total-op">=</span>
-
-              <div className="dr-total-result">
-                <span className="dr-total-result-label">Total</span>
-                <span className="dr-total-result-value">
-                  {(computeTotalProduction(form) ?? 0).toFixed(2)}
-                </span>
-              </div>
-
+            <div className="dr-prod-sum">
+              <span className="dr-prod-sum-label">
+                Total Production of the Day (kg)
+              </span>
+              <span className="dr-total-result-value">
+                {(computeTotalProduction(form) ?? 0).toFixed(2)}
+              </span>
             </div>
 
           </div>

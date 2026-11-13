@@ -2033,10 +2033,20 @@ var DRYER_V2_FORM_COLS = [
   ['cal_fbd_sensor',    'Calibration FBD Sensor Value'],
   ['cal_chamber_temp',  'Calibration Chamber Temperature'],
   ['cal_chamber_sensor','Calibration Chamber Sensor Value'],
-  ['fine_powder',       'Fine Powder (kg)'],
-  ['crust_papadi',      'Crust (Papadi) (kg)'],
-  ['startup',           'Startup (kg)'],
-  ['packed_production', 'Packed Production (kg)'],
+  // Production breakdown: per part No. of Bags, Quantity (kg/bag), then the
+  // part Total (kg) = bags × quantity (the original four labels, unchanged).
+  ['fine_powder_bags',       'Fine Powder - No. of Bags'],
+  ['fine_powder_qty',        'Fine Powder - Quantity'],
+  ['fine_powder',            'Fine Powder (kg)'],
+  ['crust_papadi_bags',      'Crust (Papadi) - No. of Bags'],
+  ['crust_papadi_qty',       'Crust (Papadi) - Quantity'],
+  ['crust_papadi',           'Crust (Papadi) (kg)'],
+  ['startup_bags',           'Startup - No. of Bags'],
+  ['startup_qty',            'Startup - Quantity'],
+  ['startup',                'Startup (kg)'],
+  ['packed_production_bags', 'Packed Production - No. of Bags'],
+  ['packed_production_qty',  'Packed Production - Quantity'],
+  ['packed_production',      'Packed Production (kg)'],
   ['kg_per_hr_total',   'Total Kg./Hour Production'],   // sum of the 24 hourly Kg./Hour values
   ['total_production','Total Production of the Day (kg)'],
   ['incharge',        'Incharge'],
@@ -2347,6 +2357,73 @@ function addDryerFormProductionColumns() {
   }
   Logger.log('[addDryerFormProductionColumns] Done. Existing data preserved; '
     + '4 production-breakdown columns added before Total Production.');
+}
+
+/**
+ * ONE-SHOT, NON-DESTRUCTIVE: add the production "No. of Bags" and "Quantity"
+ * columns to the EXISTING bottom-form tabs "New Dryer – Form" / "Old Dryer –
+ * Form" WITHOUT clearing any data. For each part the two new columns are
+ * inserted immediately BEFORE the part's existing total column, giving
+ * (left → right):  <Part> - No. of Bags | <Part> - Quantity | <Part> (kg)
+ * for Fine Powder, Crust (Papadi), Startup and Packed Production — matching
+ * DRYER_V2_FORM_COLS so the form writer stays aligned. insertColumnBefore
+ * shifts existing cells (and the hidden key column) right, so no value is lost
+ * or misaligned. Idempotent: a column already present is skipped. Existing rows
+ * show blank in the new columns (they were saved as a single total).
+ * RUN ONCE from the Apps Script editor BEFORE the website change goes live,
+ * otherwise new bottom-form rows are written one column off.
+ */
+function addDryerProductionBagsQtyColumns() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[addDryerProductionBagsQtyColumns] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  // [existing total label, bags label, qty label]
+  var parts = [
+    ['Fine Powder (kg)',        'Fine Powder - No. of Bags',        'Fine Powder - Quantity'],
+    ['Crust (Papadi) (kg)',     'Crust (Papadi) - No. of Bags',     'Crust (Papadi) - Quantity'],
+    ['Startup (kg)',            'Startup - No. of Bags',            'Startup - Quantity'],
+    ['Packed Production (kg)',  'Packed Production - No. of Bags',  'Packed Production - Quantity']
+  ];
+
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2_FORM[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[addDryerProductionBagsQtyColumns] Tab missing (skip): ' + tabName); continue; }
+
+    for (var p = 0; p < parts.length; p++) {
+      var labels = [parts[p][1], parts[p][2]];   // bags first, then qty
+      for (var n = 0; n < labels.length; n++) {
+        // Re-read the header each time: earlier insertions shift columns.
+        var lastCol = Math.max(sh.getLastColumn(), 1);
+        var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+        if (hdr.indexOf(labels[n]) !== -1) {
+          Logger.log('[addDryerProductionBagsQtyColumns] "' + labels[n] + '" already present: ' + tabName);
+          continue;
+        }
+        var totalIdx = hdr.indexOf(parts[p][0]);   // 0-based
+        if (totalIdx === -1) {
+          Logger.log('[addDryerProductionBagsQtyColumns] No "' + parts[p][0] + '" on '
+            + tabName + ' — "' + labels[n] + '" skipped.');
+          continue;
+        }
+        var totalCol1 = totalIdx + 1;              // 1-based column of the part total
+        sh.insertColumnBefore(totalCol1);          // shifts the total+ right; data preserved
+        sh.getRange(1, totalCol1).setValue(labels[n]);
+        Logger.log('[addDryerProductionBagsQtyColumns] Inserted "' + labels[n]
+          + '" before "' + parts[p][0] + '" on ' + tabName);
+      }
+    }
+
+    formatQcTab_(sh);   // re-apply widths/wrap/centering/hidden-key
+  }
+  Logger.log('[addDryerProductionBagsQtyColumns] Done. Existing data preserved; '
+    + 'No. of Bags + Quantity columns added for all four production parts.');
 }
 
 // Maintenance option labels (keys match the website row.maintenance object).

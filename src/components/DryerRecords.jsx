@@ -344,38 +344,37 @@ function RecordDetail({ record, onBack }) {
           </details>
         </div>
 
-        {/* Total Production */}
+        {/* Total Production — per part: No. of Bags × Quantity = Total */}
         <div className="dr-footer-field dr-footer-total">
           <label className="dr-label">
             Total Production of the Day (kg) / <span className="dr-label-hi">दिन का कुल उत्पादन</span>
           </label>
-          <div className="dr-total-formula">
-            <div className="dr-total-part">
-              <span className="dr-total-part-label">Fine Powder (kg)</span>
-              <div className="dr-total-input drec-total-display">{record.fine_powder ?? '0'}</div>
+          <div className="dr-prod-grid">
+            <div className="dr-prod-head">
+              <span className="dr-prod-head-name" />
+              <span className="dr-prod-head-cell">No. of Bags</span>
+              <span className="dr-prod-head-cell">Quantity (kg)</span>
+              <span className="dr-prod-head-cell">Total (kg)</span>
             </div>
-            <span className="dr-total-op">+</span>
-            <div className="dr-total-part">
-              <span className="dr-total-part-label">Crust (Papadi) (kg)</span>
-              <div className="dr-total-input drec-total-display">{record.crust_papadi ?? '0'}</div>
-            </div>
-            <span className="dr-total-op">+</span>
-            <div className="dr-total-part">
-              <span className="dr-total-part-label">Startup (kg)</span>
-              <div className="dr-total-input drec-total-display">{record.startup ?? '0'}</div>
-            </div>
-            <span className="dr-total-op">+</span>
-            <div className="dr-total-part">
-              <span className="dr-total-part-label">Packed Production (kg)</span>
-              <div className="dr-total-input drec-total-display">{record.packed_production ?? '0'}</div>
-            </div>
-            <span className="dr-total-op">=</span>
-            <div className="dr-total-result">
-              <span className="dr-total-result-label">Total</span>
-              <span className="dr-total-result-value">
-                {(parseFloat(totalProduction) || 0).toFixed(2)}
-              </span>
-            </div>
+            {[
+              ['Fine Powder', 'fine_powder'],
+              ['Crust (Papadi)', 'crust_papadi'],
+              ['Startup', 'startup'],
+              ['Packed Production', 'packed_production'],
+            ].map(([label, key]) => (
+              <div className="dr-prod-row" key={key}>
+                <span className="dr-prod-name">{label}</span>
+                <div className="dr-prod-input drec-total-display">{record[`${key}_bags`] ?? '—'}</div>
+                <div className="dr-prod-input drec-total-display">{record[`${key}_qty`] ?? '—'}</div>
+                <div className="dr-prod-input dr-prod-total drec-total-display">{record[key] ?? '0'}</div>
+              </div>
+            ))}
+          </div>
+          <div className="dr-prod-sum">
+            <span className="dr-prod-sum-label">Total Production of the Day (kg)</span>
+            <span className="dr-total-result-value">
+              {(parseFloat(totalProduction) || 0).toFixed(2)}
+            </span>
           </div>
         </div>
 
@@ -451,7 +450,7 @@ export default function DryerRecords() {
     try {
       const { data, error: err } = await supabase
         .from('dryer_logs')
-        .select('id, created_at, dryer_type, date, operator, incharge, batch_no, total_production, fine_powder, crust_papadi, startup, packed_production, id_blower_dp, id_blower_mr, fd_blower_dp, fd_blower_mr, chamber_dp, chamber_mr, fbd_pct_dp, fbd_pct_mr, calibration_due, calibration_sensors, log_rows')
+        .select('id, created_at, dryer_type, date, operator, incharge, batch_no, total_production, fine_powder_bags, fine_powder_qty, fine_powder, crust_papadi_bags, crust_papadi_qty, crust_papadi, startup_bags, startup_qty, startup, packed_production_bags, packed_production_qty, packed_production, id_blower_dp, id_blower_mr, fd_blower_dp, fd_blower_mr, chamber_dp, chamber_mr, fbd_pct_dp, fbd_pct_mr, calibration_due, calibration_sensors, log_rows')
         .order('created_at', { ascending: false })
         .limit(500)
       if (err) throw err
