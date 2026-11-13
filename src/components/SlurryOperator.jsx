@@ -6,6 +6,7 @@ import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
 import { useSharedDraft, deleteSharedDraft, fetchLatestSaved } from '../utils/useSharedDraft.js'
+import SharedStatus from './SharedStatus.jsx'
 import './SlurryOperator.css'
 
 // ── Constants ──────────────────────────────────────────────
@@ -637,6 +638,8 @@ export default function SlurryOperator() {
           </div>
         </div>
 
+        <SharedStatus date={form.date} syncInfo={millsShared.syncInfo} />
+
         {/* Sand Milling */}
         <div className="so-section-title">
           Sand Milling Details / <span className="so-hi">सैंड मिलिंग विवरण</span>
@@ -777,6 +780,8 @@ export default function SlurryOperator() {
                   style={{ background: '#f5f0ea' }} />
               </div>
             </div>
+
+            <SharedStatus date={motorForm.running_date} syncInfo={motorShared.syncInfo} />
 
             <div className="so-motor-scroll">
               <table className="so-motor-table">

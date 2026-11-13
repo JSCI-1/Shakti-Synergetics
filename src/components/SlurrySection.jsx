@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
 import { useSharedDraft, deleteSharedDraft, fetchLatestSaved } from '../utils/useSharedDraft.js'
+import SharedStatus from './SharedStatus.jsx'
 import './SlurrySection.css'
 
 const DEFAULT_INPUT_OPTIONS = [
@@ -699,6 +700,10 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
             />
           </div>
         </div>
+
+        {/* Live-sharing status — tells the operator / admin whether this card
+            is actually reaching the other screens. */}
+        <SharedStatus date={form.date} syncInfo={sharedDraft.syncInfo} />
 
         {/* ══════════════════════════════════════════════════
             INPUTS (kg) — BATCH CARDS

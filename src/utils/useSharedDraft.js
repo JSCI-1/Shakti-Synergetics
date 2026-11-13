@@ -18,7 +18,7 @@
  * Keys 'id' and 'expanded' are local-owned: never synced, never compared.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 
 const TABLE = 'operator_shared_draft'
@@ -144,6 +144,8 @@ export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCl
   const inFlight = useRef(false)
   const suppressUntil = useRef(0)
   const syncRef = useRef(null)
+  // Shown on screen: when this browser last synced OK, or the last error.
+  const [syncInfo, setSyncInfo] = useState({ at: null, error: '' })
 
   syncRef.current = async () => {
     if (!supabaseReady || !supabase || !date) return
@@ -157,7 +159,8 @@ export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCl
         .eq('section', section)
         .eq('log_date', date)
         .maybeSingle()
-      if (res.error) return
+      if (res.error) { setSyncInfo({ at: null, error: res.error.message }); return }
+      setSyncInfo({ at: new Date(), error: '' })
       if (Date.now() < suppressUntil.current) return
 
       const { blob: local, hasData: has, apply: doApply, onRemoteCleared: cleared } = latest.current
@@ -199,6 +202,7 @@ export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCl
           { onConflict: 'section,log_date' }
         )
         if (!up.error) { seenRemote.current = true; base.current = local }
+        else setSyncInfo({ at: null, error: up.error.message })
         return
       }
 
@@ -207,13 +211,15 @@ export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCl
       base.current = merged
       if (!same(merged, local)) doApply(merged)
       if (!same(merged, remote)) {
-        await supabase.from(TABLE).upsert(
+        const up2 = await supabase.from(TABLE).upsert(
           { section, log_date: date, data: merged, updated_at: new Date().toISOString() },
           { onConflict: 'section,log_date' }
         )
+        if (up2.error) setSyncInfo({ at: null, error: up2.error.message })
       }
-    } catch {
+    } catch (e) {
       /* non-fatal — local draft still holds the data */
+      setSyncInfo({ at: null, error: (e && e.message) || 'Sync failed' })
     } finally {
       inFlight.current = false
     }
@@ -259,6 +265,7 @@ export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCl
   }, [blobKey, date])
 
   return {
+    syncInfo,   // { at: Date|null, error: string } — for an on-screen status line
     suppress() {
       suppressUntil.current = Date.now() + SUPPRESS_MS
       seenRemote.current = false

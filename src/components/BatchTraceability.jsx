@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
 import { useSharedDraft, deleteSharedDraft, fetchLatestSaved } from '../utils/useSharedDraft.js'
+import SharedStatus from './SharedStatus.jsx'
 import './BatchTraceability.css'
 
 // ── 12-hour time dropdown helpers ────────────────────────────────────────────
@@ -362,6 +363,8 @@ export default function BatchTraceability({ sharedBatches = [] }) {
               value={form.date} onChange={e => set('date', e.target.value)} />
           </div>
         </div>
+
+        <SharedStatus date={form.date} syncInfo={sharedDraft.syncInfo} />
 
         {/* ══ TABLE ══ */}
         <div className="bt-table-scroll">

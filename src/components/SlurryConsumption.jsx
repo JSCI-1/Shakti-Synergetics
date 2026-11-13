@@ -3,6 +3,7 @@ import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
 import { useSharedDraft, deleteSharedDraft, canon } from '../utils/useSharedDraft.js'
 import { formatDate as fmtDate } from '../utils/formatDate.js'
+import SharedStatus from './SharedStatus.jsx'
 import './SlurryConsumption.css'
 
 function todayISO() { return new Date().toISOString().slice(0, 10) }
@@ -239,6 +240,8 @@ export default function SlurryConsumption() {
           onChange={e => changeEntryDate(e.target.value)}
         />
       </div>
+
+      <SharedStatus date={entryDate} syncInfo={sharedDraft.syncInfo} />
 
       <div className="sc-table-scroll">
         <table className="sc-table">
