@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
+import { useSharedDraft, deleteSharedDraft, fetchLatestSaved } from '../utils/useSharedDraft.js'
 import './SlurrySection.css'
 
 const DEFAULT_INPUT_OPTIONS = [
@@ -287,6 +288,93 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
     })))
   }
 
+  // =========================================================
+  // SHARED DRAFT — other Batch Operators see what was entered
+  // (keyed by job-card date; deleted when the job card is saved)
+  // =========================================================
+
+  const sharedBlob = {
+    meta: {
+      shift1_operator: form.shift1_operator,
+      shift2_operator: form.shift2_operator,
+      supervisor:      form.supervisor,
+      manager:         form.manager,
+    },
+    batches: batches.map(b => ({
+      ...b,
+      rows: b.rows.map(r => ({ ...r, timestamp: rowTimestamps[r.id] || r.timestamp || '' })),
+    })),
+  }
+
+  function sharedHasData(blob) {
+    const m = blob.meta || {}
+    if (m.shift1_operator || m.shift2_operator || m.supervisor || m.manager) return true
+    return (blob.batches || []).some(b =>
+      b.batchNo || b.tankType || b.completed ||
+      b.rows.some(r => r.inputName || r.origin || r.batchNo || r.qty)
+    )
+  }
+
+  function applySharedBlob(m) {
+    if (!m || !Array.isArray(m.batches) || m.batches.length === 0) return
+    const valid = m.batches.every(b =>
+      b && b.id != null && Array.isArray(b.rows) && b.rows.every(r => r && r.id != null)
+    )
+    if (!valid) return
+
+    if (m.meta) setForm(p => ({ ...p, ...m.meta }))
+
+    const stamps = {}
+    const names  = []
+    m.batches.forEach(b => b.rows.forEach(r => {
+      if (r.timestamp) stamps[r.id] = r.timestamp
+      if (r.inputName) names.push(r.inputName)
+    }))
+    setRowTimestamps(p => ({ ...p, ...stamps }))
+
+    // Input names the other operator added must exist in this dropdown too
+    const known = new Set(allInputOptions.map(o => o.toLowerCase()))
+    const fresh = [...new Set(names.filter(n => !known.has(n.toLowerCase())))]
+    if (fresh.length) setCustomInputs(p => [...p, ...fresh])
+
+    syncParent(m.batches)
+  }
+
+  const sharedDraft = useSharedDraft({
+    section: 'batch_job_card',
+    date: form.date,
+    blob: sharedBlob,
+    hasData: sharedHasData,
+    apply: applySharedBlob,
+    // Admin picks a date with no live draft → show the saved job card for it
+    loadSaved: async date => {
+      const row = await fetchLatestSaved('process_job_cards', 'date', date)
+      if (!row || !Array.isArray(row.batches) || row.batches.length === 0) return null
+      const flat = Array.isArray(row.input_rows) ? row.input_rows : []
+      let k = 0
+      return {
+        meta: {
+          shift1_operator: row.shift1_operator || '',
+          shift2_operator: row.shift2_operator || '',
+          supervisor:      row.supervisor      || '',
+          manager:         row.manager         || '',
+        },
+        batches: row.batches.map(b => ({
+          ...b,
+          rows: (b.rows || []).map(r => ({ ...r, timestamp: (flat[k++] || {}).timestamp || r.timestamp || '' })),
+        })),
+      }
+    },
+    onRemoteCleared: () => {
+      // The job card for this date was saved by another operator.
+      clearFormDraft()
+      clearBatchesDraft()
+      clearTimestampsDraft()
+      setSharedBatches([emptyBatchCard()])
+      setBatchErrors({})
+    },
+  })
+
   function setBatchField(batchId, field, val) {
     syncParent(batches.map(b => b.id === batchId ? { ...b, [field]: val } : b))
   }
@@ -489,6 +577,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
     setSaving(true)
     setError('')
     setSaved(false)
+    const submittedDate = form.date
 
     const { error: err } = await supabase
       .from('process_job_cards')
@@ -519,6 +608,8 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       setError(err.message)
     } else {
       setSaved(true)
+      sharedDraft.suppress()
+      deleteSharedDraft('batch_job_card', submittedDate)
       clearFormDraft()
       clearBatchesDraft()
       clearTimestampsDraft()

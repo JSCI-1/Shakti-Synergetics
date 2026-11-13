@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useEffect, useCallback } from 'react'
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
+import { useSharedDraft, deleteSharedDraft, canon } from '../utils/useSharedDraft.js'
 import { formatDate as fmtDate } from '../utils/formatDate.js'
 import './SlurryConsumption.css'
 
@@ -51,6 +52,7 @@ export default function SlurryConsumption() {
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
   const [prevCumDiff, setPrevCumDiff] = useState(0)
+  const savedSnap = useRef('')   // canon() of today's already-saved record
 
   // ── History viewer ──
   const [histDate, setHistDate]   = useState(yesterdayISO())
@@ -93,7 +95,7 @@ export default function SlurryConsumption() {
     // Pre-fill today if already saved
     const existing = data.flatMap(r => r.rows || []).find(r => r.date === today)
     if (existing) {
-      setForm({
+      const loaded = {
         opening_bal:     existing.opening_bal     != null ? String(existing.opening_bal)     : '',
         total_batches:   existing.total_batches   != null ? String(existing.total_batches)   : '',
         closing_bal:     existing.closing_bal     != null ? String(existing.closing_bal)     : '',
@@ -105,11 +107,31 @@ export default function SlurryConsumption() {
         sanction_by:     existing.sanction_by     || '',
         approved_by:     existing.approved_by     || '',
         timestamp:       existing.timestamp       || '',
-      })
+      }
+      // Remember the saved record so it is not re-uploaded as a shared draft
+      savedSnap.current = canon(loaded)
+      setForm(loaded)
     }
   }, [today])
 
   useEffect(() => { loadPrevCumDiff() }, [loadPrevCumDiff])
+
+  // ── Shared draft: other Batch Operators see today's values ──
+  // Keyed by today's date; deleted when the report is saved.
+  const sharedDraft = useSharedDraft({
+    section: 'slurry_consumption',
+    date: today,
+    blob: form,
+    hasData: b => canon(b) !== savedSnap.current && Object.values(b).some(v => v !== '' && v != null),
+    apply: m => {
+      if (m && typeof m === 'object') setForm(p => ({ ...p, ...m }))
+    },
+    onRemoteCleared: () => {
+      // The report for today was saved by another operator.
+      clearFormDraft(); setSaved(false); setError('')
+      loadPrevCumDiff()
+    },
+  })
 
   // Load a specific past date for history viewer
   const loadHistRow = useCallback(async (selectedDate) => {
@@ -162,7 +184,13 @@ export default function SlurryConsumption() {
     }])
     setSaving(false)
     if (err) setError(err.message)
-    else { setSaved(true); clearFormDraft(); loadPrevCumDiff() }
+    else {
+      setSaved(true)
+      sharedDraft.suppress()
+      deleteSharedDraft('slurry_consumption', today)
+      clearFormDraft()
+      loadPrevCumDiff()
+    }
   }
 
   const fmtV = v => (v === null || v === undefined || v === '') ? '—' : v

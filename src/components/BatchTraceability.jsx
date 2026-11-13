@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
+import { useSharedDraft, deleteSharedDraft, fetchLatestSaved } from '../utils/useSharedDraft.js'
 import './BatchTraceability.css'
 
 // ── 12-hour time dropdown helpers ────────────────────────────────────────────
@@ -249,6 +250,46 @@ export default function BatchTraceability({ sharedBatches = [] }) {
     })
   }, [totals.hs1, totals.hs2, totals.hs3, totals.nm])  // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Shared draft: other Batch Operators see the times/tanks entered ──
+  // Keyed by the record date; deleted when the record is saved. Totals are
+  // derived from the rows, so they are not shared.
+  const sharedBlob = {
+    rows: form.rows,
+    checked_by: form.checked_by,
+    approved_by: form.approved_by,
+  }
+
+  const sharedDraft = useSharedDraft({
+    section: 'batch_traceability',
+    date: form.date,
+    blob: sharedBlob,
+    hasData: b => !!(b.checked_by || b.approved_by) || (b.rows || []).some(r =>
+      r.lst_tank || ['charge_start', 'charge_stop', 'hs_start', 'hs_stop', 'lst_start', 'lst_stop',
+        's1_start', 's1_stop', 's2_start', 's2_stop', 'finish_start', 'finish_stop'].some(f => r[f])
+    ),
+    apply: m => {
+      if (!m || !Array.isArray(m.rows) || m.rows.length === 0) return
+      if (!m.rows.every(r => r && r.id != null)) return
+      setForm(p => ({
+        ...p,
+        rows: m.rows,
+        checked_by: m.checked_by ?? '',
+        approved_by: m.approved_by ?? '',
+      }))
+    },
+    // Admin picks a date with no live draft → show the saved record for it
+    loadSaved: async date => {
+      const row = await fetchLatestSaved('batch_traceability', 'date', date)
+      if (!row || !Array.isArray(row.rows) || row.rows.length === 0) return null
+      if (!row.rows.every(r => r && r.id != null)) return null
+      return { rows: row.rows, checked_by: row.checked_by || '', approved_by: row.approved_by || '' }
+    },
+    onRemoteCleared: () => {
+      // This record was saved by another operator.
+      clearFormDraft(); setSaved(false); setError('')
+    },
+  })
+
   function addRow() { setForm(p => ({ ...p, rows: [...p.rows, emptyRow()] })) }
   function removeRow(idx) {
     if (form.rows.length <= 1) return
@@ -259,6 +300,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
     e.preventDefault()
     if (!supabaseReady) { setError('Supabase not configured.'); return }
     setSaving(true); setError(''); setSaved(false)
+    const submittedDate = form.date
     const { error: err } = await supabase.from('batch_traceability').insert([{
       date: form.date || null, rows: form.rows,
       total_hs1: form.total_hs1, total_hs2: form.total_hs2,
@@ -267,7 +309,12 @@ export default function BatchTraceability({ sharedBatches = [] }) {
     }])
     setSaving(false)
     if (err) setError(err.message)
-    else { setSaved(true); clearFormDraft() }
+    else {
+      setSaved(true)
+      sharedDraft.suppress()
+      deleteSharedDraft('batch_traceability', submittedDate)
+      clearFormDraft()
+    }
   }
 
   // ── Single 12-hour time cell ────────────────────────────────────────────────

@@ -5,6 +5,7 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
+import { useSharedDraft, deleteSharedDraft, fetchLatestSaved } from '../utils/useSharedDraft.js'
 import './SlurryOperator.css'
 
 // ── Constants ──────────────────────────────────────────────
@@ -206,6 +207,146 @@ export default function SlurryOperator() {
     } catch { /* silent */ }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ── Shared drafts: other Slurry Operators see what was entered ──
+  // Sand-milling card is keyed by form.date; motor status by motorForm.running_date.
+  // Each shared row is deleted when its permanent record is saved.
+  const millsBlob = {
+    meta: { supervisor: form.supervisor, manager: form.manager },
+    mills: form.mills.map((m, mi) => ({
+      mill: m.mill,
+      current_amp:       m.current_amp,
+      current_amp_ts:    millAmpTs[mi]   || '',
+      zirconia_beads:    m.zirconia_beads,
+      zirconia_beads_ts: millBeadsTs[mi] || '',
+      remarks:           m.remarks,
+      flow_rates: m.flow_rates.map((f, fi) => ({
+        value:     f.value,
+        timestamp: millFlowTs[`${mi}_${fi}`] || f.timestamp || '',
+      })),
+    })),
+  }
+
+  function applyMillsBlob(m) {
+    if (!m || !Array.isArray(m.mills)) return
+    const flowTs = {}, ampTs = {}, beadsTs = {}
+    m.mills.forEach((r, mi) => {
+      if (r.current_amp_ts)    ampTs[mi]   = r.current_amp_ts
+      if (r.zirconia_beads_ts) beadsTs[mi] = r.zirconia_beads_ts
+      ;(r.flow_rates || []).forEach((f, fi) => { if (f.timestamp) flowTs[`${mi}_${fi}`] = f.timestamp })
+    })
+    setMillFlowTs(p => ({ ...p, ...flowTs }))
+    setMillAmpTs(p => ({ ...p, ...ampTs }))
+    setMillBeadsTs(p => ({ ...p, ...beadsTs }))
+    setForm(p => ({
+      ...p,
+      ...(m.meta || {}),
+      mills: p.mills.map((cur, mi) => {
+        const r = m.mills[mi]
+        if (!r) return cur
+        return {
+          ...cur,
+          current_amp:    r.current_amp    ?? '',
+          zirconia_beads: r.zirconia_beads ?? '',
+          remarks:        r.remarks        ?? '',
+          flow_rates: Array.isArray(r.flow_rates) && r.flow_rates.length > 0
+            ? r.flow_rates.map(f => ({ value: f.value ?? '', timestamp: f.timestamp || '' }))
+            : cur.flow_rates,
+        }
+      }),
+    }))
+  }
+
+  const millsShared = useSharedDraft({
+    section: 'slurry_mills',
+    date: form.date,
+    blob: millsBlob,
+    hasData: b => !!(b.meta?.supervisor || b.meta?.manager) || b.mills.some(r =>
+      r.current_amp || r.zirconia_beads || r.remarks || r.flow_rates.some(f => f.value)
+    ),
+    apply: applyMillsBlob,
+    // Admin picks a date with no live draft → show the latest saved card for it
+    loadSaved: async date => {
+      const row = await fetchLatestSaved('slurry_operator_job_cards', 'date', date)
+      if (!row || !Array.isArray(row.mills)) return null
+      return {
+        meta: { supervisor: row.supervisor || '', manager: row.manager || '' },
+        mills: row.mills.map(m => ({
+          mill:              m.mill,
+          current_amp:       m.current_amp    ?? '',
+          current_amp_ts:    m.current_amp_ts || '',
+          zirconia_beads:    m.zirconia_beads ?? '',
+          zirconia_beads_ts: m.zirconia_beads_ts || '',
+          remarks:           m.remarks        ?? '',
+          flow_rates: (m.flow_rates && m.flow_rates.length ? m.flow_rates : [{ value: '', timestamp: '' }])
+            .map(f => ({ value: f.value ?? '', timestamp: f.timestamp || '' })),
+        })),
+      }
+    },
+    onRemoteCleared: () => {
+      // The sand-milling card for this date was saved by another operator.
+      clearFormDraft(); clearMillFlowTs(); clearMillAmpTs(); clearMillBeadsTs()
+    },
+  })
+
+  const motorBlob = {
+    remark: motorForm.remark,
+    motors: motorForm.motors.map((m, mi) => ({
+      amp:       m.amp,
+      stop:      m.stop,
+      timestamp: motorRowTs[mi] || m.timestamp || '',
+      amp_ts:    motorAmpTs[mi]  || '',
+      stop_ts:   motorStopTs[mi] || '',
+    })),
+  }
+
+  function applyMotorBlob(m) {
+    if (!m || !Array.isArray(m.motors)) return
+    const rowTs = {}, ampTs = {}, stopTs = {}
+    m.motors.forEach((r, mi) => {
+      if (r.timestamp) rowTs[mi]  = r.timestamp
+      if (r.amp_ts)    ampTs[mi]  = r.amp_ts
+      if (r.stop_ts)   stopTs[mi] = r.stop_ts
+    })
+    setMotorRowTs(p => ({ ...p, ...rowTs }))
+    setMotorAmpTs(p => ({ ...p, ...ampTs }))
+    setMotorStopTs(p => ({ ...p, ...stopTs }))
+    setMotorForm(p => ({
+      ...p,
+      remark: m.remark ?? '',
+      motors: p.motors.map((cur, mi) => {
+        const r = m.motors[mi]
+        return r ? { ...cur, amp: r.amp ?? '', stop: r.stop ?? '', timestamp: r.timestamp || '' } : cur
+      }),
+    }))
+  }
+
+  const motorShared = useSharedDraft({
+    section: 'slurry_motor',
+    date: motorForm.running_date,
+    blob: motorBlob,
+    hasData: b => !!b.remark || b.motors.some(r => r.amp || r.stop),
+    apply: applyMotorBlob,
+    // Admin picks a running date with no live draft → show the latest saved status
+    loadSaved: async date => {
+      const row = await fetchLatestSaved('slurry_operator_motor_amp', 'running_date', date)
+      if (!row || !Array.isArray(row.motor_data)) return null
+      return {
+        remark: row.remark || '',
+        motors: row.motor_data.map(m => ({
+          amp:       m.amp   ?? '',
+          stop:      m.stop  ?? '',
+          timestamp: m.timestamp || '',
+          amp_ts:    m.amp_ts    || '',
+          stop_ts:   m.stop_ts   || '',
+        })),
+      }
+    },
+    onRemoteCleared: () => {
+      // The motor status for this date was saved by another operator.
+      clearMotorDraft(); clearMotorAmpTs(); clearMotorStopTs(); clearMotorRowTs()
+    },
+  })
+
   // ── Generic setters ──
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
@@ -347,6 +488,7 @@ export default function SlurryOperator() {
     e.preventDefault()
     if (!supabaseReady) { setError('Supabase not configured.'); return }
     setSaving(true); setError('')
+    const submittedDate = form.date
 
     // Merge timestamps into mills before saving
     const millsWithTs = form.mills.map((m, mi) => ({
@@ -377,6 +519,8 @@ export default function SlurryOperator() {
       showErrorPopup(err.message)
     } else {
       showToast('success')
+      millsShared.suppress()
+      deleteSharedDraft('slurry_mills', submittedDate)
       clearFormDraft()
       clearMillFlowTs()
       clearMillAmpTs()
@@ -389,6 +533,7 @@ export default function SlurryOperator() {
     e.preventDefault()
     if (!supabaseReady) { setMotorError('Supabase not configured.'); return }
     setMotorSaving(true); setMotorError('')
+    const submittedRunningDate = motorForm.running_date
 
     const motorsWithTs = motorForm.motors.map((m, mi) => ({
       ...m,
@@ -412,6 +557,8 @@ export default function SlurryOperator() {
       showErrorPopup(err.message)
     } else {
       showToast('success')
+      motorShared.suppress()
+      deleteSharedDraft('slurry_motor', submittedRunningDate)
       clearMotorDraft()
       clearMotorAmpTs()
       clearMotorStopTs()
