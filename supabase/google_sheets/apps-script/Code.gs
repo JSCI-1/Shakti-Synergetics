@@ -1,5 +1,5 @@
 /**
- * Google Sheets Sync — Apps Script worker.
+ * Google Sheets Sync — Apps Script worker for the dryer and qc.
  *
  * One-way Supabase → Google Sheets. A time-driven trigger calls syncTick():
  *   pull a batch  → route each row (by record_kind + event_type ONLY, never
@@ -2047,6 +2047,11 @@ var DRYER_V2_FORM_COLS = [
   ['packed_production_bags', 'Packed Production - No. of Bags'],
   ['packed_production_qty',  'Packed Production - Quantity'],
   ['packed_production',      'Packed Production (kg)'],
+  // Bag-count totals of the hourly table over all 24 hours.
+  ['bags_per_hr_total',    'Total No. of Bags(25)'],
+  ['bags_per_hr_50_total', 'Total No. of Bags'],            // (50/1000) column, all hours, any size
+  ['bags_50_wt_total',     'Total No. of Bags(50)'],        // hours whose size is 50
+  ['bags_1000_wt_total',   'Total No. of Bags(1000)'],      // hours whose size is 1000
   ['kg_per_hr_total',   'Total Kg./Hour Production'],   // sum of the 24 hourly Kg./Hour values
   ['total_production','Total Production of the Day (kg)'],
   ['incharge',        'Incharge'],
@@ -2424,6 +2429,88 @@ function addDryerProductionBagsQtyColumns() {
   }
   Logger.log('[addDryerProductionBagsQtyColumns] Done. Existing data preserved; '
     + 'No. of Bags + Quantity columns added for all four production parts.');
+}
+
+/**
+ * ONE-SHOT, NON-DESTRUCTIVE: insert the four bag-count total columns into the
+ * EXISTING bottom-form tabs "New Dryer – Form" / "Old Dryer – Form" WITHOUT
+ * clearing any data, immediately BEFORE "Total Kg./Hour Production", in this
+ * left-to-right order (matching DRYER_V2_FORM_COLS so the writer stays aligned):
+ *   "Total No. of Bags(25)", "Total No. of Bags",
+ *   "Total No. of Bags(50)", "Total No. of Bags(1000)"
+ * Columns created earlier under the old interim names are renamed in place.
+ * insertColumnBefore shifts existing cells (and the hidden key column) right,
+ * so no value is lost or misaligned. Idempotent: a column already present is
+ * skipped. Existing rows show blank in the new columns. Touches ONLY the two
+ * form tabs. RUN ONCE from the Apps Script editor BEFORE the website change
+ * goes live, otherwise new bottom-form rows are written one column off.
+ * (Run addDryerKgTotalColumn first if the "Total Kg./Hour Production" column
+ * does not exist yet.)
+ */
+function addDryerBagTotalColumns() {
+  var cfg;
+  try {
+    cfg = getConfig_();
+  } catch (e) {
+    Logger.log('[addDryerBagTotalColumns] Fail-closed: ' + e.message);
+    return;
+  }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  var newCols = [
+    'Total No. of Bags(25)',
+    'Total No. of Bags',
+    'Total No. of Bags(50)',
+    'Total No. of Bags(1000)'
+  ];
+  // Interim labels from an earlier version of this function → current label.
+  var renames = [
+    ['Total No. of Bag Per Hours(25)',      'Total No. of Bags(25)'],
+    ['Total No. of Bag Per Hours(50/1000)', 'Total No. of Bags'],
+    ['Total No. of Bags(50/1000)',          'Total No. of Bags'],
+    ['Total Bags of 50 wt (50/1000)',       'Total No. of Bags(50)'],
+    ['Total Bags of 1000 wt (50/1000)',     'Total No. of Bags(1000)']
+  ];
+  var ANCHOR = 'Total Kg./Hour Production';
+
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2_FORM[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[addDryerBagTotalColumns] Tab missing (skip): ' + tabName); continue; }
+
+    // Rename any interim-labelled columns in place (no column moves).
+    for (var r = 0; r < renames.length; r++) {
+      var rl = Math.max(sh.getLastColumn(), 1);
+      var rh = sh.getRange(1, 1, 1, rl).getValues()[0];
+      var ri = rh.indexOf(renames[r][0]);
+      if (ri !== -1 && rh.indexOf(renames[r][1]) === -1) {
+        sh.getRange(1, ri + 1).setValue(renames[r][1]);
+        Logger.log('[addDryerBagTotalColumns] Renamed "' + renames[r][0] + '" → "' + renames[r][1] + '" on ' + tabName);
+      }
+    }
+
+    for (var n = 0; n < newCols.length; n++) {
+      // Re-read the header each time: earlier insertions shift the anchor.
+      var lastCol = Math.max(sh.getLastColumn(), 1);
+      var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+      if (hdr.indexOf(newCols[n]) !== -1) {
+        Logger.log('[addDryerBagTotalColumns] "' + newCols[n] + '" already present: ' + tabName);
+        continue;
+      }
+      var anchorIdx = hdr.indexOf(ANCHOR);   // 0-based
+      if (anchorIdx === -1) {
+        Logger.log('[addDryerBagTotalColumns] No "' + ANCHOR + '" on ' + tabName
+          + ' — "' + newCols[n] + '" skipped.');
+        continue;
+      }
+      sh.insertColumnBefore(anchorIdx + 1);          // shifts the anchor+ right; data preserved
+      sh.getRange(1, anchorIdx + 1).setValue(newCols[n]);
+      Logger.log('[addDryerBagTotalColumns] Inserted "' + newCols[n] + '" before "' + ANCHOR + '" on ' + tabName);
+    }
+
+    formatQcTab_(sh);   // re-apply widths/wrap/centering/hidden-key
+  }
+  Logger.log('[addDryerBagTotalColumns] Done. Existing data preserved; 4 bag-total columns added.');
 }
 
 // Maintenance option labels (keys match the website row.maintenance object).

@@ -147,16 +147,20 @@ function buildCsv(payload: Record<string, unknown>): string {
     lines.push(cells.join(','))
   })
 
-  // Total of the Kg/Hr column (all 24 hours): the field name at the start of the
-  // row (same wording as the website's footer row; it reads across the empty
-  // cells) and the calculated value directly under the Kg/Hr column.
-  const kgTotal = v(payload.kg_per_hr_total)
-  if (kgTotal !== '') {
-    const kgIdx = 1 + HOURLY_COLS.findIndex(c => c.key === 'kg_per_hr')   // +1 for the Time column
-    const totalCells: string[] = header.map(() => '')
-    totalCells[0] = csv('Total Kg./Hour Production / कुल किग्रा/घंटा')
-    totalCells[kgIdx] = csv(kgTotal)
-    lines.push(totalCells.join(','))
+  // Totals of the hourly table (all 24 hours) — one row per total, right after
+  // the table: "<field name>,<value>". Total No. of Bags(50) / (1000) appear
+  // only when that bag size was entered in some hour.
+  const totalRows: [string, string][] = [
+    ['Total No. of Bags(25)', v(payload.bags_per_hr_total)],
+    ['Total No. of Bags', v(payload.bags_per_hr_50_total)],
+  ]
+  if (v(payload.bags_50_wt_total) !== '')   totalRows.push(['Total No. of Bags(50)', v(payload.bags_50_wt_total)])
+  if (v(payload.bags_1000_wt_total) !== '') totalRows.push(['Total No. of Bags(1000)', v(payload.bags_1000_wt_total)])
+  totalRows.push(['Total Kg./Hour Production / कुल किग्रा/घंटा', v(payload.kg_per_hr_total)])
+  if (totalRows.some(([, val]) => val !== '')) {
+    lines.push('')
+    lines.push(csv('TOTALS (ALL 24 HOURS)'))
+    totalRows.forEach(([name, val]) => lines.push([csv(name), csv(val)].join(',')))
   }
 
   lines.push('')

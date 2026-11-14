@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { formatDate } from '../utils/formatDate.js'
+import { computeDryerTotals } from '../utils/dryerTotals.js'
+import { Bags25TotalCell, Bags5010TotalCell, KgTotalCell, TotalsLeadCell } from './DryerTotalCell.jsx'
 import './ProductionActivity.css'
 
 // Chronological hour order, matching DryerSection TIME_SLOTS (08:00 → 07:00).
@@ -186,6 +188,9 @@ function ActivityTable({ group }) {
     if (!isNaN(n)) { kgSum += n; kgAny = true }
   })
   const kgTotal = kgAny ? String(Math.round(kgSum * 1000) / 1000) : ''
+  // Bag-count totals over the shared hours (25, and 50/1000 total + 50 / 1000 split)
+  const bagTotals = computeDryerTotals(presentHours.map(h => group.hours[h]))
+  const bags25Idx = OTHER_COLUMNS.findIndex(c => c.key === 'bags_per_hr')
   return (
     <div className="pa-table-scroll">
       <table className="pa-table">
@@ -263,17 +268,13 @@ function ActivityTable({ group }) {
         {kgIdx !== -1 && (
           <tfoot>
             <tr className="pa-kg-total-row">
-              <td
-                colSpan={1 + TEMP_COLUMNS.length + kgIdx}
-                style={{ textAlign: 'right', fontWeight: 700 }}
-              >
-                Total Kg./Hour Production / <span className="pa-th-hi">कुल किग्रा/घंटा</span>
-              </td>
-              <td style={{ fontWeight: 700, background: '#f5f0ea' }}>
-                {kgTotal === '' ? '—' : kgTotal}
-              </td>
-              {OTHER_COLUMNS.length - kgIdx - 1 > 0 && (
-                <td colSpan={OTHER_COLUMNS.length - kgIdx - 1} />
+              <TotalsLeadCell colSpan={1 + TEMP_COLUMNS.length + bags25Idx} />
+              {/* each total spans its column + the empty column beside it */}
+              <Bags25TotalCell totals={bagTotals} />
+              <Bags5010TotalCell totals={bagTotals} />
+              <KgTotalCell value={kgTotal} />
+              {OTHER_COLUMNS.length - kgIdx - 2 > 0 && (
+                <td colSpan={OTHER_COLUMNS.length - kgIdx - 2} />
               )}
             </tr>
           </tfoot>

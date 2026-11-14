@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
+import { computeDryerTotals } from '../utils/dryerTotals.js'
+import { Bags25TotalCell, Bags5010TotalCell, KgTotalCell, TotalsLeadCell } from './DryerTotalCell.jsx'
 import './DryerRecords.css'
 
 // ─────────────────────────────────────────────────────────────
@@ -96,6 +98,9 @@ function ReadonlyCell({ value, isTemp }) {
 // ReadonlyLogTable — the full 24-row hourly table
 // ─────────────────────────────────────────────────────────────
 function ReadonlyLogTable({ record }) {
+  // Totals over all 24 hours, computed from the saved hourly rows (works for
+  // older records too, which have no stored totals).
+  const totals = computeDryerTotals(TIME_SLOTS.map((_, i) => getRow(record, i)))
   return (
     <div className="dr-table-section">
       <div className="dr-table-scroll">
@@ -231,6 +236,19 @@ function ReadonlyLogTable({ record }) {
               )
             })}
           </tbody>
+
+          {/* Totals row (all 24 hours): bag counts under the two "No. of Bag Per
+              Hours" columns, Kg./Hour Production under its column.
+              13 columns before the bags (Time … Batch No.), 7 after Kg./Hour. */}
+          <tfoot>
+            <tr className="dr-kg-total-row">
+              <TotalsLeadCell colSpan={13} />
+              <Bags25TotalCell totals={totals} />
+              <Bags5010TotalCell totals={totals} />
+              <KgTotalCell value={totals.kg} />
+              <td colSpan={6} />
+            </tr>
+          </tfoot>
         </table>
       </div>
     </div>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
+import { computeDryerTotals } from '../utils/dryerTotals.js'
+import { Bags25TotalCell, Bags5010TotalCell, KgTotalCell, TotalsLeadCell } from './DryerTotalCell.jsx'
 import {
   computeRowDiff,
   seedLegacyHistory,
@@ -388,6 +390,10 @@ function DryerForm({
     })
     return any ? String(Math.round(sum * 1000) / 1000) : ''
   })()
+
+  // Bag-count totals over all 24 hours (No. of Bag Per Hours(25), and
+  // (50/1000) in total + split by the 50 / 1000 bag size).
+  const bagTotals = computeDryerTotals(safeForm.rows)
 
   // ── Check whether this (dryer_type, date) already has a saved log sheet ──
   // Runs every time the date changes. When a record already exists we store its
@@ -1564,6 +1570,12 @@ function DryerForm({
           // Total Kg./Hour Production = sum of the 24 hourly Kg./Hour values.
           kg_per_hr_total: numOrNull(kgTotal),
 
+          // Bag-count totals over all 24 hours.
+          bags_per_hr_total:    bagTotals.bags25,
+          bags_per_hr_50_total: bagTotals.bags50Any,
+          bags_50_wt_total:     bagTotals.bags50,
+          bags_1000_wt_total:   bagTotals.bags1000,
+
           incharge: form.incharge,
           operator: form.operator,
 
@@ -1651,6 +1663,10 @@ function DryerForm({
             packed_production:      form.packed_production,
             total_production:  computeTotalProduction(form),
             kg_per_hr_total:   kgTotal,
+            bags_per_hr_total:    bagTotals.bags25,
+            bags_per_hr_50_total: bagTotals.bags50Any,
+            bags_50_wt_total:     bagTotals.bags50,
+            bags_1000_wt_total:   bagTotals.bags1000,
             // Calibration
             calibration_due:   form.calibration_due,
             cal_inlet_temp:    form.cal_inlet_temp,
@@ -2915,21 +2931,18 @@ function DryerForm({
 
               </tbody>
 
-              {/* Total of the Kg./Hour Production column (all 24 hours).
-                  17 columns before it (Time … Bag Size By Wt(50/1000)),
-                  7 after it (Colour … Save). */}
+              {/* Totals row (all 24 hours): bag counts under the two "No. of Bag
+                  Per Hours" columns and Kg./Hour Production under its column.
+                  13 columns before the bags (Time … Batch No.), 7 after Kg./Hour
+                  (Colour … Save). */}
               <tfoot>
                 <tr className="dr-kg-total-row">
-                  <td
-                    colSpan={17}
-                    style={{ textAlign: 'right', fontWeight: 700, padding: '6px 10px' }}
-                  >
-                    Total Kg./Hour Production / <span className="dr-hi">कुल किग्रा/घंटा</span>
-                  </td>
-                  <td style={{ textAlign: 'center', fontWeight: 700, background: '#f5f0ea' }}>
-                    {kgTotal === '' ? '—' : kgTotal}
-                  </td>
-                  <td colSpan={7} />
+                  <TotalsLeadCell colSpan={13} />
+                  {/* each total spans its column + the empty column beside it */}
+                  <Bags25TotalCell totals={bagTotals} />
+                  <Bags5010TotalCell totals={bagTotals} />
+                  <KgTotalCell value={kgTotal} />
+                  <td colSpan={6} />
                 </tr>
               </tfoot>
 
