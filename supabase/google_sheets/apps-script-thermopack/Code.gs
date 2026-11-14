@@ -1,5 +1,5 @@
 /**
- * Thermopack Sheets Sync and Slurry 
+ * Thermopack Sheets Sync and Slurry and Batch 
   — DEDICATED Apps Script worker (Option C).
  *
  * COMPLETELY SEPARATE from the Dryer/QC worker
@@ -339,6 +339,12 @@ function routeRow_(ss, row, getSlurrySS_) {
     writeSlurryOpJobCard_(getSlurrySS_(), row, payload);
   } else if (kind === 'slurry_op_motor') {
     writeSlurryOpMotor_(getSlurrySS_(), row, payload);
+  } else if (kind === 'batch_op_jobcard') {
+    boWriteJobCard_(boOpenSS_(), row, payload);
+  } else if (kind === 'batch_op_traceability') {
+    boWriteTraceability_(boOpenSS_(), row, payload);
+  } else if (kind === 'batch_op_consumption') {
+    boWriteConsumption_(boOpenSS_(), row, payload);
   } else {
     throw new Error('Unknown record_kind: ' + kind);
   }
@@ -968,3 +974,420 @@ function soStackWithTs_(value, tsDisplay) {
 
 
 /* ── END SLURRY OPERATOR SECTION ─────────────────────────────────────────── */
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * BATCH OPERATOR — Sheets Sync (combined into this Thermopack/Slurry worker)
+ * ───────────────────────────────────────────────────────────────────────────
+ * Writes to a SEPARATE spreadsheet: "Batch Operator"
+ * (Script Property: SPREADSHEET_ID_BATCH_OP — the ONLY new property needed)
+ *
+ * Three tabs (one per Batch Operator form):
+ *   BO_TAB.JOBCARD     → "Process Job Card"
+ *   BO_TAB.TRACE       → "Batch Traceability Records"
+ *   BO_TAB.CONSUMPTION → "Slurry Consumption Report"
+ *
+ * Routing (record_kind) — rows arrive through the SAME thermopack-sheets-sync-
+ * pull endpoint because migration 063 enqueues them into the SAME
+ * thermopack_sheets_sync_outbox (exactly like Slurry Operator, migration 050):
+ *   batch_op_jobcard      ← process_job_cards
+ *   batch_op_traceability ← batch_traceability
+ *   batch_op_consumption  ← slurry_consumption
+ *
+ * NO new Edge Functions, secrets, queues or triggers in Apps Script. Only the
+ * helper functions below are new; nothing above this section was changed
+ * except the three routing branches in routeRow_().
+ *
+ * TIMESTAMPS: shown exactly as captured on the website (hh:mm:ss AM/PM for
+ * Process Job Card input times). The script NEVER uses its own upload time.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+var BO_TAB = {
+  JOBCARD:     'Process Job Card',
+  TRACE:       'Batch Traceability Records',
+  CONSUMPTION: 'Slurry Consumption Report'
+};
+
+// Tank value → label (mirrors BATCH_OPTIONS / CHARGE_TANKS / LST_TANKS /
+// FST_TANKS on the website). Unknown values are shown as-is.
+var BO_TANK_LABELS = {
+  'Attrition-1st-1.6MT': '1st Attrition Mill — 1.6 MT',
+  'Attrition-2nd-1.2MT': '2nd Attrition Mill — 1.2 MT',
+  'HST-1st-8MT':         'HST 1st — 8 MT',
+  'HST-2nd-6MT':         'HST 2nd — 6 MT',
+  'HS-1(6000)':          'HS-1 (6000)',
+  'HS-2(4000)':          'HS-2 (4000)',
+  'HS-3(6000)':          'HS-3 (6000)',
+  'NM(2000)':            'NM (2000)',
+  'LST1':                'LST 1',
+  'LST2':                'LST 2',
+  'LST1/2':              'LST 1/2',
+  'FST 1/2':             'FST 1/2',
+  'FST 1':               'FST 1',
+  'FST 2':               'FST 2'
+};
+
+/* A. Process Job Card — one row per input line, then a bold "Batch Total" row
+ *    after each batch (matches the stacked batch card on the website).
+ *    Identity columns repeat on every row, including the total row, so
+ *    filtering still works; total rows have "Batch Total" in the Input column. */
+var BO_JOBCARD_HEADER = [
+  'Date', 'Shift', 'Operator Name',
+  'Batch No. (Card)', 'Tank',
+  'Input', 'Origin/RM', 'Batch No.', 'Qty (kg)', 'Timestamp',
+  'Supervisor', 'Manager'
+];
+
+/* B. Batch Traceability Records — one row per batch. Tank totals are
+ *    per-record and repeat on each batch row of that record. */
+var BO_TRACE_HEADER = [
+  'Date', 'Batch No.',
+  'Charge In Tank', 'Charge In Start', 'Charge In Stop',
+  'High Speed Mixing Tank', 'High Speed Mixing Start', 'High Speed Mixing Stop',
+  'Transfer HS to LS Tank', 'Transfer HS to LS Start', 'Transfer HS to LS Stop',
+  '1st Storage Start', '1st Storage Stop',
+  '2nd Storage Start', '2nd Storage Stop',
+  'Finish Slurry Tank', 'Finish Slurry Start', 'Finish Slurry Stop',
+  'Total Running HS-1 (6000 Lt.)', 'Total Running HS-2 (4000 Lt.)',
+  'Total Running HS-3 (6000 Lt.)', 'Total Running NM (2000 Lt.)',
+  'Checked By', 'Approved By'
+];
+
+/* C. Slurry Consumption Report — one row per date (a later save for the same
+ *    date replaces the earlier one). */
+var BO_CONSUMPTION_HEADER = [
+  'Date',
+  'Slurry (Solid) Opening Bal.', 'Total Weight of Batches',
+  'Slurry (Solid) Closing Bal.', 'Slurry Consumed', 'Production',
+  'Diff. (Consumed - Prod.)', 'Cumulative Diff.',
+  'Prepared By', 'QC Lab', 'Store Dept.', 'Sanction By', 'Approved By',
+  'Timestamp'
+];
+
+
+/* ── Batch Operator — spreadsheet access ─────────────────────────────────── */
+
+// Opened lazily (only when a batch_op_* row arrives). Throws if the Script
+// Property is missing so the row is retried / marked failed, never lost.
+function boOpenSS_() {
+  var id = PropertiesService.getScriptProperties()
+    .getProperty('SPREADSHEET_ID_BATCH_OP');
+  if (!id || String(id).trim() === '') {
+    throw new Error('[BatchOp] SPREADSHEET_ID_BATCH_OP not set — '
+      + 'cannot route batch_op_* record. Set the Script Property first.');
+  }
+  return SpreadsheetApp.openById(String(id).trim());
+}
+
+
+/* ── Batch Operator — One-time setup (run manually) ──────────────────────── */
+
+/**
+ * Create the three Batch Operator tabs with headers up front. Run ONCE
+ * manually. Idempotent: creates a tab only if missing, writes the header only
+ * if row 1 is empty.
+ */
+function initBatchOpTabs() {
+  var ss;
+  try { ss = boOpenSS_(); }
+  catch (e) { Logger.log('[initBatchOpTabs] Fail-closed: ' + e.message); return; }
+
+  Logger.log('[initBatchOpTabs] Spreadsheet: "' + ss.getName()
+    + '"  url=' + ss.getUrl());
+
+  ensureTab_(ss, BO_TAB.JOBCARD,     BO_JOBCARD_HEADER);
+  ensureTab_(ss, BO_TAB.TRACE,       BO_TRACE_HEADER);
+  ensureTab_(ss, BO_TAB.CONSUMPTION, BO_CONSUMPTION_HEADER);
+  Logger.log('[initBatchOpTabs] Done. All three Batch Operator tabs are ready.');
+}
+
+/**
+ * ONE-SHOT: WIPE and recreate the three Batch Operator tabs with the CURRENT
+ * headers. Use when the layout changed (ensureHeader_ only fills a blank
+ * row 1). SAFE: touches ONLY the three tabs in SPREADSHEET_ID_BATCH_OP.
+ * To also stop the old records re-syncing, run in Supabase SQL:
+ *   delete from thermopack_sheets_sync_outbox
+ *    where record_kind like 'batch_op_%';
+ */
+function resetBatchOpTabsClean() {
+  var ss;
+  try { ss = boOpenSS_(); }
+  catch (e) { Logger.log('[resetBatchOpTabsClean] Fail-closed: ' + e.message); return; }
+
+  var specs = [
+    { name: BO_TAB.JOBCARD,     header: BO_JOBCARD_HEADER },
+    { name: BO_TAB.TRACE,       header: BO_TRACE_HEADER },
+    { name: BO_TAB.CONSUMPTION, header: BO_CONSUMPTION_HEADER }
+  ];
+  for (var i = 0; i < specs.length; i++) {
+    var old = ss.getSheetByName(specs[i].name);
+    if (old) {
+      // A spreadsheet cannot have zero sheets: rename, create new, then delete.
+      old.setName(specs[i].name + ' (old ' + new Date().getTime() + ')');
+      ensureTab_(ss, specs[i].name, specs[i].header);
+      ss.deleteSheet(old);
+    } else {
+      ensureTab_(ss, specs[i].name, specs[i].header);
+    }
+    Logger.log('[resetBatchOpTabsClean] Wiped + recreated tab: ' + specs[i].name);
+  }
+  Logger.log('[resetBatchOpTabsClean] Done. All three tabs are empty with the current headers.');
+}
+
+
+/* ── Batch Operator — Writers ────────────────────────────────────────────── */
+
+/* A. Process Job Card — one row per input line, then a "Batch Total" row.
+ *
+ * Every row of one saved job card carries a hidden key starting with
+ * "<source_pk>|". Re-syncing the same job card REPLACES that contiguous block
+ * in place (resized if needed), so a replay never duplicates rows. */
+function boWriteJobCard_(ss, row, p) {
+  var sh = ensureTab_(ss, BO_TAB.JOBCARD, BO_JOBCARD_HEADER);
+  var pk = String(row.source_pk);
+
+  var batches = Array.isArray(p.batches) ? p.batches : [];
+  var inputRows = Array.isArray(p.input_rows) ? p.input_rows : [];
+
+  var date = fmtDate_(p.date);
+  var shift = valOrBlank_(p.shift);
+  var operator = valOrBlank_(p.operator_name);
+  var supervisor = valOrBlank_(p.supervisor);
+  var manager = valOrBlank_(p.manager);
+
+  var block = [];
+  var flatIdx = 0;   // input_rows is the flat mirror of batches[].rows (same order)
+
+  for (var b = 0; b < batches.length; b++) {
+    var batch = batches[b] || {};
+    var rows = Array.isArray(batch.rows) ? batch.rows : [];
+    var batchNo = valOrBlank_(batch.batchNo);
+    var tank = boTankLabel_(batch.tankType);
+    var sum = 0;
+    var batchRows = [];
+
+    for (var r = 0; r < rows.length; r++) {
+      var rw = rows[r] || {};
+      var flat = inputRows[flatIdx];
+      flatIdx++;
+      if (flat && flat.batch_id !== undefined && String(flat.batch_id) !== String(batch.id)) {
+        flat = null;   // misaligned mirror → ignore rather than mix rows up
+      }
+
+      var qtyRaw = (rw.qty !== undefined && rw.qty !== null && String(rw.qty).trim() !== '')
+        ? rw.qty : (flat ? flat.qty_kg : '');
+      var qty = numOrBlank_(qtyRaw);
+      var input = valOrBlank_(rw.inputName);
+      var origin = valOrBlank_(rw.origin);
+      var rowBatchNo = valOrBlank_(rw.batchNo);
+
+      // Skip completely empty input lines.
+      if (String(input).trim() === '' && String(origin).trim() === ''
+          && String(rowBatchNo).trim() === '' && qty === '') continue;
+
+      var ts = boNormTs_(rw.timestamp || (flat ? flat.timestamp : ''));
+      if (typeof qty === 'number') sum += qty;
+
+      batchRows.push({
+        key: pk + '|' + valOrBlank_(batch.id) + '|' + valOrBlank_(rw.id),
+        vals: [
+          date, shift, operator, batchNo, tank,
+          input, origin, rowBatchNo, qty, ts,
+          supervisor, manager
+        ]
+      });
+    }
+
+    if (batchRows.length === 0) continue;   // nothing entered for this batch card
+
+    for (var k = 0; k < batchRows.length; k++) block.push(batchRows[k]);
+    block.push({
+      key: pk + '|' + valOrBlank_(batch.id) + '|TOTAL',
+      vals: [
+        date, shift, operator, batchNo, tank,
+        'Batch Total', '', '', sum, '',
+        supervisor, manager
+      ]
+    });
+  }
+
+  if (block.length === 0) return;   // empty job card → nothing to show
+
+  boWriteBlock_(sh, BO_JOBCARD_HEADER, block, pk + '|');
+  formatTab_(sh, BO_JOBCARD_HEADER.length);
+  boStyleTotalRows_(sh, BO_JOBCARD_HEADER.length, pk + '|');
+}
+
+/* B. Batch Traceability Records — one row per batch row of the record. */
+function boWriteTraceability_(ss, row, p) {
+  var sh = ensureTab_(ss, BO_TAB.TRACE, BO_TRACE_HEADER);
+  var pk = String(row.source_pk);
+  var rows = Array.isArray(p.rows) ? p.rows : [];
+  var date = fmtDate_(p.date);
+  var fields = ['batch_no', 'charge_tank', 'charge_start', 'charge_stop',
+    'hs_tank', 'hs_start', 'hs_stop', 'lst_tank', 'lst_start', 'lst_stop',
+    's1_start', 's1_stop', 's2_start', 's2_stop',
+    'finish_tank', 'finish_start', 'finish_stop'];
+
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i] || {};
+    var hasData = false;
+    for (var f = 0; f < fields.length; f++) {
+      var fv = r[fields[f]];
+      if (fv !== undefined && fv !== null && String(fv).trim() !== '') { hasData = true; break; }
+    }
+    if (!hasData) continue;
+
+    var vals = [
+      date, valOrBlank_(r.batch_no),
+      boTankLabel_(r.charge_tank), boFmtHm_(r.charge_start), boFmtHm_(r.charge_stop),
+      boTankLabel_(r.hs_tank),     boFmtHm_(r.hs_start),     boFmtHm_(r.hs_stop),
+      boTankLabel_(r.lst_tank),    boFmtHm_(r.lst_start),    boFmtHm_(r.lst_stop),
+      boFmtHm_(r.s1_start), boFmtHm_(r.s1_stop),
+      boFmtHm_(r.s2_start), boFmtHm_(r.s2_stop),
+      boTankLabel_(r.finish_tank), boFmtHm_(r.finish_start), boFmtHm_(r.finish_stop),
+      valOrBlank_(p.total_hs1), valOrBlank_(p.total_hs2),
+      valOrBlank_(p.total_hs3), valOrBlank_(p.total_nm),
+      valOrBlank_(p.checked_by), valOrBlank_(p.approved_by)
+    ];
+    upsertByKey_(sh, BO_TRACE_HEADER, vals, pk + '|' + i);
+  }
+  formatTab_(sh, BO_TRACE_HEADER.length);
+}
+
+/* C. Slurry Consumption Report — one row per date (latest save wins). */
+function boWriteConsumption_(ss, row, p) {
+  var sh = ensureTab_(ss, BO_TAB.CONSUMPTION, BO_CONSUMPTION_HEADER);
+  var rows = Array.isArray(p.rows) ? p.rows : [];
+
+  for (var i = 0; i < rows.length; i++) {
+    var r = rows[i] || {};
+    var key = r.date ? ('date|' + fmtDate_(r.date)) : (String(row.source_pk) + '|' + i);
+    var vals = [
+      fmtDate_(r.date),
+      numOrBlank_(r.opening_bal), numOrBlank_(r.total_batches),
+      numOrBlank_(r.closing_bal), numOrBlank_(r.slurry_consumed),
+      numOrBlank_(r.production),
+      numOrBlank_(r.diff), numOrBlank_(r.cumulative_diff),
+      valOrBlank_(r.prepared_by), valOrBlank_(r.qc_lab), valOrBlank_(r.store_dept),
+      valOrBlank_(r.sanction_by), valOrBlank_(r.approved_by),
+      boNormTs_(r.timestamp)
+    ];
+    upsertByKey_(sh, BO_CONSUMPTION_HEADER, vals, key);
+  }
+  formatTab_(sh, BO_CONSUMPTION_HEADER.length);
+}
+
+
+/* ── Batch Operator — helpers ────────────────────────────────────────────── */
+
+/* Write a contiguous block of rows [{key, vals}] for one saved job card.
+ *
+ * If rows whose hidden key starts with `prefix` already exist (a replay of the
+ * same submission), the block is overwritten in place; surplus old rows are
+ * removed and missing ones inserted, so the block stays contiguous and never
+ * duplicates. Otherwise the block is appended at the end of the sheet.
+ * (At least one non-frozen row always remains, so Sheets' "cannot delete all
+ * non-frozen rows" rule is never hit.) */
+function boWriteBlock_(sh, header, block, prefix) {
+  var keyColIndex = header.length + 1;   // hidden trailing _source_pk column
+  var m = block.length;
+  var lastRow = sh.getLastRow();
+
+  var first = -1, n = 0, contiguous = true, prevRow = -1;
+  var existing = [];
+  if (lastRow >= 2) {
+    var keys = sh.getRange(2, keyColIndex, lastRow - 1, 1).getValues();
+    for (var i = 0; i < keys.length; i++) {
+      if (String(keys[i][0]).indexOf(prefix) === 0) {
+        var rowNo = i + 2;
+        existing.push(rowNo);
+        if (first === -1) first = rowNo;
+        else if (rowNo !== prevRow + 1) contiguous = false;
+        prevRow = rowNo;
+        n++;
+      }
+    }
+  }
+
+  var start;
+  if (n === 0) {
+    start = Math.max(2, lastRow + 1);
+  } else if (!contiguous) {
+    // Rows were re-ordered by hand: blank the old copies and append fresh ones.
+    for (var e = 0; e < existing.length; e++) {
+      sh.getRange(existing[e], 1, 1, keyColIndex).clearContent();
+    }
+    start = Math.max(2, sh.getLastRow() + 1);
+  } else {
+    start = first;
+    if (m > n) sh.insertRowsAfter(first + n - 1, m - n);
+    else if (m < n) sh.deleteRows(first + m, n - m);
+  }
+
+  var values = [];
+  for (var j = 0; j < m; j++) {
+    var full = block[j].vals.slice();
+    full.push(block[j].key);
+    values.push(full);
+  }
+  sh.getRange(start, 1, m, keyColIndex).setValues(values);
+}
+
+// Bold + light fill on every "…|TOTAL" row of this job card; normal on the rest.
+function boStyleTotalRows_(sh, visibleCols, prefix) {
+  try {
+    var lastRow = sh.getLastRow();
+    if (lastRow < 2) return;
+    var keys = sh.getRange(2, visibleCols + 1, lastRow - 1, 1).getValues();
+    for (var i = 0; i < keys.length; i++) {
+      var k = String(keys[i][0]);
+      if (k.indexOf(prefix) !== 0) continue;
+      var rng = sh.getRange(i + 2, 1, 1, visibleCols);
+      if (/\|TOTAL$/.test(k)) {
+        rng.setFontWeight('bold').setBackground('#fff2cc');
+      } else {
+        rng.setFontWeight('normal').setBackground(null);
+      }
+    }
+  } catch (e) { /* cosmetic — never fail a sync write */ }
+}
+
+function boTankLabel_(v) {
+  if (v === undefined || v === null || String(v).trim() === '') return '';
+  return BO_TANK_LABELS[String(v)] || String(v);
+}
+
+// Normalise a website-captured time to hh:mm:ss AM/PM (hh:mm AM/PM when the
+// site stored no seconds). "02:30:15 pm" is upper-cased/padded; ISO timestamps
+// are rendered in IST. Blank in → blank out; unrecognised values are shown
+// as-is. NEVER substitutes the current (upload) time.
+function boNormTs_(v) {
+  if (v === undefined || v === null) return '';
+  var s = String(v).trim();
+  if (s === '') return '';
+  var m = /^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([AaPp])\.?[Mm]\.?$/.exec(s);
+  if (m) {
+    var hh = ('0' + m[1]).slice(-2);
+    return hh + ':' + m[2] + (m[3] ? ':' + m[3] : '') + ' ' + m[4].toUpperCase() + 'M';
+  }
+  if (/\d{4}-\d{2}-\d{2}T/.test(s)) {
+    var t = fmtTs_(s);
+    if (t) return t.toUpperCase();
+  }
+  return s;
+}
+
+// Stored 24-hour "HH:mm" → "hh:mm AM/PM". Blank stays blank.
+function boFmtHm_(v) {
+  if (v === undefined || v === null || String(v).trim() === '') return '';
+  var m = /^(\d{1,2}):(\d{2})$/.exec(String(v).trim());
+  if (!m) return String(v);
+  var h = parseInt(m[1], 10);
+  if (isNaN(h) || h < 0 || h > 23) return String(v);
+  var mer = h >= 12 ? 'PM' : 'AM';
+  var h12 = h % 12;
+  if (h12 === 0) h12 = 12;
+  return ('0' + h12).slice(-2) + ':' + m[2] + ' ' + mer;
+}
+/* ── END BATCH OPERATOR SECTION ─────────────────────────────────────────── */
