@@ -1105,6 +1105,10 @@ function DryerForm({
                 : (r && r.__hist) || {},
               operator_name: savedBy,
               timestamp: ts,
+              // Out-of-limit flags captured at save time ({field: 'high'|'low'}),
+              // kept on the row so "Save Log Sheet" stores them in log_rows and
+              // the records view can underline those values. undefined = clean.
+              __cautions: localValues.__cautions,
               // Baseline shared save time so the poll doesn't re-pull our own
               // just-saved record as if it were a newer remote edit.
               __last_saved_at: saveTokenRef || '',
@@ -1358,6 +1362,7 @@ function DryerForm({
                     __ts: committed.__ts,
                     __hist: committed.__hist,
                     __events: committed.__events,
+                    __cautions: committed.__cautions,
                     // Record the new shared save time as our baseline so the
                     // poll does not treat our own just-committed edit as a
                     // newer remote change and re-pull it.
@@ -1450,6 +1455,52 @@ function DryerForm({
   }
 
 
+  // Hours that must be saved (or cancelled) before "Save Log Sheet": a row in
+  // Edit mode, or a row with data whose latest change was never saved. Saving
+  // the log sheet with such an hour stored the operator's UNSAVED local copy
+  // (e.g. Old Dryer 13 Nov 08:00 lost its bag values), so it is blocked.
+  function unsavedHours() {
+    const rows = Array.isArray(safeForm.rows) ? safeForm.rows : []
+    return TIME_SLOTS.filter((slot, i) => {
+      const r = rows[i]
+      if (rowEditing[i]) return true
+      return hourRowFilled(r) && !(r && r.saved)
+    })
+  }
+
+  // The 24 hours to store with the log sheet, taken from the SERVER's saved
+  // hours (dryer_hourly_draft — what every operator saved / edited, the same
+  // data Production Activity shows), never from this browser's possibly stale
+  // copy. Latest save per hour wins. An hour the server does not have keeps the
+  // local row. Throws when the server cannot be read.
+  async function loadSavedHoursForLog() {
+    const { data, error: loadErr } = await supabase
+      .from('dryer_hourly_draft')
+      .select('hour, values, last_saved_at')
+      .eq('dryer_type', form.dryer_type)
+      .eq('log_date', form.date)
+      .order('last_saved_at', { ascending: true })
+    if (loadErr) throw loadErr
+    const byHour = {}
+    ;(data || []).forEach(d => { if (d && d.values && typeof d.values === 'object') byHour[d.hour] = d })
+    const localRows = Array.isArray(form.rows) ? form.rows : []
+    return TIME_SLOTS.map((slot, i) => {
+      const d = byHour[slot]
+      const local = localRows[i] && typeof localRows[i] === 'object' ? localRows[i] : emptyRow()
+      if (!d) return local
+      const v = { ...d.values }
+      delete v.__finalized
+      return {
+        ...emptyRow(),
+        ...v,
+        maintenance: (v.maintenance && typeof v.maintenance === 'object' && !Array.isArray(v.maintenance))
+          ? { shifter_screen: '', atomizer_water: '', ...v.maintenance }
+          : { shifter_screen: '', atomizer_water: '' },
+        saved: true,
+      }
+    })
+  }
+
   async function handleSubmit(e) {
     e.preventDefault()
 
@@ -1463,6 +1514,12 @@ function DryerForm({
     // single hour at any time.
     if (!allHoursFilled()) {
       setError(`Fill all 24 hourly rows before saving the log sheet (${filledHourCount()}/${TIME_SLOTS.length} filled).`)
+      return
+    }
+
+    const pending = unsavedHours()
+    if (pending.length) {
+      setError(`Save or cancel these hours before saving the log sheet: ${pending.join(', ')}.`)
       return
     }
 
@@ -1505,6 +1562,17 @@ function DryerForm({
     setSaving(true)
     setError('')
     setSaved(false)
+
+    let logRows
+    try {
+      logRows = await loadSavedHoursForLog()
+    } catch {
+      setSaving(false)
+      setError('Could not load the saved hours from the server. Check your connection and try again.')
+      return
+    }
+    // Totals over the hours actually being stored.
+    const logTotals = computeDryerTotals(logRows)
 
     const { error: err } = await supabase
       .from('dryer_logs')
@@ -1568,18 +1636,18 @@ function DryerForm({
           total_production: computeTotalProduction(form),
 
           // Total Kg./Hour Production = sum of the 24 hourly Kg./Hour values.
-          kg_per_hr_total: numOrNull(kgTotal),
+          kg_per_hr_total: logTotals.kg,
 
           // Bag-count totals over all 24 hours.
-          bags_per_hr_total:    bagTotals.bags25,
-          bags_per_hr_50_total: bagTotals.bags50Any,
-          bags_50_wt_total:     bagTotals.bags50,
-          bags_1000_wt_total:   bagTotals.bags1000,
+          bags_per_hr_total:    logTotals.bags25,
+          bags_per_hr_50_total: logTotals.bags50Any,
+          bags_50_wt_total:     logTotals.bags50,
+          bags_1000_wt_total:   logTotals.bags1000,
 
           incharge: form.incharge,
           operator: form.operator,
 
-          log_rows: form.rows,
+          log_rows: logRows,
 
           // Per-field entry/change times for the bottom-form + calibration
           // fields { key: ISO }. The sheet sync renders each field's own
@@ -1638,7 +1706,7 @@ function DryerForm({
             dryer_type:        form.dryer_type,
             operator:          form.operator,
             incharge:          form.incharge,
-            rows:              form.rows,
+            rows:              logRows,
             // Blower readings
             id_blower_dp:      form.id_blower_dp,
             id_blower_mr:      form.id_blower_mr,
@@ -1662,11 +1730,11 @@ function DryerForm({
             packed_production_qty:  form.packed_production_qty,
             packed_production:      form.packed_production,
             total_production:  computeTotalProduction(form),
-            kg_per_hr_total:   kgTotal,
-            bags_per_hr_total:    bagTotals.bags25,
-            bags_per_hr_50_total: bagTotals.bags50Any,
-            bags_50_wt_total:     bagTotals.bags50,
-            bags_1000_wt_total:   bagTotals.bags1000,
+            kg_per_hr_total:   logTotals.kg,
+            bags_per_hr_total:    logTotals.bags25,
+            bags_per_hr_50_total: logTotals.bags50Any,
+            bags_50_wt_total:     logTotals.bags50,
+            bags_1000_wt_total:   logTotals.bags1000,
             // Calibration
             calibration_due:   form.calibration_due,
             cal_inlet_temp:    form.cal_inlet_temp,
@@ -3388,13 +3456,15 @@ function DryerForm({
             <button
               type="submit"
               className="dr-save-btn"
-              disabled={saving || !allHoursFilled() || !!logAlreadySaved}
+              disabled={saving || !allHoursFilled() || unsavedHours().length > 0 || !!logAlreadySaved}
               title={
                 logAlreadySaved
                   ? 'Log sheet already saved for this date'
-                  : allHoursFilled()
-                    ? 'Save the full log sheet'
-                    : `Fill all ${TIME_SLOTS.length} hourly rows first (${filledHourCount()}/${TIME_SLOTS.length} filled)`
+                  : !allHoursFilled()
+                    ? `Fill all ${TIME_SLOTS.length} hourly rows first (${filledHourCount()}/${TIME_SLOTS.length} filled)`
+                    : unsavedHours().length > 0
+                      ? `Save or cancel these hours first: ${unsavedHours().join(', ')}`
+                      : 'Save the full log sheet'
               }
             >
               {saving
@@ -3403,6 +3473,16 @@ function DryerForm({
                   ? '🔒 Already Saved'
                   : 'Save Log Sheet / लॉग शीट सहेजें'}
             </button>
+            {!logAlreadySaved && allHoursFilled() && unsavedHours().length > 0 && (
+              <div className="dr-save-hint">
+                <span className="dr-save-hint-en">
+                  Save or cancel these hours to enable Save Log Sheet: {unsavedHours().join(', ')}
+                </span>
+                <span className="dr-save-hint-hi">
+                  पहले इन घंटों को सहेजें या रद्द करें
+                </span>
+              </div>
+            )}
             {!logAlreadySaved && !allHoursFilled() && (
               <div className="dr-save-hint">
                 <span className="dr-save-hint-en">

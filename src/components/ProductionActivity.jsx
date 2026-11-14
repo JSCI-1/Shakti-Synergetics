@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { formatDate } from '../utils/formatDate.js'
 import { computeDryerTotals } from '../utils/dryerTotals.js'
+import DryerFieldHistory from './DryerFieldHistory.jsx'
 import { Bags25TotalCell, Bags5010TotalCell, KgTotalCell, TotalsLeadCell } from './DryerTotalCell.jsx'
 import './ProductionActivity.css'
 
@@ -243,6 +244,8 @@ function ActivityTable({ group }) {
                       {caution
                         ? <span className="pa-cell-caution" title={caution === 'high' ? '⚠ Value is greater than the limit' : '⚠ Value is smaller than the limit'}>{val}</span>
                         : val}
+                      {/* previous values + their times, as on the Dryer entry form */}
+                      <DryerFieldHistory row={v} field={c.key} />
                     </td>
                   )
                 })}
@@ -258,6 +261,9 @@ function ActivityTable({ group }) {
                       {caution
                         ? <span className="pa-cell-caution" title={caution === 'high' ? '⚠ Value is greater than the limit' : '⚠ Value is smaller than the limit'}>{raw}</span>
                         : raw}
+                      {c.key !== 'timestamp' && c.key !== 'operator_name' && (
+                        <DryerFieldHistory row={v} field={c.key} />
+                      )}
                     </td>
                   )
                 })}

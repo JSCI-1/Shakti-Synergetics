@@ -2605,6 +2605,21 @@ function dryerMaintCellWithHistory_(hist) {
   return lines.join(FG_SIEVE_LINE_SEP);
 }
 
+// Underline (and bold) the FIRST line of a cell — the value — leaving the time,
+// "Previous: …" and "⚠ …" lines below it plain, mirroring the website's
+// out-of-limit underline.
+function dryerUnderlineValueLine_(range, text) {
+  var str = String(text === undefined || text === null ? '' : text);
+  if (str === '') return;
+  var end = str.indexOf('\n');
+  if (end === -1) end = str.length;
+  if (end === 0) return;                       // blank value line (cleared value)
+  var style = SpreadsheetApp.newTextStyle().setUnderline(true).setBold(true).build();
+  range.setRichTextValue(
+    SpreadsheetApp.newRichTextValue().setText(str).setTextStyle(0, end, style).build()
+  );
+}
+
 // Locate (creating if needed) the hidden "_dryer_row_key" column; return its
 // 0-based index. The key column must sit AFTER the WIDER of the two blocks
 // (hourly header vs bottom-form header), so every data column of BOTH blocks
@@ -2685,6 +2700,11 @@ function writeDryerHourRow_(ss, row) {
   out[1] = coalesce_(p.shift);
   out[2] = coalesce_(p.hour);
   var hist = p.hist || {};
+  // Out-of-limit flags { field: 'high'|'low' } — sent as payload.cautions since
+  // migration 067 (older payloads: values.__cautions, normally absent).
+  var cautions = (p.cautions && typeof p.cautions === 'object') ? p.cautions
+               : (vals.__cautions && typeof vals.__cautions === 'object') ? vals.__cautions : {};
+  var cautionCols = [];   // 0-based columns whose value line gets underlined
   for (var c = 0; c < DRYER_V2_HOURLY_COLS.length; c++) {
     var fk = DRYER_V2_HOURLY_COLS[c][0];
     if (fk === 'maintenance') {
@@ -2709,20 +2729,22 @@ function writeDryerHourRow_(ss, row) {
     } else if (vals[fk] !== undefined && vals[fk] !== null && String(vals[fk]) !== '') {
       out[3 + c] = dryerCellWithTs_(vals[fk], ts[fk]);
     }
-    // Append caution note if this field had an out-of-range value at save time.
-    // __cautions is only present when the operator proceeded past a warning;
-    // existing rows without __cautions are completely unaffected.
-    var cautions = vals.__cautions || {};
+    // Out-of-limit value at save time: append a note line and remember the cell
+    // so its VALUE line is underlined (like the website). Fields without a flag
+    // are completely unaffected.
     if (cautions[fk] && out[3 + c] !== '' && out[3 + c] !== undefined) {
       var cautionNote = cautions[fk] === 'high' ? '⚠ Exceeds limit' : '⚠ Below limit';
       out[3 + c] = out[3 + c] + '\n' + cautionNote;
+      cautionCols.push(3 + c);
     }
     // else: leave the cell as read (unchanged cell untouched — C3).
   }
   out[keyCol] = wantKey;
 
+  var writtenRow;
   if (rIdx > 0) {
     sh.getRange(rIdx, 1, 1, out.length).setValues([out]);
+    writtenRow = rIdx;
   } else {
     sh.appendRow(out);
     // Flush immediately so a LATER event for the SAME (date,shift,hour) in this
@@ -2730,14 +2752,116 @@ function writeDryerHourRow_(ss, row) {
     // finds the row via dryerFindRow_ and UPDATES it in place, instead of not
     // seeing the un-flushed append and adding a DUPLICATE row for the hour.
     SpreadsheetApp.flush();
+    writtenRow = sh.getLastRow();
   }
+
   try { sh.hideColumns(keyCol + 1); } catch (e) {}
 
   // Keep the hourly table sorted by Date -> Shift -> chronological hour, so the
   // rows always read 08:00,09:00,10:00,... regardless of the order events
   // arrived (operators may save/edit hours out of order, which previously left
   // the sheet as e.g. 8,10,11,9).
-  sortDryerHourTab_(sh, keyCol);
+  var rewritten = sortDryerHourTab_(sh, keyCol);
+
+  // Underline + bold the value line of out-of-limit cells — AFTER sorting:
+  // when the sort reorders/dedupes it rewrites every data row as PLAIN values,
+  // which wipes all underlines in the tab, so then re-apply them tab-wide.
+  // Otherwise only this row changed (setValues above already reset its old
+  // underlines). Cosmetic: never fails the sync.
+  try {
+    if (rewritten) {
+      dryerReapplyCautionUnderlines_(sh, keyCol);
+    } else {
+      for (var u = 0; u < cautionCols.length; u++) {
+        dryerUnderlineValueLine_(sh.getRange(writtenRow, cautionCols[u] + 1), out[cautionCols[u]]);
+      }
+    }
+  } catch (e) {
+    // formatting only — never fails the sync, but leave a trace in Executions
+    Logger.log('[writeDryerHourRow_] underline failed: ' + (e && e.message ? e.message : e));
+  }
+}
+
+// Out-of-limit note lines written by writeDryerHourRow_ — a cell containing one
+// of them gets its value line underlined.
+var DRYER_CAUTION_NOTES = ['⚠ Exceeds limit', '⚠ Below limit'];
+
+function dryerHasCautionNote_(text) {
+  var lines = String(text === undefined || text === null ? '' : text).split('\n');
+  for (var i = 1; i < lines.length; i++) {
+    if (DRYER_CAUTION_NOTES.indexOf(lines[i]) !== -1) return true;
+  }
+  return false;
+}
+
+// Re-apply the value-line underline to EVERY out-of-limit cell of a Dryer hourly
+// tab (cells carrying a "⚠ Exceeds limit" / "⚠ Below limit" line). Reads the
+// block once; touches only those cells.
+function dryerReapplyCautionUnderlines_(sh, keyCol) {
+  var lr = sh.getLastRow();
+  if (lr < 2) return 0;
+  var width = Math.min(Math.max(sh.getLastColumn(), 1), keyCol);   // data columns only
+  if (width < 1) return 0;
+  var data = sh.getRange(2, 1, lr - 1, width).getValues();
+  var n = 0, failedN = 0, firstErr = '';
+  for (var r = 0; r < data.length; r++) {
+    for (var c = 3; c < width; c++) {          // skip Date / Shift / Time
+      if (dryerHasCautionNote_(data[r][c])) {
+        try {
+          dryerUnderlineValueLine_(sh.getRange(r + 2, c + 1), data[r][c]);
+          n++;
+        } catch (e) {
+          failedN++;
+          if (!firstErr) firstErr = 'row ' + (r + 2) + ' col ' + (c + 1) + ': ' + (e && e.message ? e.message : e);
+        }
+      }
+    }
+  }
+  if (failedN) Logger.log('[dryerReapplyCautionUnderlines_] ' + sh.getName() + ': ' + failedN
+    + ' cell(s) could not be underlined. First error — ' + firstErr);
+  return n;
+}
+
+/**
+ * ONE-SHOT, step 1 of re-writing out-of-limit hours that were already synced by
+ * an OLDER version of this script (their cells lack the "⚠ …" line, and the
+ * processed-event ledger would skip them). Turns on replay mode so re-queued
+ * events are written again, then:
+ *   2. in Supabase, re-queue the latest event of each flagged hour (SQL in the
+ *      manual steps), wait ~1–2 minutes for the sync,
+ *   3. run clearReplayFlag() to restore strict dedup,
+ *   4. run reapplyDryerCautionUnderlines().
+ * Only events deliberately re-queued are re-served, so nothing else is rewritten.
+ */
+function enableDryerCautionReplay() {
+  PropertiesService.getScriptProperties().setProperty('REPLAY_FORCE_WRITE', '1');
+  Logger.log('[enableDryerCautionReplay] REPLAY_FORCE_WRITE = 1. Re-queue the flagged hours in '
+    + 'Supabase now, wait ~1–2 min, then run clearReplayFlag() and reapplyDryerCautionUnderlines().');
+}
+
+/**
+ * ONE-SHOT (run manually from the Apps Script editor): underline the value of
+ * every out-of-limit cell already in the "New Dryer" / "Old Dryer" hourly tabs.
+ * Fixes cells whose underline was lost to an earlier re-sort. Cells only qualify
+ * when they carry the "⚠ Exceeds limit" / "⚠ Below limit" line (i.e. the flags
+ * reached the sheet — migration 067 + re-sync). Safe: changes formatting only,
+ * never values. Idempotent.
+ */
+function reapplyDryerCautionUnderlines() {
+  var cfg;
+  try { cfg = getConfig_(); }
+  catch (e) { Logger.log('[reapplyDryerCautionUnderlines] Fail-closed: ' + e.message); return; }
+  var dryerSS = SpreadsheetApp.openById(cfg.SPREADSHEET_ID_DRYER);
+  var types = ['new', 'old'];
+  for (var i = 0; i < types.length; i++) {
+    var tabName = TAB.DRYER_V2[types[i]];
+    var sh = dryerSS.getSheetByName(tabName);
+    if (!sh) { Logger.log('[reapplyDryerCautionUnderlines] Tab not found: ' + tabName); continue; }
+    var n = dryerReapplyCautionUnderlines_(sh, dryerKeyCol_(sh));
+    Logger.log('[reapplyDryerCautionUnderlines] ' + tabName + ': underlined ' + n + ' out-of-limit cell(s).'
+      + (n === 0 ? ' (No cell contains a "⚠ Exceeds limit" / "⚠ Below limit" line — the'
+        + ' deployed script is older than this version, or the hours were not re-sent.)' : ''));
+  }
 }
 
 // 24 chronological TIME_SLOT labels -> rank, for sorting the hourly table in
@@ -2848,7 +2972,7 @@ function dryerHourLabel_(val) {
  */
 function sortDryerHourTab_(sh, keyCol) {
   var lr = sh.getLastRow();
-  if (lr < 3) return;   // 0 or 1 data rows -> nothing to dedupe/order
+  if (lr < 3) return false;   // 0 or 1 data rows -> nothing to dedupe/order
   var width = Math.max(sh.getLastColumn(), keyCol + 1);
   var rng = sh.getRange(2, 1, lr - 1, width);
   var data = rng.getValues();
@@ -2924,7 +3048,7 @@ function sortDryerHourTab_(sh, keyCol) {
   });
 
   var after = deduped.map(function (r) { return r.join('\u0001'); }).join('\u0002');
-  if (after === before && deduped.length === origCount) return;   // nothing to do
+  if (after === before && deduped.length === origCount) return false;   // nothing to do
 
   // 3) Write the deduped+sorted block back starting at row 2.
   sh.getRange(2, 1, deduped.length, width).setValues(deduped);
@@ -2935,6 +3059,7 @@ function sortDryerHourTab_(sh, keyCol) {
   if (removed > 0) {
     sh.deleteRows(2 + deduped.length, removed);
   }
+  return true;   // rows were rewritten as plain values (formatting runs lost)
 }
 
 /**
@@ -2965,7 +3090,9 @@ function dedupeAndSortDryerTabs() {
     var sh = dryerSS.getSheetByName(tabName);
     if (!sh) { Logger.log('[dedupeAndSortDryerTabs] Tab not found: ' + tabName); continue; }
     var keyCol = dryerKeyCol_(sh);
-    sortDryerHourTab_(sh, keyCol);
+    if (sortDryerHourTab_(sh, keyCol)) {
+      try { dryerReapplyCautionUnderlines_(sh, keyCol); } catch (e) { /* formatting only */ }
+    }
     formatQcTab_(sh);   // reapply wrap/row heights after the rewrite
     Logger.log('[dedupeAndSortDryerTabs] Cleaned + ordered: ' + tabName);
   }

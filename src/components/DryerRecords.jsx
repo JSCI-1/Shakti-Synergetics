@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { computeDryerTotals } from '../utils/dryerTotals.js'
+import DryerFieldHistory, { hasFieldHistory } from './DryerFieldHistory.jsx'
+import { mergeHistoryByTs } from './dryerHistory.js'
 import { Bags25TotalCell, Bags5010TotalCell, KgTotalCell, TotalsLeadCell } from './DryerTotalCell.jsx'
 import './DryerRecords.css'
 
@@ -83,13 +85,33 @@ const PAGE_SIZE = 30
 // ─────────────────────────────────────────────────────────────
 // ReadonlyCell — single table cell (read-only value display)
 // ─────────────────────────────────────────────────────────────
-function ReadonlyCell({ value, isTemp }) {
+// Out-of-limit underline — same look as Production Activity (.pa-cell-caution).
+const CAUTION_STYLE = {
+  textDecoration: 'underline',
+  textDecorationColor: '#000',
+  textDecorationThickness: '2px',
+  textUnderlineOffset: '2px',
+  fontWeight: 700,
+  cursor: 'help',
+}
+
+function ReadonlyCell({ value, isTemp, row, field }) {
   const display = (value ?? '').toString().trim()
+  const hasHist = !!field && hasFieldHistory(row, field)
+  // 'high' | 'low' when the value was outside the limit at save time
+  const caution = field && row && row.__cautions && typeof row.__cautions === 'object'
+    ? row.__cautions[field] : undefined
   return (
-    <td className={isTemp ? 'drec-temp-cell' : ''}>
+    <td className={isTemp ? 'drec-temp-cell' : ''} style={hasHist ? { verticalAlign: 'middle' } : undefined}>
       <div className="drec-cell-val">
-        {display || <span className="drec-blank">—</span>}
+        {display
+          ? (caution
+              ? <span style={CAUTION_STYLE} title={caution === 'high' ? '⚠ Value is greater than the limit' : '⚠ Value is smaller than the limit'}>{display}</span>
+              : display)
+          : <span className="drec-blank">—</span>}
       </div>
+      {/* previous values + their times, as on the entry form */}
+      {hasHist && <DryerFieldHistory row={row} field={field} />}
     </td>
   )
 }
@@ -171,30 +193,30 @@ function ReadonlyLogTable({ record }) {
                   <td className="dr-td-time">{slot}</td>
 
                   {/* Temperature cols */}
-                  <ReadonlyCell value={row.temp_inlet}    isTemp />
-                  <ReadonlyCell value={row.temp_outlet}   isTemp />
-                  <ReadonlyCell value={row.temp_actual}   isTemp />
-                  <ReadonlyCell value={row.temp_fbd1}     isTemp />
-                  <ReadonlyCell value={row.temp_fbd2}     isTemp />
-                  <ReadonlyCell value={row.temp_chamber}  isTemp />
+                  <ReadonlyCell row={row} field="temp_inlet" value={row.temp_inlet}    isTemp />
+                  <ReadonlyCell row={row} field="temp_outlet" value={row.temp_outlet}   isTemp />
+                  <ReadonlyCell row={row} field="temp_actual" value={row.temp_actual}   isTemp />
+                  <ReadonlyCell row={row} field="temp_fbd1" value={row.temp_fbd1}     isTemp />
+                  <ReadonlyCell row={row} field="temp_fbd2" value={row.temp_fbd2}     isTemp />
+                  <ReadonlyCell row={row} field="temp_chamber" value={row.temp_chamber}  isTemp />
 
                   {/* Other numeric */}
-                  <ReadonlyCell value={row.atomizer_freq} />
-                  <ReadonlyCell value={row.feed_fc} />
-                  <ReadonlyCell value={row.c_pressure} />
-                  <ReadonlyCell value={row.pressure} />
-                  <ReadonlyCell value={row.pt_temp} />
+                  <ReadonlyCell row={row} field="atomizer_freq" value={row.atomizer_freq} />
+                  <ReadonlyCell row={row} field="feed_fc" value={row.feed_fc} />
+                  <ReadonlyCell row={row} field="c_pressure" value={row.c_pressure} />
+                  <ReadonlyCell row={row} field="pressure" value={row.pressure} />
+                  <ReadonlyCell row={row} field="pt_temp" value={row.pt_temp} />
 
                   {/* Text */}
-                  <ReadonlyCell value={row.batch_no} />
-                  <ReadonlyCell value={row.bags_per_hr} />
-                  <ReadonlyCell value={row.bag_size_wt} />
-                  <ReadonlyCell value={row.bags_per_hr_50} />
-                  <ReadonlyCell value={row.bag_size_wt_50} />
-                  <ReadonlyCell value={row.kg_per_hr} />
-                  <ReadonlyCell value={row.colour} />
-                  <ReadonlyCell value={row.id_frequency} />
-                  <ReadonlyCell value={row.remarks} />
+                  <ReadonlyCell row={row} field="batch_no" value={row.batch_no} />
+                  <ReadonlyCell row={row} field="bags_per_hr" value={row.bags_per_hr} />
+                  <ReadonlyCell row={row} field="bag_size_wt" value={row.bag_size_wt} />
+                  <ReadonlyCell row={row} field="bags_per_hr_50" value={row.bags_per_hr_50} />
+                  <ReadonlyCell row={row} field="bag_size_wt_50" value={row.bag_size_wt_50} />
+                  <ReadonlyCell row={row} field="kg_per_hr" value={row.kg_per_hr} />
+                  <ReadonlyCell row={row} field="colour" value={row.colour} />
+                  <ReadonlyCell row={row} field="id_frequency" value={row.id_frequency} />
+                  <ReadonlyCell row={row} field="remarks" value={row.remarks} />
 
                   {/* Operator name */}
                   <td className="dr-td-operator">
@@ -224,6 +246,7 @@ function ReadonlyLogTable({ record }) {
                     {!MAINTENANCE_OPTIONS.some(opt => !!(row.maintenance || {})[opt.key]) && (
                       <span className="dr-ts-empty">—</span>
                     )}
+                    <DryerFieldHistory row={row} field="maintenance" />
                   </td>
 
                   {/* Timestamp */}
@@ -258,7 +281,63 @@ function ReadonlyLogTable({ record }) {
 // ─────────────────────────────────────────────────────────────
 // RecordDetail — full read-only log sheet view
 // ─────────────────────────────────────────────────────────────
-function RecordDetail({ record, onBack }) {
+// Edit history (and out-of-limit flags) for a saved record. A record's log_rows already carry each
+// hour's __hist / __events when they were saved with it; for older records whose
+// log_rows lack them, the per-hour saves in dryer_hourly_draft (same dryer +
+// date) still hold the history — merge it in (union, deduped by time + value).
+// Flat values always stay those of the saved record.
+function useRecordWithHistory(record) {
+  const [merged, setMerged] = useState(record)
+  useEffect(() => {
+    setMerged(record)
+    if (!supabaseReady || !supabase || !record || !record.date || !record.dryer_type) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data, error } = await supabase
+          .from('dryer_hourly_draft')
+          .select('hour, values, last_saved_at')
+          .eq('dryer_type', record.dryer_type)
+          .eq('log_date', record.date)
+        if (cancelled || error || !Array.isArray(data) || data.length === 0) return
+        // latest save per hour
+        const byHour = {}
+        data.forEach(d => {
+          const prev = byHour[d.hour]
+          const t = d.last_saved_at ? new Date(d.last_saved_at).getTime() : 0
+          const pt = prev && prev.last_saved_at ? new Date(prev.last_saved_at).getTime() : -1
+          if (!prev || t >= pt) byHour[d.hour] = d
+        })
+        const rows = Array.isArray(record.log_rows) ? record.log_rows : []
+        let changed = false
+        const nextRows = TIME_SLOTS.map((slot, i) => {
+          const r = rows[i] && typeof rows[i] === 'object' ? rows[i] : {}
+          const d = byHour[slot]
+          if (!d || !d.values || typeof d.values !== 'object') return r
+          let out = r
+          const hasDraftHist = d.values.__hist && typeof d.values.__hist === 'object'
+            && Object.keys(d.values.__hist).length > 0
+          if (hasDraftHist) { out = mergeHistoryByTs(d.values, out); changed = true }
+          // out-of-limit flags: use the per-hour save's when the log row has none
+          const draftCaut = d.values.__cautions
+          const rowCaut = out.__cautions
+          if (draftCaut && typeof draftCaut === 'object' && Object.keys(draftCaut).length > 0
+              && !(rowCaut && typeof rowCaut === 'object' && Object.keys(rowCaut).length > 0)) {
+            out = { ...out, __cautions: draftCaut }
+            changed = true
+          }
+          return out
+        })
+        if (changed && !cancelled) setMerged({ ...record, log_rows: nextRows })
+      } catch { /* history is display-only — never block the record view */ }
+    })()
+    return () => { cancelled = true }
+  }, [record])
+  return merged
+}
+
+function RecordDetail({ record: savedRecord, onBack }) {
+  const record = useRecordWithHistory(savedRecord)
   const dryerLabel  = record.dryer_type === 'new' ? 'New Dryer' : 'Old Dryer'
   const dryerLabelHi = record.dryer_type === 'new' ? 'नया ड्रायर' : 'पुराना ड्रायर'
 
