@@ -205,10 +205,26 @@ function InputDropdown({ value, onChange, allOptions, defaultOptions, recentlyUs
   )
 }
 
+
+// yyyy-mm-dd → dd-mm-yyyy
+function fmtDmy(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || ''))
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : String(d || '')
+}
+// ISO → "14 Nov 2026, 07:40 am" (IST)
+function fmtSavedAt(iso) {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: true, timeZone: 'Asia/Kolkata',
+  })
+}
+
 // ─────────────────────────────────────────────────────────────
 // SlurrySection
 // ─────────────────────────────────────────────────────────────
-export default function SlurrySection({ sharedBatches, setSharedBatches }) {
+export default function SlurrySection({ sharedBatches, setSharedBatches, setSharedBatchDate }) {
   const uid = useUserId()
 
   // ── form state (meta: date, operators, approval) ──
@@ -273,6 +289,30 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
 
   const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
 
+  // Already saved: a process_job_cards record exists for this date. Only ONE
+  // job card per date is allowed — show a note, lock the card, block Save.
+  const [savedInfo, setSavedInfo] = useState(null)   // null | { created_at }
+  const [savedCheck, setSavedCheck] = useState(0)
+  useEffect(() => {
+    setSavedInfo(null)
+    if (!supabaseReady || !supabase || !form.date) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('process_job_cards')
+          .select('id, created_at')
+          .eq('date', form.date)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (!cancelled) setSavedInfo(data ? { created_at: data.created_at } : null)
+      } catch { /* status only — never blocks the form */ }
+    })()
+    return () => { cancelled = true }
+  }, [form.date, savedCheck])
+  const locked = !!savedInfo
+
   // Operator name comes from the logged-in user (jsci_user, set at login).
   // Runs whenever it is empty, so it is also restored after Save / Reset.
   useEffect(() => {
@@ -298,6 +338,17 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       tank_type: b.tankType ?? b.tank_type ?? '',
     })))
   }
+
+  // Tell Batch Traceability which date these batches belong to.
+  useEffect(() => {
+    if (setSharedBatchDate) setSharedBatchDate(form.date || '')
+  }, [form.date])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // On page load, hand the batches restored from this browser's draft to
+  // Batch Traceability (the wrapper starts with one empty batch).
+  useEffect(() => {
+    syncParent(batches)
+  }, [])  // eslint-disable-line react-hooks/exhaustive-deps
 
   // =========================================================
   // SHARED DRAFT — other Batch Operators see what was entered
@@ -353,9 +404,11 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
     section: 'batch_job_card',
     date: form.date,
     blob: sharedBlob,
-    hasData: sharedHasData,
+    hasData: b => !locked && sharedHasData(b),
     apply: applySharedBlob,
-    // Admin picks a date with no live draft → show the saved job card for it
+    // A date with no live draft → show its saved job card (admins always;
+    // every user once the date is saved)
+    loadSavedForAll: locked,
     loadSaved: async date => {
       const row = await fetchLatestSaved('process_job_cards', 'date', date)
       if (!row || !Array.isArray(row.batches) || row.batches.length === 0) return null
@@ -383,12 +436,13 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       setBatchErrors({})
     },
     onRemoteCleared: () => {
-      // The job card for this date was saved by another operator.
-      clearFormDraft()
+      // The job card for this date was saved by another operator: keep the
+      // date (the saved card loads next) and re-check → "already saved" note.
+      setForm(p => ({ ...emptyForm(), date: p.date, shift: p.shift, operator_name: p.operator_name }))
       clearBatchesDraft()
       clearTimestampsDraft()
-      setSharedBatches([emptyBatchCard()])
       setBatchErrors({})
+      setSavedCheck(n => n + 1)
     },
   })
 
@@ -590,11 +644,30 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       setError('Supabase not configured.')
       return
     }
+    if (locked) return
+    if (!form.date) { setError('Select the date before saving.'); return }
 
     setSaving(true)
     setError('')
     setSaved(false)
     const submittedDate = form.date
+
+    // Server-side re-check: another operator may have saved this date already.
+    try {
+      const { data: existing } = await supabase
+        .from('process_job_cards')
+        .select('id, created_at')
+        .eq('date', submittedDate)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (existing) {
+        setSaving(false)
+        setSavedInfo({ created_at: existing.created_at })
+        setError('The job card for this date is already saved. It cannot be saved again.')
+        return
+      }
+    } catch { /* the insert below still runs; the note appears on the next check */ }
 
     const { error: err } = await supabase
       .from('process_job_cards')
@@ -627,12 +700,10 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
       setSaved(true)
       sharedDraft.suppress()
       deleteSharedDraft('batch_job_card', submittedDate)
-      clearFormDraft()
-      clearBatchesDraft()
-      clearTimestampsDraft()
-      const fresh = [emptyBatchCard()]
-      setSharedBatches(fresh)
+      // Keep showing the job card just saved (now locked) with the note. The
+      // batches stay, so Batch Traceability keeps its rows for this date.
       setBatchErrors({})
+      setSavedInfo({ created_at: new Date().toISOString() })
     }
   }
 
@@ -678,6 +749,7 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
             </label>
             <select
               className="sl-input"
+              disabled={locked}
               value={form.shift || ''}
               onChange={e => set('shift', e.target.value)}
             >
@@ -704,6 +776,17 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
         {/* Live-sharing status — tells the operator / admin whether this card
             is actually reaching the other screens. */}
         <SharedStatus date={form.date} syncInfo={sharedDraft.syncInfo} />
+
+        {locked && (
+          <div className="sl-success" style={{ margin: '8px 0' }}>
+            🔒 The Process Job Card for {fmtDmy(form.date)} is already saved
+            {savedInfo.created_at ? ` (on ${fmtSavedAt(savedInfo.created_at)})` : ''}. It cannot be saved again.
+            {' '}/ इस तारीख का जॉब कार्ड पहले ही सहेजा जा चुका है, इसे दोबारा सहेजा नहीं जा सकता।
+          </div>
+        )}
+
+        {/* Everything below (batch cards, approval) is locked once saved. */}
+        <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
 
         {/* ══════════════════════════════════════════════════
             INPUTS (kg) — BATCH CARDS
@@ -1009,6 +1092,8 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
           </div>
         </div>
 
+        </fieldset>
+
         {/* ══════════════════════════════════════════════════
             ACTIONS
         ══════════════════════════════════════════════════ */}
@@ -1017,13 +1102,14 @@ export default function SlurrySection({ sharedBatches, setSharedBatches }) {
           {error && <div className="sl-error">Error: {error}</div>}
           {saved  && <div className="sl-success">✓ Saved successfully / सफलतापूर्वक सहेजा गया</div>}
 
-          <button type="submit" className="sl-save-btn" disabled={saving}>
-            {saving ? 'Saving…' : 'Save Job Card / जॉब कार्ड सहेजें'}
+          <button type="submit" className="sl-save-btn" disabled={saving || locked}>
+            {saving ? 'Saving…' : locked ? '🔒 Already Saved / पहले ही सहेजा गया' : 'Save Job Card / जॉब कार्ड सहेजें'}
           </button>
 
           <button
             type="button"
             className="sl-reset-btn"
+            disabled={locked}
             onClick={() => {
               clearFormDraft()
               clearBatchesDraft()

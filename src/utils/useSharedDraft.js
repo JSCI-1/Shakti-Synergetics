@@ -128,12 +128,15 @@ export async function deleteSharedDraft(section, date) {
  * @param {object}   o.blob            current local blob (plain JSON)
  * @param {Function} o.hasData         (blob) => bool — skip first upload while empty
  * @param {Function} o.apply           (mergedBlob) => void — write merged blob to local state
+ * @param {boolean}  [o.loadSavedForAll] when true, the saved record of a date with no live
+ *                                       draft is shown to every user (not only admins) —
+ *                                       used for view-only past dates
  * @param {Function} o.onRemoteCleared () => void — shared row was deleted by someone else
  * @returns {{ suppress: Function }}   suppress() — call right before a permanent save
  */
-export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCleared, loadSaved, onDateSwitch }) {
+export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCleared, loadSaved, onDateSwitch, loadSavedForAll = false }) {
   const latest = useRef({})
-  latest.current = { blob, hasData, apply, onRemoteCleared, loadSaved, onDateSwitch }
+  latest.current = { blob, hasData, apply, onRemoteCleared, loadSaved, onDateSwitch, loadSavedForAll }
   const lastDate = useRef(date)
 
   const base = useRef(undefined)         // last agreed blob
@@ -185,7 +188,8 @@ export function useSharedDraft({ section, date, blob, hasData, apply, onRemoteCl
           savedBaseline.current = canon(local)
           return
         }
-        if (!has(local) && !savedTried.current && latest.current.loadSaved && isAdminUser()) {
+        if (!has(local) && !savedTried.current && latest.current.loadSaved
+            && (isAdminUser() || latest.current.loadSavedForAll)) {
           savedTried.current = true
           const saved = await latest.current.loadSaved(date)
           if (saved) {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { supabase, supabaseReady } from '../supabaseClient'
 import { useDraft, useUserId } from '../utils/useDraft.js'
 import { useSharedDraft, deleteSharedDraft, fetchLatestSaved } from '../utils/useSharedDraft.js'
@@ -88,7 +88,7 @@ function computeTotals(rows) {
 // ── 12-hour time cell: three dropdowns (Hour / Minute / AM-PM) ────────────────
 // The cell STORES a 24-hour "HH:mm" string (the SAME format we already store →
 // saved records and the DB stay compatible); the dropdowns only change the UI.
-function TimeCell({ value, onChange }) {
+function TimeCell({ value, onChange, disabled = false }) {
   const parsed = parse24(value)        // { h12, min, mer } | null
   const h12 = parsed ? parsed.h12 : ''
   const min = parsed ? parsed.min : ''
@@ -104,18 +104,18 @@ function TimeCell({ value, onChange }) {
 
   return (
     <div className="bt-time12">
-      <select className="bt-time12-sel" value={h12}
+      <select className="bt-time12-sel" value={h12} disabled={disabled}
         onChange={e => update(e.target.value, min, mer)}>
         <option value="">--</option>
         {HOURS_12.map(h => <option key={h} value={h}>{h}</option>)}
       </select>
       <span className="bt-time12-colon">:</span>
-      <select className="bt-time12-sel" value={min}
+      <select className="bt-time12-sel" value={min} disabled={disabled}
         onChange={e => update(h12, e.target.value, mer)}>
         <option value="">--</option>
         {MINUTES.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
-      <select className="bt-time12-sel bt-time12-mer" value={mer}
+      <select className="bt-time12-sel bt-time12-mer" value={mer} disabled={disabled}
         onChange={e => update(h12, min, e.target.value)}>
         <option value="AM">AM</option>
         <option value="PM">PM</option>
@@ -188,26 +188,80 @@ function emptyForm(sharedBatches) {
   }
 }
 
-export default function BatchTraceability({ sharedBatches = [] }) {
+// True when an operator entered something in this row beyond what the Process
+// Job Card pre-fills (any start/stop time or the LST tank). Such a row is never
+// removed automatically.
+const ENTRY_FIELDS = ['charge_start', 'charge_stop', 'hs_start', 'hs_stop', 'lst_tank', 'lst_start', 'lst_stop',
+  's1_start', 's1_stop', 's2_start', 's2_stop', 'finish_start', 'finish_stop']
+function rowHasEntries(r) {
+  return !!r && ENTRY_FIELDS.some(f => String(r[f] ?? '').trim() !== '')
+}
+
+// yyyy-mm-dd → dd-mm-yyyy
+function fmtDmy(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || ''))
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : String(d || '')
+}
+// ISO → "14 Nov 2026, 07:40 am" (IST)
+function fmtSavedAt(iso) {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: true, timeZone: 'Asia/Kolkata',
+  })
+}
+
+export default function BatchTraceability({ sharedBatches = [], sharedBatchDate = '' }) {
   const uid = useUserId()
-  const [form, setForm, clearFormDraft] = useDraft(`draft:${uid}:batch:traceability`, () => emptyForm(sharedBatches))
+  const [form, setForm, clearFormDraft] = useDraft(`draft:${uid}:batch:traceability`, () => emptyForm([]))
   const [saving, setSaving] = useState(false)
   const [saved, setSaved]   = useState(false)
   const [error, setError]   = useState('')
 
-  // Sync rows to the Process Job Card batches. As soon as the operator clicks
-  // "Add Batch" over there, sharedBatches grows → a matching Batch Traceability
-  // row is added here automatically (and tank_type fills ALL tank columns).
+  // Already saved: a batch_traceability record exists for this date. Only ONE
+  // record per date is allowed, so the form shows a note, becomes read-only
+  // and Save is blocked. Re-checked on every date change, after this browser
+  // saves, and when another operator saves (savedCheck bump).
+  const [savedInfo, setSavedInfo] = useState(null)   // null | { created_at }
+  const [savedCheck, setSavedCheck] = useState(0)
+  useEffect(() => {
+    setSavedInfo(null)
+    if (!supabaseReady || !supabase || !form.date) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const { data } = await supabase
+          .from('batch_traceability')
+          .select('id, created_at')
+          .eq('date', form.date)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        if (!cancelled) setSavedInfo(data ? { created_at: data.created_at } : null)
+      } catch { /* status only — never blocks the form */ }
+    })()
+    return () => { cancelled = true }
+  }, [form.date, savedCheck])
+
+  // Sync rows to the Process Job Card batches — ONLY when the Process Job Card
+  // shows the SAME date as this form. Another date (e.g. yesterday) shows only
+  // its own shared draft / saved record, never today's batches.
   //
   // One row per batch, matched POSITIONALLY so already-entered time/tank values
   // in a row are preserved when a new batch is appended (the new batch simply
-  // adds a fresh trailing row). The row count always tracks the batch count, so
-  // adding a batch increases the rows and removing one decreases them. We depend
-  // on sharedBatches.length too so a pure count change always re-syncs.
+  // adds a fresh trailing row). Extra rows beyond the batch count are dropped
+  // ONLY when nothing was entered in them — a row with any time / LST tank is
+  // kept (the operator removes it with ✕). So a Process Job Card reset (after
+  // "Save Job Card", a reload, or another operator's save) can no longer wipe
+  // the entered traceability rows.
   useEffect(() => {
+    if (!form.date || !sharedBatchDate || form.date !== sharedBatchDate) return
+    if (savedInfo) return   // saved record is shown as it was saved
     setForm(prev => {
+      if (prev.date !== sharedBatchDate) return prev
       const prevRows = prev.rows || []
-      const newRows = sharedBatches.map((b, i) => {
+      const synced = sharedBatches.map((b, i) => {
         const existing = prevRows[i]
         const tank = b.tank_type || ''
         // Batch No. is FETCHED from the Process Job Card batch and always tracks
@@ -227,17 +281,42 @@ export default function BatchTraceability({ sharedBatches = [] }) {
             }
           : emptyRow(b.batch_no, b.tank_type)
       })
+      // keep any extra rows that hold entered data
+      const kept = prevRows.slice(synced.length).filter(rowHasEntries)
+      const newRows = [...synced, ...kept]
       return { ...prev, rows: newRows.length > 0 ? newRows : [emptyRow()] }
     })
-  }, [sharedBatches, sharedBatches.length])
+  }, [sharedBatches, sharedBatches.length, sharedBatchDate, form.date, savedInfo])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const set = (k, v) => setForm(p => ({ ...p, [k]: v }))
+  // Follow the Process Job Card date: whenever the operator picks (or changes)
+  // the date there, this form switches to the same date. One-way — picking
+  // another date HERE (to look at earlier data) never changes the Process Job
+  // Card, and this form stays on that date until the Process date changes.
+  const lastProcessDate = useRef(null)
+  useEffect(() => {
+    if (lastProcessDate.current === sharedBatchDate) return
+    lastProcessDate.current = sharedBatchDate
+    if (sharedBatchDate) setForm(p => (p.date === sharedBatchDate ? p : { ...p, date: sharedBatchDate }))
+  }, [sharedBatchDate])  // eslint-disable-line react-hooks/exhaustive-deps
 
-  const setRow = (idx, field, val) =>
+  // View-only: this form shows a different date than the Process Job Card
+  // (e.g. yesterday, opened to look at earlier data). Nothing can be changed or
+  // saved there; Process Job Card batches keep adding rows for the job-card date
+  // (they appear when that date is selected again).
+  const viewOnly = !!sharedBatchDate && !!form.date && form.date !== sharedBatchDate
+
+  // Nothing can be edited or saved: another date than the job card, or saved.
+  const readOnly = viewOnly || !!savedInfo
+
+  const set = (k, v) => { if (readOnly && k !== 'date') return; setForm(p => ({ ...p, [k]: v })) }
+
+  const setRow = (idx, field, val) => {
+    if (readOnly) return
     setForm(p => ({
       ...p,
       rows: p.rows.map((r, i) => i === idx ? { ...r, [field]: val } : r),
     }))
+  }
 
   // Auto-computed Total Running Hours per tank (HS-1/2/3/NM), summed across all
   // batch rows. Recomputes whenever any row's tank/times change or a batch is
@@ -264,10 +343,10 @@ export default function BatchTraceability({ sharedBatches = [] }) {
     section: 'batch_traceability',
     date: form.date,
     blob: sharedBlob,
-    hasData: b => !!(b.checked_by || b.approved_by) || (b.rows || []).some(r =>
+    hasData: b => !readOnly && (!!(b.checked_by || b.approved_by) || (b.rows || []).some(r =>
       r.lst_tank || ['charge_start', 'charge_stop', 'hs_start', 'hs_stop', 'lst_start', 'lst_stop',
         's1_start', 's1_stop', 's2_start', 's2_stop', 'finish_start', 'finish_stop'].some(f => r[f])
-    ),
+    )),
     apply: m => {
       if (!m || !Array.isArray(m.rows) || m.rows.length === 0) return
       if (!m.rows.every(r => r && r.id != null)) return
@@ -278,7 +357,9 @@ export default function BatchTraceability({ sharedBatches = [] }) {
         approved_by: m.approved_by ?? '',
       }))
     },
-    // Admin picks a date with no live draft → show the saved record for it
+    // A date with no live draft → show its saved record (admins always; every
+    // user when the form is read-only: another date, or already saved)
+    loadSavedForAll: readOnly,
     loadSaved: async date => {
       const row = await fetchLatestSaved('batch_traceability', 'date', date)
       if (!row || !Array.isArray(row.rows) || row.rows.length === 0) return null
@@ -288,26 +369,51 @@ export default function BatchTraceability({ sharedBatches = [] }) {
     // Date changed: empty the rows so the new date's shared values load
     // instead of the previous date's being copied onto it.
     onDateSwitch: () => {
-      setForm(p => ({ ...emptyForm(sharedBatches), date: p.date }))
+      // Empty form for the new date — its own shared draft / saved record
+      // loads next. Rows are re-filled from the Process Job Card only if it
+      // shows this same date (sync effect above).
+      setForm(p => ({ ...emptyForm([]), date: p.date }))
       setSaved(false); setError('')
     },
     onRemoteCleared: () => {
-      // This record was saved by another operator.
-      clearFormDraft(); setSaved(false); setError('')
+      // This record was saved by another operator: keep the date, empty the
+      // rows (the saved record loads next) and re-check → "already saved" note.
+      setForm(p => ({ ...emptyForm([]), date: p.date }))
+      setSaved(false); setError('')
+      setSavedCheck(n => n + 1)
     },
   })
 
-  function addRow() { setForm(p => ({ ...p, rows: [...p.rows, emptyRow()] })) }
+  function addRow() { if (readOnly) return; setForm(p => ({ ...p, rows: [...p.rows, emptyRow()] })) }
   function removeRow(idx) {
+    if (readOnly) return
     if (form.rows.length <= 1) return
     setForm(p => ({ ...p, rows: p.rows.filter((_, i) => i !== idx) }))
   }
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (readOnly) return
     if (!supabaseReady) { setError('Supabase not configured.'); return }
+    if (!form.date) { setError('Select the date before saving.'); return }
     setSaving(true); setError(''); setSaved(false)
     const submittedDate = form.date
+    // Server-side re-check: another operator may have saved this date already.
+    try {
+      const { data: existing } = await supabase
+        .from('batch_traceability')
+        .select('id, created_at')
+        .eq('date', submittedDate)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (existing) {
+        setSaving(false)
+        setSavedInfo({ created_at: existing.created_at })
+        setError('The record for this date is already saved. It cannot be saved again.')
+        return
+      }
+    } catch { /* the insert below still runs; the note appears on the next check */ }
     const { error: err } = await supabase.from('batch_traceability').insert([{
       date: form.date || null, rows: form.rows,
       total_hs1: form.total_hs1, total_hs2: form.total_hs2,
@@ -320,7 +426,8 @@ export default function BatchTraceability({ sharedBatches = [] }) {
       setSaved(true)
       sharedDraft.suppress()
       deleteSharedDraft('batch_traceability', submittedDate)
-      clearFormDraft()
+      // Keep showing what was just saved (now read-only) with the note.
+      setSavedInfo({ created_at: new Date().toISOString() })
     }
   }
 
@@ -331,13 +438,13 @@ export default function BatchTraceability({ sharedBatches = [] }) {
   // and the DB stay compatible); only what's shown/typed is 12-hour.
   const TC = ({ row, field, ri }) => (
     <td className="bt-td-time">
-      <TimeCell value={row[field] ?? ''} onChange={v => setRow(ri, field, v)} />
+      <TimeCell value={row[field] ?? ''} onChange={v => setRow(ri, field, v)} disabled={readOnly} />
     </td>
   )
 
   const SC = ({ row, field, ri, options }) => (
     <td className="bt-td-sm">
-      <select className="bt-select-cell"
+      <select className="bt-select-cell" disabled={readOnly}
         value={row[field] ?? ''}
         onChange={e => setRow(ri, field, e.target.value)}>
         <option value="">—</option>
@@ -356,6 +463,19 @@ export default function BatchTraceability({ sharedBatches = [] }) {
 
       <form className="bt-form" onSubmit={handleSubmit}>
 
+        {savedInfo && (
+          <div className="bt-success" style={{ marginBottom: '8px' }}>
+            🔒 The Batch Traceability record for {fmtDmy(form.date)} is already saved
+            {savedInfo.created_at ? ` (on ${fmtSavedAt(savedInfo.created_at)})` : ''}. It cannot be saved again.
+            {' '}/ इस तारीख का रिकॉर्ड पहले ही सहेजा जा चुका है, इसे दोबारा सहेजा नहीं जा सकता।
+          </div>
+        )}
+        {viewOnly && !savedInfo && (
+          <div className="bt-error" style={{ background: '#fff8e1', color: '#7a5a00', borderColor: '#f0d58c' }}>
+            View only — this date is different from the Process Job Card date ({sharedBatchDate}).
+            Earlier data can be viewed here but not changed. / केवल देखने के लिए
+          </div>
+        )}
         <div className="bt-meta-bar">
           <div className="bt-meta-field">
             <label className="bt-label">Date / <span className="bt-label-hi">तारीख</span></label>
@@ -417,7 +537,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
               {form.rows.map((row, ri) => (
                 <tr key={row.id} className={ri % 2 === 0 ? '' : 'bt-tr-alt'}>
                   <td className="bt-td-sticky bt-td-batch">
-                    <input className="bt-input-cell"
+                    <input className="bt-input-cell" readOnly={readOnly}
                       placeholder="Batch No. / बैच नं."
                       value={row.batch_no}
                       onChange={e => setRow(ri, 'batch_no', e.target.value)} />
@@ -439,7 +559,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
                   <TC row={row} field="finish_start" ri={ri} />
                   <TC row={row} field="finish_stop"  ri={ri} />
                   <td className="bt-td-del">
-                    {form.rows.length > 1 && (
+                    {!readOnly && form.rows.length > 1 && (
                       <button type="button" className="bt-del-btn" onClick={() => removeRow(ri)}>✕</button>
                     )}
                   </td>
@@ -450,7 +570,7 @@ export default function BatchTraceability({ sharedBatches = [] }) {
         </div>
 
         <div className="bt-controls-bar">
-          <button type="button" className="bt-add-btn" onClick={addRow}>
+          <button type="button" className="bt-add-btn" onClick={addRow} disabled={readOnly}>
             + Add Batch Row / <span style={{fontSize:'10px'}}>बैच पंक्ति जोड़ें</span>
           </button>
         </div>
@@ -475,22 +595,22 @@ export default function BatchTraceability({ sharedBatches = [] }) {
           <div className="bt-sig-field">
             <label className="bt-label">Checked By / <span className="bt-label-hi">जाँच की गई</span></label>
             <input className="bt-input" placeholder="Name / नाम"
-              value={form.checked_by} onChange={e => set('checked_by', e.target.value)} />
+              value={form.checked_by} readOnly={readOnly} onChange={e => set('checked_by', e.target.value)} />
           </div>
           <div className="bt-sig-field">
             <label className="bt-label">Approved By / <span className="bt-label-hi">अनुमोदित</span></label>
             <input className="bt-input" placeholder="Name / नाम"
-              value={form.approved_by} onChange={e => set('approved_by', e.target.value)} />
+              value={form.approved_by} readOnly={readOnly} onChange={e => set('approved_by', e.target.value)} />
           </div>
         </div>
 
         <div className="bt-actions">
           {error && <div className="bt-error">Error: {error}</div>}
           {saved  && <div className="bt-success">✓ Saved successfully / सफलतापूर्वक सहेजा गया</div>}
-          <button type="submit" className="bt-save-btn" disabled={saving}>
-            {saving ? 'Saving…' : 'Save Record / रिकॉर्ड सहेजें'}
+          <button type="submit" className="bt-save-btn" disabled={saving || readOnly}>
+            {saving ? 'Saving…' : savedInfo ? '🔒 Already Saved / पहले ही सहेजा गया' : 'Save Record / रिकॉर्ड सहेजें'}
           </button>
-          <button type="button" className="bt-reset-btn"
+          <button type="button" className="bt-reset-btn" disabled={readOnly}
             onClick={() => { clearFormDraft(); setSaved(false); setError('') }}>
             Reset / रीसेट
           </button>

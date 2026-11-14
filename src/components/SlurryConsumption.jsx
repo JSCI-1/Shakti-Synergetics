@@ -44,6 +44,22 @@ const COL_HEADERS = (
   </tr>
 )
 
+
+// yyyy-mm-dd → dd-mm-yyyy
+function fmtDmy(d) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(d || ''))
+  return m ? `${m[3]}-${m[2]}-${m[1]}` : String(d || '')
+}
+// ISO → "14 Nov 2026, 07:40 am" (IST)
+function fmtSavedAt(iso) {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-IN', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    hour12: true, timeZone: 'Asia/Kolkata',
+  })
+}
+
 export default function SlurryConsumption() {
   const uid = useUserId()
   // ── Entry for the date the operator selects (defaults to today) ──
@@ -54,6 +70,10 @@ export default function SlurryConsumption() {
   const [error, setError]   = useState('')
   const [prevCumDiff, setPrevCumDiff] = useState(0)
   const savedSnap = useRef('')   // canon() of today's already-saved record
+  // Already saved: a report exists for the selected date (one per date) →
+  // note + locked entry + Save blocked. Set by loadPrevCumDiff below.
+  const [savedInfo, setSavedInfo] = useState(null)   // null | { created_at }
+  const locked = !!savedInfo
 
   // ── History viewer ──
   const [histDate, setHistDate]   = useState(yesterdayISO())
@@ -80,8 +100,14 @@ export default function SlurryConsumption() {
   // Formula: today's cumulative = previous record's cumulative_diff + today's diff
   const loadPrevCumDiff = useCallback(async () => {
     if (!supabaseReady || !entryDate) return
-    const { data } = await supabase.from('slurry_consumption').select('rows')
+    const { data } = await supabase.from('slurry_consumption').select('rows, created_at')
     if (!data) return
+
+    // Is the selected date already saved? (newest save wins for the note)
+    const savedFor = data
+      .filter(r => (r.rows || []).some(x => x && x.date === entryDate))
+      .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))[0]
+    setSavedInfo(savedFor ? { created_at: savedFor.created_at } : null)
 
     // Flatten, filter before the selected date, sort by date descending → take most recent
     const all = data.flatMap(r => r.rows || [])
@@ -125,6 +151,7 @@ export default function SlurryConsumption() {
     clearFormDraft()
     setSaved(false); setError('')
     setPrevCumDiff(0)
+    setSavedInfo(null)
     setEntryDateRaw(v)
   }
 
@@ -134,7 +161,7 @@ export default function SlurryConsumption() {
     section: 'slurry_consumption',
     date: entryDate,
     blob: form,
-    hasData: b => canon(b) !== savedSnap.current && Object.values(b).some(v => v !== '' && v != null),
+    hasData: b => !locked && canon(b) !== savedSnap.current && Object.values(b).some(v => v !== '' && v != null),
     apply: m => {
       if (m && typeof m === 'object') setForm(p => ({ ...p, ...m }))
     },
@@ -169,13 +196,28 @@ export default function SlurryConsumption() {
   useEffect(() => { loadHistRow(histDate) }, [histDate, loadHistRow])
 
   function stampTime() {
+    if (locked) return
     if (form.timestamp) return
     set('timestamp', stamp12hr())
   }
 
   async function handleSubmit() {
     if (!supabaseReady) { setError('Supabase not configured.'); return }
+    if (locked) return
+    if (!entryDate) { setError('Select the date before saving.'); return }
     setSaving(true); setError(''); setSaved(false)
+    // Server-side re-check: another operator may have saved this date already.
+    try {
+      const { data: all } = await supabase.from('slurry_consumption').select('rows, created_at')
+      const existing = (all || []).find(r => (r.rows || []).some(x => x && x.date === entryDate))
+      if (existing) {
+        setSaving(false)
+        setSavedInfo({ created_at: existing.created_at })
+        setError('The report for this date is already saved. It cannot be saved again.')
+        loadPrevCumDiff()
+        return
+      }
+    } catch { /* the insert below still runs; the note appears on the next check */ }
     const { error: err } = await supabase.from('slurry_consumption').insert([{
       rows: [{
         date:            entryDate,
@@ -243,6 +285,15 @@ export default function SlurryConsumption() {
 
       <SharedStatus date={entryDate} syncInfo={sharedDraft.syncInfo} />
 
+      {locked && (
+        <div className="sc-success" style={{ margin: '8px 0' }}>
+          🔒 The Slurry Consumption Report for {fmtDmy(entryDate)} is already saved
+          {savedInfo.created_at ? ` (on ${fmtSavedAt(savedInfo.created_at)})` : ''}. It cannot be saved again.
+          {' '}/ इस तारीख की रिपोर्ट पहले ही सहेजी जा चुकी है, इसे दोबारा सहेजा नहीं जा सकता।
+        </div>
+      )}
+
+      <fieldset disabled={locked} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
       <div className="sc-table-scroll">
         <table className="sc-table">
           <thead>{COL_HEADERS}</thead>
@@ -275,13 +326,15 @@ export default function SlurryConsumption() {
         </table>
       </div>
 
+      </fieldset>
+
       <div className="sc-actions">
         {error && <div className="sc-error">Error: {error}</div>}
         {saved  && <div className="sc-success">✓ Saved / सफलतापूर्वक सहेजा गया</div>}
-        <button type="button" className="sc-save-btn" disabled={saving} onClick={handleSubmit}>
-          {saving ? 'Saving…' : 'Save Report / रिपोर्ट सहेजें'}
+        <button type="button" className="sc-save-btn" disabled={saving || locked} onClick={handleSubmit}>
+          {saving ? 'Saving…' : locked ? '🔒 Already Saved / पहले ही सहेजा गया' : 'Save Report / रिपोर्ट सहेजें'}
         </button>
-        <button type="button" className="sc-reset-btn"
+        <button type="button" className="sc-reset-btn" disabled={locked}
           onClick={() => { clearFormDraft(); setSaved(false); setError('') }}>
           Reset / रीसेट
         </button>

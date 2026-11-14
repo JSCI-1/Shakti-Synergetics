@@ -20,6 +20,9 @@ export function emptyBatch() {
 export default function SlurryWrapper() {
   const [activeTab, setActiveTab] = useState('process')
   const [sharedBatches, setSharedBatches] = useState([emptyBatch()])
+  // Date of the Process Job Card those batches belong to. Batch Traceability
+  // follows the batches ONLY when it shows this same date.
+  const [sharedBatchDate, setSharedBatchDate] = useState('')
 
   // Track which tabs have been opened at least once
   const [visited, setVisited] = useState({ process: true })
@@ -47,13 +50,14 @@ export default function SlurryWrapper() {
           <SlurrySection
             sharedBatches={sharedBatches}
             setSharedBatches={setSharedBatches}
+            setSharedBatchDate={setSharedBatchDate}
           />
         </div>
 
         {/* Batch Traceability — lazy import, only rendered after first visit */}
         {visited.traceability && (
           <div style={{ display: activeTab === 'traceability' ? 'block' : 'none' }}>
-            <LazyBatchTraceability sharedBatches={sharedBatches} />
+            <LazyBatchTraceability sharedBatches={sharedBatches} sharedBatchDate={sharedBatchDate} />
           </div>
         )}
 
